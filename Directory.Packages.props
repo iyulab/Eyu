@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      L1a↔L2 coupling smoke test (BD-20260830-04): the only production dependency this repo
+      currently has. Consumed as a published package, never a ProjectReference — Eyu has no
+      access to formbase's source tree.
+    -->
+    <PackageVersion Include="Formbase.Core" Version="0.8.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Test -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+</Project>

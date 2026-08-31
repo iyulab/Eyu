@@ -38,6 +38,8 @@ new consumer needs it.
 - **Confidence routes, it doesn't decide.** Every proposal carries a
   confidence score; a caller-defined threshold routes it to auto-apply,
   human review, or draft-only. Eyu proposes — it never applies anything.
+  Self-reported confidence is not trustworthy uncalibrated — see
+  [design rationale, §D](docs/philosophy.md).
 - **No claim without a reason.** A response is a structure of
   `{claim, sources[], path[]}`. A claim that can't cite its sources cannot be
   expressed — this is enforced by the output shape, not by a prompt.
@@ -81,6 +83,13 @@ new consumer needs it.
 Each consumer implements `IStructureSource`/`IRecordSample` for its own world
 — an owned raw store, a declared schema, a federated read — and gets the same
 proposal logic back through `IOntologyProposer`.
+
+## Further reading
+
+[Design rationale](docs/philosophy.md) — why judgment requires structure
+first, what kind of thing a proposed ontology is, and the open question of
+an innate/acquired split, each with a confidence grade on how well-anchored
+the reasoning is.
 
 ## License
 

@@ -79,16 +79,5 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      # P2-q (docket/ROADMAP.md): a scan step must fail when it finds something, and must fail if
-      # `dotnet list` itself errors -- both formbase and morphdb carry this same fixed pattern
-      # (f7533ba, 068dca9). Not yet a shared composite action across repos (that needs a new repo
-      # to host it -- a human decision, see ROADMAP.md), so this copy is intentional duplication of
-      # an already-fixed pattern, not a fresh one.
       - name: Run security scan
-        run: |
-          set -o pipefail
-          dotnet list package --vulnerable --include-transitive | tee vulnerable-packages.txt
-          if grep -q "has the following vulnerable packages" vulnerable-packages.txt; then
-            echo "::error::Vulnerable packages detected -- see the scan output above."
-            exit 1
-          fi
+        uses: iyulab/dotnet-ci-actions/vulnerability-scan@main

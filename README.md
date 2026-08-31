@@ -45,7 +45,10 @@ new consumer needs it.
 ## What Eyu is
 
 - **A judgment library.** Given structure and records, it proposes what the
-  entities, relations, and their confidence are. That's the whole surface.
+  entities, relations, and their confidence are — including which records
+  refer to the same real-world entity (entity resolution is part of
+  proposing what the entities *are*, not a separate concern). That's the
+  whole surface.
 - **Storage-agnostic.** It has no raw store, no projection target, no query
   engine of its own.
 - **Provider-agnostic.** Model access is a single injected port; local or
@@ -71,7 +74,7 @@ new consumer needs it.
 | -------------------- | ---------------------------------------------------------------------- |
 | `IStructureSource`   | What the caller has already declared — field hints, relations, version |
 | `IRecordSample`      | Raw records to infer from, when declaration alone is insufficient      |
-| `IOntologyProposer`  | The core judgment: entities, relations, confidence, from the above     |
+| `IOntologyProposer`  | The core judgment: entities, relations, confidence, and entity resolution (merging records that denote the same entity) — all from the above |
 | `IGroundingContract` | `{claim, sources[], path[]}` — the shape every answer is expressed in  |
 | `IModelClient`       | Provider-neutral inference access (local or hosted)                    |
 

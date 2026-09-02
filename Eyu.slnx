@@ -1,9 +1,11 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Eyu.Core/Eyu.Core.csproj" />
+    <Project Path="src/Eyu.Formbase/Eyu.Formbase.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Eyu.Core.Tests/Eyu.Core.Tests.csproj" />
+    <Project Path="tests/Eyu.Formbase.Tests/Eyu.Formbase.Tests.csproj" />
     <Project Path="tests/Eyu.IntegrationSmoke.Tests/Eyu.IntegrationSmoke.Tests.csproj" />
   </Folder>
 </Solution>

@@ -6,7 +6,10 @@
 > records into proposed entities, relations, and grounded claims — the reason
 > a piece of data is shaped the way it is, made explicit and citable.
 
-**Status: pre-implementation.** This README fixes the contract; the code follows.
+**Status: contract implemented, judgment engine not yet.** All five ports exist as C# types
+(`Eyu.Core`), plus a first source adapter (`Eyu.Formbase`). `IOntologyProposer`'s actual
+judgment logic — the inference, entity resolution — is still unwritten; nothing in this repo
+yet proposes anything.
 
 ---
 

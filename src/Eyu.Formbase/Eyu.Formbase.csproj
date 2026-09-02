@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Eyu.Formbase</RootNamespace>
+    <Description>Adapts a Formbase IFieldHintSource to Eyu's IStructureSource -- declared field hints flow in as Eyu's source-agnostic declared structure, unchanged in meaning.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Eyu.Core\Eyu.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Formbase.Core" />
+  </ItemGroup>
+
+</Project>

@@ -86,37 +86,49 @@ assertions about reality** — they are claims about what the source records
 support, and they stop being meaningful the moment they're detached from
 their sources.
 
-## C. Innate layer vs. acquired layer — open question, not yet decided 🟡
+## C. Innate layer vs. acquired layer — decided: exposed as proposal-level provenance 🟡
 
 A judgment engine that starts from nothing has no vocabulary to propose
-anything with. One candidate shape: split what `IOntologyProposer` draws on
-into an **innate layer** (a small, domain-independent vocabulary — Person,
+anything with. `IOntologyProposer` draws on two kinds of vocabulary: an
+**innate layer** (a small, domain-independent vocabulary — Person,
 Organization, Event, Location, Time, Action, and similar — fixed regardless
 of which domain a caller is in) and an **acquired layer** (domain-specific
 categories and accumulated pattern knowledge that only exist because a
 particular caller's records have been seen before).
 
-If adopted, the innate layer should anchor to **DOLCE** (Borgo, Ferrario,
-Gangemi, Guarino, Masolo et al., "DOLCE: A Descriptive Ontology for
-Linguistic and Cognitive Engineering", *Applied Ontology* 17(1), 2022),
-which explicitly frames its categories as a "cognitive bias" — categories of
-thought about the world, not categories of the world — rather than **BFO**.
-This is worth stating plainly because it is easy to get backwards: BFO's own
-designer, Barry Smith, describes the view that ontology represents "theories
-or languages or concepts... not the world itself" as a position "inspired
-... by Kant" that BFO's realism explicitly rejects. Citing BFO as a
-Kantian-adjacent "a priori categories" precedent would be citing the wrong
-side of a debate its own author staged.
+The innate layer anchors to **DOLCE** (Borgo, Ferrario, Gangemi, Guarino,
+Masolo et al., "DOLCE: A Descriptive Ontology for Linguistic and Cognitive
+Engineering", *Applied Ontology* 17(1), 2022), which explicitly frames its
+categories as a "cognitive bias" — categories of thought about the world,
+not categories of the world — rather than **BFO**. This is worth stating
+plainly because it is easy to get backwards: BFO's own designer, Barry
+Smith, describes the view that ontology represents "theories or languages
+or concepts... not the world itself" as a position "inspired ... by Kant"
+that BFO's realism explicitly rejects. Citing BFO as a Kantian-adjacent "a
+priori categories" precedent would be citing the wrong side of a debate its
+own author staged.
 
-**What's undecided:** whether this split should be exposed as an explicit
-part of the port contract (e.g. distinguishing what an innate vocabulary
-proposes from what an acquired one does) or left entirely as an
-implementation detail behind `IOntologyProposer`, invisible to callers. No
-sixth port should result either way — the precedent set for entity
-resolution (folded into `IOntologyProposer` as part of "core judgment,"
-not split into a separate port) applies here too: this is a candidate
-refinement of what already lives inside the single judgment port, not a new
-surface.
+**Decided: the split is exposed, as a proposal-level `VocabularyOrigin`
+tag (`Innate` | `Acquired`) on every entity/relation `IOntologyProposer`
+returns — not as a sixth port.** The precedent set for entity resolution
+(folded into `IOntologyProposer` as part of "core judgment," not split into
+a separate port) still applies to *how* this is exposed — no new port, no
+`ICommonOntologyPack`/`IDomainOntologyPack` surface. What changed from
+"undecided" is narrower: whether the distinction should be visible to a
+caller at all, and that is settled by §D, not by taste. §D already commits
+Eyu's contract to "routing thresholds should be tuned against observed
+precision/recall on held-out cases" — but innate-layer proposals (a small,
+near-closed classification problem) and acquired-layer proposals (an
+open-ended, sample-size-dependent problem that shifts as a caller's record
+history grows) do not share a calibration curve. A caller cannot honor
+§D's own requirement without knowing which regime a given confidence value
+came from. Leaving the split invisible would make a promise the contract
+elsewhere makes impossible to keep — so this is decided by consequence, not
+preference: any caller doing confidence-based routing needs it, not just
+one caller with a domain-specific reason to want it. Rejected: adding a
+seventh/sixth port (`ICommonOntologyPack`-shaped) for this — pure
+surface growth with no consumer need distinct from what a one-field tag
+already answers.
 
 ## D. Confidence: routes, but only if calibrated 🟡
 

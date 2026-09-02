@@ -76,7 +76,7 @@ new consumer needs it.
 | -------------------- | ---------------------------------------------------------------------- |
 | `IStructureSource`   | What the caller has already declared — field hints, relations, version |
 | `IRecordSample`      | Raw records to infer from, when declaration alone is insufficient      |
-| `IOntologyProposer`  | The core judgment: entities, relations, confidence, and entity resolution (merging records that denote the same entity) — all from the above |
+| `IOntologyProposer`  | The core judgment: entities, relations, confidence, and entity resolution (merging records that denote the same entity) — all from the above. Each proposal also carries a `VocabularyOrigin` (`Innate` \| `Acquired`) — see [design rationale, §C](docs/philosophy.md) |
 | `IGroundingContract` | `{claim, sources[], path[]}` — the shape every answer is expressed in  |
 | `IModelClient`       | Provider-neutral inference access (local or hosted)                    |
 
@@ -87,9 +87,9 @@ proposal logic back through `IOntologyProposer`.
 ## Further reading
 
 [Design rationale](docs/philosophy.md) — why judgment requires structure
-first, what kind of thing a proposed ontology is, and the open question of
-an innate/acquired split, each with a confidence grade on how well-anchored
-the reasoning is.
+first, what kind of thing a proposed ontology is, and why proposals carry an
+innate/acquired origin tag, each with a confidence grade on how
+well-anchored the reasoning is.
 
 ## License
 

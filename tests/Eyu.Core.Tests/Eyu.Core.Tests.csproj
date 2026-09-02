@@ -7,6 +7,19 @@
     <NoWarn>$(NoWarn);CA1707;CA1859</NoWarn>
   </PropertyGroup>
 
+  <!--
+    Real-model smoke for SinglePassOntologyProposer, mirroring formbase's Live/Llm gate
+    (tests/Formbase.Core.Tests/Formbase.Core.Tests.csproj) one repo over. Needs a reachable
+    OpenAI-compatible chat-completions endpoint:
+      EYU_LLM_ENDPOINT / EYU_LLM_API_KEY / EYU_LLM_MODEL
+      dotnet test -p:IncludeEyuLlmLiveTests=true
+    Excluded by default: the suite never depends on an external model and cannot hang. Uses only
+    HttpModelClient (BCL HttpClient) — no model SDK package, consistent with cycle-15's decision.
+  -->
+  <ItemGroup Condition="'$(IncludeEyuLlmLiveTests)' != 'true'">
+    <Compile Remove="Live/Llm/**/*.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Eyu.Core\Eyu.Core.csproj" />
   </ItemGroup>

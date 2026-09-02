@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Eyu.Core</RootNamespace>
+    <Description>Eyu core contract — source-agnostic ontology inference ports (IStructureSource, IRecordSample, IOntologyProposer, IGroundingContract, IModelClient).</Description>
+  </PropertyGroup>
+
+</Project>

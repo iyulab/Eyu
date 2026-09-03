@@ -42,7 +42,7 @@ public class EntityClustererTests
     }
 
     [Fact]
-    public void A_GrayZone_pair_already_joined_by_a_Match_chain_is_not_reported_as_ambiguous()
+    public void A_GrayZone_pair_reaching_outside_its_Match_cluster_is_still_reported_as_ambiguous()
     {
         // a-b Match, b-c GrayZone: once a and b are merged, does c also need adjudicating against
         // that merged cluster? Here b-c is still genuinely ambiguous (c was never linked to the

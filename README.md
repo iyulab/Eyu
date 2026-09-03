@@ -6,10 +6,16 @@
 > records into proposed entities, relations, and grounded claims — the reason
 > a piece of data is shaped the way it is, made explicit and citable.
 
-**Status: contract implemented, judgment engine not yet.** All five ports exist as C# types
-(`Eyu.Core`), plus a first source adapter (`Eyu.Formbase`). `IOntologyProposer`'s actual
-judgment logic — the inference, entity resolution — is still unwritten; nothing in this repo
-yet proposes anything.
+**Status: contract implemented and judgment quality validated; not yet exercised by an external
+package consumer.** All five ports exist as C# types (`Eyu.Core`), plus a first source adapter
+(`Eyu.Formbase`). `IOntologyProposer`'s judgment logic (`SinglePassOntologyProposer` +
+`HttpModelClient`) is implemented and has been measured against a real model (GPUStack
+`qwen3.8-27b`) across two domains — grounding integrity held at 0 violations both times, though
+the proposer's self-reported confidence turned out uninformative in the same measurement (see
+[design rationale, §D](docs/philosophy.md)). `Eyu.Core` is not yet published, so today the
+wiring is proven by in-repo mock-backed tests rather than by a consumer referencing the package
+the way the [coupling smoke test](tests/Eyu.IntegrationSmoke.Tests/SchemaProposerCouplingSmokeTests.cs)
+already does for `Formbase.Core`.
 
 ---
 

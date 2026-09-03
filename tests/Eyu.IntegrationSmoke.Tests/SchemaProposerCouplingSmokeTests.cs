@@ -6,11 +6,20 @@ using Xunit;
 namespace Eyu.IntegrationSmoke.Tests;
 
 /// <summary>
-/// L1a↔L2 coupling proof (BD-20260830-04, ROADMAP.md): before any of Eyu's own ports exist, this
-/// establishes that Eyu's codebase can reference the published `Formbase.Core` package and satisfy
-/// its <see cref="ISchemaProposer"/> port end to end. It says nothing about Eyu's eventual
-/// architecture (IStructureSource / IRecordSample / IOntologyProposer / IGroundingContract) — those
-/// stay open design questions this test does not touch.
+/// L1a↔L2 coupling proof (BD-20260830-04, ROADMAP.md): establishes that Eyu's codebase can
+/// reference the published `Formbase.Core` package and satisfy its <see cref="ISchemaProposer"/>
+/// port end to end.
+/// <para>
+/// Eyu's own architecture (IStructureSource / IRecordSample / IOntologyProposer /
+/// IGroundingContract) is no longer an open question this test doesn't touch — all five ports are
+/// implemented, and <c>SinglePassOntologyProposer</c>/<c>HttpModelClient</c> have been measured
+/// against a real model (see README's Status line). That coverage lives in
+/// <c>Eyu.Core.Tests</c> against a mock <c>IModelClient</c>, referenced via
+/// <c>ProjectReference</c> rather than the package-boundary style this project exists for,
+/// because `Eyu.Core` is not yet published — there is nothing on NuGet for a project restricted
+/// to <c>PackageReference</c> (like this one) to point at. This test's own scope stays exactly
+/// what its name says: the `Formbase.Core` coupling, not Eyu's ports.
+/// </para>
 /// </summary>
 public class SchemaProposerCouplingSmokeTests
 {

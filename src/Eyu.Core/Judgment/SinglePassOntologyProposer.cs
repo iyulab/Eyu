@@ -12,16 +12,16 @@ using Eyu.Core.Records;
 namespace Eyu.Core.Judgment;
 
 /// <summary>
-/// The single-baseline <see cref="IOntologyProposer"/> the internal-organization benchmark
-/// (ROADMAP.md — "단일 baseline 대비" A/B/C/D gate) compares against: one prompt, one
+/// The single-baseline <see cref="IOntologyProposer"/> implementation this library's internal
+/// benchmark (a "single baseline" gate) compares against: one prompt, one
 /// <see cref="IModelClient"/> call, one parse. Before building the prompt, a Fellegi-Sunter
 /// record-linkage pre-filter (<see cref="LinkagePipeline"/>) classifies every record pair as a
-/// confirmed match, a confirmed non-match, or a gray-zone case needing the model's judgment — see
-/// claudedocs/plans/PLAN-Eyu-2026-09-03-fellegi-sunter-hybrid-routing-design.md. Confirmed matches
-/// never use the model's self-reported confidence; gray-zone cases combine the Fellegi-Sunter
-/// prior with it via a Bayesian update (<see cref="LinkageConfidenceAdjuster"/>). This class still
-/// only proves the wiring is correct; it makes no claim about judgment quality on its own, which
-/// no unit test can verify without a real model behind <see cref="IModelClient"/>.
+/// confirmed match, a confirmed non-match, or a gray-zone case needing the model's judgment.
+/// Confirmed matches never use the model's self-reported confidence; gray-zone cases combine the
+/// Fellegi-Sunter prior with it via a Bayesian update (<see cref="LinkageConfidenceAdjuster"/>).
+/// This class still only proves the wiring is correct; it makes no claim about judgment quality
+/// on its own, which no unit test can verify without a real model behind
+/// <see cref="IModelClient"/>.
 /// </summary>
 public sealed class SinglePassOntologyProposer(IModelClient modelClient) : IOntologyProposer
 {

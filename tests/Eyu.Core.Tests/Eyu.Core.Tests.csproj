@@ -4,7 +4,7 @@
     <RootNamespace>Eyu.Core.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <NoWarn>$(NoWarn);CA1707;CA1859</NoWarn>
+    <NoWarn>$(NoWarn);CA1707;CA1859;CA1861</NoWarn>
   </PropertyGroup>
 
   <!--

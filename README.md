@@ -41,6 +41,11 @@ else's database you can only read. Building it once, separately from any
 storage or access model, is the only way it doesn't get rebuilt every time a
 new consumer needs it.
 
+This is the bet the design makes, not yet a cross-validated claim: today Eyu
+has exactly one consumer (`Eyu.Formbase`, in this same repo), and no external
+package consumer has exercised it (see Status above). Read "every system" as
+the target the architecture is built toward, not as a track record.
+
 ## The idea
 
 ```

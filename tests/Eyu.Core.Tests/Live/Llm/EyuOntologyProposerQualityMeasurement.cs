@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Eyu.Core.Grounding;
 using Eyu.Core.Judgment;
 using Eyu.Core.Proposals;
 using Eyu.Core.Records;
@@ -15,10 +16,15 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// rates. Eyu's proposal shape is open-vocabulary (entity/relation names the model invents), unlike
 /// formbase's fixed column-type schema, so the metrics here differ in kind from formbase's — there
 /// is no "expected type" ground truth to score against. What *is* objectively checkable without a
-/// human in the loop: strict-parse survival, and grounding integrity (every cited source id must be
+/// human in the loop: strict-parse survival, grounding integrity (every cited source id must be
 /// one of the records actually given — <see cref="Eyu.Core.Grounding.GroundedClaim.Create"/> does
-/// not itself verify this, so a hallucinated source id would otherwise pass silently). It measures;
-/// it does not gate — the packaging/benchmark decision is a human call (see
+/// not itself verify this, so a hallucinated source id would otherwise pass silently), and
+/// grounding overlap (<see cref="GroundingOverlapCheck"/> — a valid source id does not by itself
+/// mean the claim's content is backed by that record; BD-20260903-02). What this instrument does
+/// NOT check: whether records that denote the same real-world entity are actually merged
+/// (<see cref="SinglePassOntologyProposer"/>'s prompt carries no resolution instruction — entity
+/// resolution accuracy is not measured here). It measures; it does not gate — the
+/// packaging/benchmark decision is a human call (see
 /// <c>claudedocs/HANDOFF.md</c> "Waiting on you"). Repetitions per case come from
 /// <c>EYU_LLM_QUALITY_RUNS</c> (default 2 — lower than formbase's 5: a single real call here
 /// observed ~2 minutes, cycle-16); when <c>EYU_LLM_QUALITY_REPORT</c> names a file, the markdown
@@ -89,6 +95,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         public int Attempts;
         public int ParseFailures;
         public int GroundingViolations;
+        public int OverlapViolations;
         public readonly List<int> EntityCounts = [];
         public readonly List<int> RelationCounts = [];
         public readonly HashSet<string> EntityTypeShapes = [];
@@ -157,6 +164,21 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 stats.GroundingViolations++;
                 stats.FailureNotes.Add($"entity {entity.EntityId} cites a source outside the given records");
             }
+            else
+            {
+                // A valid source id (checked above) that shares too little vocabulary with the
+                // claim to actually back it — the gap id-validity alone does not catch
+                // (BD-20260903-02). Ratio + claim text recorded so a human reviewing the report
+                // can tell a genuine mismatch apart from framing language diluting the ratio
+                // (heuristic, not semantic — see GroundingOverlapCheck's doc comment).
+                var overlap = GroundingOverlapCheck.Evaluate(entity.Claim, qualityCase.Records);
+                if (!overlap.IsSupported)
+                {
+                    stats.OverlapViolations++;
+                    stats.FailureNotes.Add(
+                        $"entity {entity.EntityId} overlap {overlap.MatchedTokenCount}/{overlap.ClaimTokenCount} ({overlap.Ratio:P0}): \"{entity.Claim.Claim}\"");
+                }
+            }
         }
 
         foreach (var relation in proposal.Relations)
@@ -166,6 +188,16 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 stats.GroundingViolations++;
                 stats.FailureNotes.Add($"relation {relation.RelationName} cites a source outside the given records");
             }
+            else
+            {
+                var overlap = GroundingOverlapCheck.Evaluate(relation.Claim, qualityCase.Records);
+                if (!overlap.IsSupported)
+                {
+                    stats.OverlapViolations++;
+                    stats.FailureNotes.Add(
+                        $"relation {relation.RelationName} overlap {overlap.MatchedTokenCount}/{overlap.ClaimTokenCount} ({overlap.Ratio:P0}): \"{relation.Claim.Claim}\"");
+                }
+            }
         }
     }
 
@@ -174,15 +206,15 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var report = new StringBuilder()
             .AppendLine(CultureInfo.InvariantCulture, $"# SinglePassOntologyProposer quality measurement — {runs} runs/case")
             .AppendLine()
-            .AppendLine("| case | parse ok | grounding violations | entities (min-max) | relations (min-max) | distinct type-shapes |")
-            .AppendLine("|---|---|---|---|---|---|");
+            .AppendLine("| case | parse ok | grounding violations | overlap violations | entities (min-max) | relations (min-max) | distinct type-shapes |")
+            .AppendLine("|---|---|---|---|---|---|---|");
         foreach (var (name, s) in stats)
         {
             var parseOk = s.Attempts - s.ParseFailures;
             var entityRange = s.EntityCounts.Count == 0 ? "n/a" : $"{s.EntityCounts.Min()}-{s.EntityCounts.Max()}";
             var relationRange = s.RelationCounts.Count == 0 ? "n/a" : $"{s.RelationCounts.Min()}-{s.RelationCounts.Max()}";
             report.AppendLine(CultureInfo.InvariantCulture,
-                $"| {name} | {parseOk}/{s.Attempts} | {s.GroundingViolations} | {entityRange} | {relationRange} | {s.EntityTypeShapes.Count} |");
+                $"| {name} | {parseOk}/{s.Attempts} | {s.GroundingViolations} | {s.OverlapViolations} | {entityRange} | {relationRange} | {s.EntityTypeShapes.Count} |");
         }
 
         var notes = stats.Where(kv => kv.Value.FailureNotes.Count > 0).ToList();

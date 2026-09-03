@@ -6,15 +6,26 @@
 > records into proposed entities, relations, and grounded claims — the reason
 > a piece of data is shaped the way it is, made explicit and citable.
 
-**Status: contract implemented and judgment quality validated; not yet exercised by an external
-package consumer.** All five ports exist as C# types (`Eyu.Core`), plus a first source adapter
-(`Eyu.Formbase`). `IOntologyProposer`'s judgment logic (`SinglePassOntologyProposer` +
+**Status: contract implemented; grounding-integrity and response-parsing reliability validated
+against a real model — entity-resolution accuracy is not measured, not yet exercised by an
+external package consumer.** All five ports exist as C# types (`Eyu.Core`), plus a first source
+adapter (`Eyu.Formbase`). `IOntologyProposer`'s judgment logic (`SinglePassOntologyProposer` +
 `HttpModelClient`) is implemented and has been measured against a real model (GPUStack
-`qwen3.8-27b`) across two domains — grounding integrity held at 0 violations both times, though
-the proposer's self-reported confidence turned out uninformative in the same measurement (see
-[design rationale, §D](docs/philosophy.md)). `Eyu.Core` is not yet published, so today the
-wiring is proven by in-repo mock-backed tests rather than by a consumer referencing the package
-the way the [coupling smoke test](tests/Eyu.IntegrationSmoke.Tests/SchemaProposerCouplingSmokeTests.cs)
+`qwen3.8-27b`) across two domains — every cited source id existed among the records given, 0
+violations both times. That check alone does not prove a citation actually backs its claim, so
+the same measurement now also runs a mechanical content-overlap check
+([`GroundingOverlapCheck`](src/Eyu.Core/Grounding/GroundingOverlapCheck.cs)) between each claim
+and the record content it cites; the two-domain run flagged roughly a third of claims in one
+domain and a fifth in the other as low-overlap — a heuristic signal to spot-check, not a
+confirmed defect count (see the type's doc comment for why token overlap is not a semantic
+verifier). Two things this measurement does **not** cover: whether records that denote the same
+real-world entity are actually merged (`SinglePassOntologyProposer`'s prompt carries no
+resolution instruction, despite entity resolution being part of what `IOntologyProposer` is
+documented to decide below), and the proposer's self-reported confidence, which turned out
+uninformative in the same measurement (see [design rationale, §D](docs/philosophy.md)).
+`Eyu.Core` is not yet published, so today the wiring is proven by in-repo mock-backed tests
+rather than by a consumer referencing the package the way the
+[coupling smoke test](tests/Eyu.IntegrationSmoke.Tests/SchemaProposerCouplingSmokeTests.cs)
 already does for `Formbase.Core`.
 
 ---

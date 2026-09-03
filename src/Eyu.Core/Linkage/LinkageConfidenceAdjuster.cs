@@ -46,12 +46,12 @@ public static class LinkageConfidenceAdjuster
 
         if (relevantPairs.All(p => p.Classification == LinkageClassification.Match))
         {
-            return Sigmoid(relevantPairs.Min(p => p.LogLikelihoodRatio));
+            return Math.Clamp(Sigmoid(relevantPairs.Min(p => p.LogLikelihoodRatio)), ProbabilityFloor, ProbabilityCeiling);
         }
 
         var priorLogOdds = relevantPairs.Min(p => p.LogLikelihoodRatio);
         var llmLogOdds = Logit(Math.Clamp(llmConfidence, ProbabilityFloor, ProbabilityCeiling));
-        return Sigmoid(priorLogOdds + llmLogOdds);
+        return Math.Clamp(Sigmoid(priorLogOdds + llmLogOdds), ProbabilityFloor, ProbabilityCeiling);
     }
 
     private static double Sigmoid(double logOdds) => 1.0 / (1.0 + Math.Exp(-logOdds));

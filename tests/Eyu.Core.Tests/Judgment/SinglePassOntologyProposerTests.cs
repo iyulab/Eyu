@@ -104,6 +104,67 @@ public class SinglePassOntologyProposerTests
         Assert.Contains("100", model.LastPrompt);
     }
 
+    [Fact]
+    public async Task ProposeAsync_overrides_confidence_with_FS_derived_probability_for_a_clear_match()
+    {
+        var model = new StubModelClient("""
+            {"entities":[{"id":"e1","type":"Organization","claim":"rec-1 and rec-2 are the same org","sources":["rec-1","rec-2"],"origin":"Innate","confidence":0.5}],"relations":[]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+        var records = new[]
+        {
+            new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+            new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+        };
+
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records);
+
+        var entity = Assert.Single(proposal.Entities);
+        // Below the EM floor (2 records -> 1 pair), so the heuristic default m=0.9/u=0.1 applies.
+        // Both fields agree: LLR = 2 * ln(0.9/0.1) -> Match -> confidence = sigmoid(LLR), which
+        // must NOT equal the model's own (deliberately different) confidence of 0.5.
+        var expectedLlr = 2 * Math.Log(0.9 / 0.1);
+        var expectedConfidence = 1.0 / (1.0 + Math.Exp(-expectedLlr));
+        Assert.Equal(expectedConfidence, entity.Confidence, precision: 6);
+        Assert.NotEqual(0.5, entity.Confidence);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_combines_FS_prior_with_LLM_confidence_for_a_gray_zone_pair()
+    {
+        var model = new StubModelClient("""
+            {"entities":[{"id":"e1","type":"Organization","claim":"rec-1 and rec-2 are the same org","sources":["rec-1","rec-2"],"origin":"Innate","confidence":0.9}],"relations":[]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+        var records = new[]
+        {
+            new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+            new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Portland" }),
+        };
+
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records);
+
+        var entity = Assert.Single(proposal.Entities);
+        // One field agrees, one disagrees -> heuristic LLR = ln(9) + ln(1/9) = 0 (a neutral
+        // prior) -> GrayZone -> posterior = sigmoid(0 + logit(llmConfidence)) == llmConfidence.
+        Assert.Equal(0.9, entity.Confidence, precision: 6);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_skips_linkage_for_a_single_record_batch()
+    {
+        var model = new StubModelClient("""
+            {"entities":[{"id":"e1","type":"Person","claim":"rec-1 denotes a person","sources":["rec-1"],"origin":"Innate","confidence":0.7}],"relations":[]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+        var records = new[] { new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Jane Doe" }) };
+
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records);
+
+        var entity = Assert.Single(proposal.Entities);
+        Assert.Equal(0.7, entity.Confidence);
+    }
+
     private sealed class StubModelClient(string responseText) : IModelClient
     {
         public string? LastPrompt { get; private set; }

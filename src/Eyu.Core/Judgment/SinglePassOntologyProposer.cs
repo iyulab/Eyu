@@ -4,6 +4,7 @@ using System.Text.Json;
 using Eyu.Core.Declared;
 using Eyu.Core.Grounding;
 using Eyu.Core.Inference;
+using Eyu.Core.Linkage;
 using Eyu.Core.Ports;
 using Eyu.Core.Proposals;
 using Eyu.Core.Records;
@@ -13,13 +14,14 @@ namespace Eyu.Core.Judgment;
 /// <summary>
 /// The single-baseline <see cref="IOntologyProposer"/> the internal-organization benchmark
 /// (ROADMAP.md — "단일 baseline 대비" A/B/C/D gate) compares against: one prompt, one
-/// <see cref="IModelClient"/> call, one parse. This class only proves the wiring — prompt
-/// construction from declared structure and sampled records, and response parsing back into an
-/// <see cref="OntologyProposal"/> — is correct; it makes no claim about judgment quality, which
-/// no unit test can verify without a real model behind <see cref="IModelClient"/>. The response
-/// parser reuses <see cref="EntityProposal.Create"/>/<see cref="RelationProposal.Create"/>'s own
-/// validation rather than re-implementing it, so a malformed proposal from the model fails the
-/// same way a hand-built one would.
+/// <see cref="IModelClient"/> call, one parse. Before building the prompt, a Fellegi-Sunter
+/// record-linkage pre-filter (<see cref="LinkagePipeline"/>) classifies every record pair as a
+/// confirmed match, a confirmed non-match, or a gray-zone case needing the model's judgment — see
+/// claudedocs/plans/PLAN-Eyu-2026-09-03-fellegi-sunter-hybrid-routing-design.md. Confirmed matches
+/// never use the model's self-reported confidence; gray-zone cases combine the Fellegi-Sunter
+/// prior with it via a Bayesian update (<see cref="LinkageConfidenceAdjuster"/>). This class still
+/// only proves the wiring is correct; it makes no claim about judgment quality on its own, which
+/// no unit test can verify without a real model behind <see cref="IModelClient"/>.
 /// </summary>
 public sealed class SinglePassOntologyProposer(IModelClient modelClient) : IOntologyProposer
 {
@@ -27,12 +29,13 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient) : IOnto
 
     public async Task<OntologyProposal> ProposeAsync(DeclaredStructure? declaredStructure, IReadOnlyList<RawRecord> records, CancellationToken cancellationToken = default)
     {
-        var prompt = BuildPrompt(declaredStructure, records);
+        var linkageAnalysis = LinkagePipeline.Analyze(records);
+        var prompt = BuildPrompt(declaredStructure, records, linkageAnalysis);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt), cancellationToken).ConfigureAwait(false);
-        return ParseResponse(response.Text);
+        return ParseResponse(response.Text, linkageAnalysis);
     }
 
-    private static string BuildPrompt(DeclaredStructure? declaredStructure, IReadOnlyList<RawRecord> records)
+    private static string BuildPrompt(DeclaredStructure? declaredStructure, IReadOnlyList<RawRecord> records, LinkageAnalysis linkageAnalysis)
     {
         var text = new StringBuilder();
         text.AppendLine("Propose entities and relations grounded in the input below.");
@@ -57,10 +60,31 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient) : IOnto
             text.AppendLine(CultureInfo.InvariantCulture, $"- {record.Id}: {fields}");
         }
 
+        var linkedClusters = linkageAnalysis.Clustering.Clusters.Where(c => c.RecordIds.Count > 1).ToList();
+        if (linkedClusters.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine("Pre-linked record groups (record linkage already confirmed these denote the same entity -- merge them, do not re-decide):");
+            foreach (var cluster in linkedClusters)
+            {
+                text.AppendLine(CultureInfo.InvariantCulture, $"- {string.Join(", ", cluster.RecordIds)}");
+            }
+        }
+
+        if (linkageAnalysis.Clustering.GrayZonePairs.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine("Ambiguous record pairs needing your judgment (prior evidence toward same entity, in log-odds -- positive favors same entity, negative favors different entities):");
+            foreach (var pair in linkageAnalysis.Clustering.GrayZonePairs)
+            {
+                text.AppendLine(CultureInfo.InvariantCulture, $"- {pair.RecordIdA} vs {pair.RecordIdB}: prior log-odds {pair.LogLikelihoodRatio:F2}");
+            }
+        }
+
         return text.ToString();
     }
 
-    private static OntologyProposal ParseResponse(string responseText)
+    private static OntologyProposal ParseResponse(string responseText, LinkageAnalysis linkageAnalysis)
     {
         ProposalResponse parsed;
         try
@@ -74,7 +98,13 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient) : IOnto
         }
 
         var entities = (parsed.Entities ?? [])
-            .Select(e => EntityProposal.Create(e.Id, e.Type, ToClaim(e.Claim, e.Sources), Enum.Parse<VocabularyOrigin>(e.Origin), e.Confidence))
+            .Select(e =>
+            {
+                var claim = ToClaim(e.Claim, e.Sources);
+                var citedRecordIds = claim.Sources.Select(s => s.RecordId).Distinct().ToList();
+                var confidence = LinkageConfidenceAdjuster.AdjustConfidence(citedRecordIds, e.Confidence, linkageAnalysis);
+                return EntityProposal.Create(e.Id, e.Type, claim, Enum.Parse<VocabularyOrigin>(e.Origin), confidence);
+            })
             .ToList();
 
         var relations = (parsed.Relations ?? [])

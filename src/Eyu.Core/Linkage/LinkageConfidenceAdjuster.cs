@@ -19,9 +19,32 @@ public static class LinkageConfidenceAdjuster
         ArgumentNullException.ThrowIfNull(citedRecordIds);
         ArgumentNullException.ThrowIfNull(analysis);
 
+        if (llmConfidence is < 0.0 or > 1.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(llmConfidence), llmConfidence, "Confidence must be within [0, 1].");
+        }
+
         if (citedRecordIds.Count <= 1)
         {
             return llmConfidence;
+        }
+
+        var citedIds = new HashSet<string>(citedRecordIds, StringComparer.Ordinal);
+
+        // A cluster is the transitive closure of Match edges, so a pair inside a confirmed cluster
+        // can still read GrayZone on its own -- consulting only PairLinkages would blend the
+        // model's confidence back into a group the pre-filter already decided.
+        if (analysis.Clustering.Clusters.Any(c => citedIds.IsSubsetOf(c.RecordIds)))
+        {
+            var directMatchEdges = analysis.PairLinkages
+                .Where(p => p.Classification == LinkageClassification.Match &&
+                            citedIds.Contains(p.RecordIdA) && citedIds.Contains(p.RecordIdB))
+                .ToList();
+
+            if (directMatchEdges.Count > 0)
+            {
+                return Math.Clamp(Sigmoid(directMatchEdges.Min(p => p.LogLikelihoodRatio)), ProbabilityFloor, ProbabilityCeiling);
+            }
         }
 
         var relevantPairs = new List<PairLinkage>();

@@ -105,6 +105,41 @@ public class SinglePassOntologyProposerTests
     }
 
     [Fact]
+    public async Task ProposeAsync_tells_the_model_which_record_groups_are_already_linked()
+    {
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model);
+        var records = new[]
+        {
+            new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+            new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+        };
+
+        await proposer.ProposeAsync(declaredStructure: null, records);
+
+        Assert.Contains("Pre-linked record groups", model.LastPrompt);
+        Assert.Contains("rec-1", model.LastPrompt);
+        Assert.Contains("rec-2", model.LastPrompt);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_hands_the_model_the_gray_zone_pairs_with_their_prior_log_odds()
+    {
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model);
+        var records = new[]
+        {
+            new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+            new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Portland" }),
+        };
+
+        await proposer.ProposeAsync(declaredStructure: null, records);
+
+        Assert.Contains("Ambiguous record pairs needing your judgment", model.LastPrompt);
+        Assert.Contains("prior log-odds", model.LastPrompt);
+    }
+
+    [Fact]
     public async Task ProposeAsync_overrides_confidence_with_FS_derived_probability_for_a_clear_match()
     {
         var model = new StubModelClient("""

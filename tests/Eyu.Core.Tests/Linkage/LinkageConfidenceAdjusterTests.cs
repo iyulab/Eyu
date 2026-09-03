@@ -1,4 +1,5 @@
 using Eyu.Core.Linkage;
+using Eyu.Core.Records;
 using Xunit;
 
 namespace Eyu.Core.Tests.Linkage;
@@ -65,5 +66,37 @@ public class LinkageConfidenceAdjusterTests
 
         var expected = 1.0 / (1.0 + Math.Exp(-5.0));
         Assert.Equal(expected, adjusted, precision: 6);
+    }
+
+    [Fact]
+    public void A_confirmed_multi_record_cluster_uses_FS_confidence_even_when_a_transitive_pair_reads_GrayZone()
+    {
+        var records = new[]
+        {
+            new RawRecord("a", new Dictionary<string, string?> { ["name"] = "Acme", ["city"] = "Springfield" }),
+            new RawRecord("b", new Dictionary<string, string?> { ["name"] = "Acme", ["city"] = "Springfield", ["phone"] = "555-0100" }),
+            new RawRecord("c", new Dictionary<string, string?> { ["name"] = "Acme", ["phone"] = "555-0100" }),
+        };
+        var analysis = LinkagePipeline.Analyze(records);
+
+        var adjusted = LinkageConfidenceAdjuster.AdjustConfidence(["a", "b", "c"], llmConfidence: 0.5, analysis);
+
+        // a-b and b-c are direct Match edges (2 agreeing fields each); a-c is GrayZone (only "name"
+        // shared) but a/b/c still end up in one EntityClusterer cluster via the a-b/b-c chain. The
+        // fix must use the FS-derived probability from the direct Match edges, NOT blend in the
+        // model's 0.5 confidence just because a-c individually reads GrayZone.
+        var expectedLlr = 2 * Math.Log(0.9 / 0.1);
+        var expected = 1.0 / (1.0 + Math.Exp(-expectedLlr));
+        Assert.Equal(expected, adjusted, precision: 6);
+        Assert.NotEqual(0.9, adjusted);
+    }
+
+    [Fact]
+    public void An_out_of_range_LLM_confidence_throws_even_when_multiple_records_are_cited()
+    {
+        var analysis = Analysis(new PairLinkage("rec-1", "rec-2", LinkageClassification.GrayZone, 0.0));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            LinkageConfidenceAdjuster.AdjustConfidence(["rec-1", "rec-2"], llmConfidence: 1.5, analysis));
     }
 }

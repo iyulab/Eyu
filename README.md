@@ -15,14 +15,23 @@ adapter (`Eyu.Formbase`). `IOntologyProposer`'s judgment logic (`SinglePassOntol
 violations both times. That check alone does not prove a citation actually backs its claim, so
 the same measurement now also runs a mechanical content-overlap check
 ([`GroundingOverlapCheck`](src/Eyu.Core/Grounding/GroundingOverlapCheck.cs)) between each claim
-and the record content it cites; the two-domain run flagged roughly a third of claims in one
-domain and a fifth in the other as low-overlap — a heuristic signal to spot-check, not a
-confirmed defect count (see the type's doc comment for why token overlap is not a semantic
-verifier). Two things this measurement does **not** cover: whether records that denote the same
-real-world entity are actually merged (`SinglePassOntologyProposer`'s prompt carries no
-resolution instruction, despite entity resolution being part of what `IOntologyProposer` is
-documented to decide below), and the proposer's self-reported confidence, which turned out
-uninformative in the same measurement (see [design rationale, §D](docs/philosophy.md)).
+and the record content it cites — a heuristic signal to spot-check per run, not a confirmed
+defect count (see the type's doc comment for why token overlap is not a semantic verifier; a
+run's own counts are in its report, not restated here since the pre-filter below changes them
+run to run). `SinglePassOntologyProposer` also takes an optional `LinkageOptions`
+(`Eyu.Core.Linkage`) that runs a Fellegi-Sunter record-linkage pre-filter before the model call:
+record pairs it confirms as a match are injected into the prompt as "merge them, do not
+re-decide", gray-zone pairs are injected as a log-odds hint for the model to judge itself, and
+confirmed non-matches get neither — so the prompt does now carry a resolution instruction, where
+before it carried none. A live run measured that this classification is observable (per-pair
+Match/GrayZone/NonMatch, EM convergence status, match prior) and that changing the thresholds
+measurably changes both the resulting prompt and the grounding-overlap counts. What that run does
+**not** establish: whether any particular threshold setting is more *correct* — no labeled
+ground truth exists to score the pre-filter's own match/non-match calls against, so
+entity-resolution accuracy remains unmeasured — or whether the proposer's self-reported
+confidence is informative on its own, which it was not in an earlier measurement (see
+[design rationale, §D](docs/philosophy.md)); gray-zone cases now combine it with the
+Fellegi-Sunter prior via a Bayesian update instead of using it alone.
 `Eyu.Core` is not yet published, so today the wiring is proven by in-repo mock-backed tests
 rather than by a consumer referencing the package the way the
 [coupling smoke test](tests/Eyu.IntegrationSmoke.Tests/SchemaProposerCouplingSmokeTests.cs)

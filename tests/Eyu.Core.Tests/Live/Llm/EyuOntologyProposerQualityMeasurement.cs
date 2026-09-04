@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Eyu.Core.Grounding;
 using Eyu.Core.Judgment;
+using Eyu.Core.Linkage;
 using Eyu.Core.Proposals;
 using Eyu.Core.Records;
 using Xunit;
@@ -28,7 +29,16 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// <c>claudedocs/HANDOFF.md</c> "Waiting on you"). Repetitions per case come from
 /// <c>EYU_LLM_QUALITY_RUNS</c> (default 2 — lower than formbase's 5: a single real call here
 /// observed ~2 minutes, cycle-16); when <c>EYU_LLM_QUALITY_REPORT</c> names a file, the markdown
-/// report is also written there.
+/// report is also written there. The Fellegi-Sunter pre-filter's <see cref="LinkageOptions"/> is
+/// also environment-tunable (<c>EYU_LLM_QUALITY_MATCH_THRESHOLD</c>/
+/// <c>_NONMATCH_THRESHOLD</c>/<c>_MAX_ITERATIONS</c>/<c>_CONVERGENCE_TOLERANCE</c>, each falling
+/// back to <see cref="LinkageOptions.Default"/> when unset) — this is the harness design decision
+/// 4 anticipated ("관측된 precision/recall로 임계값 튜닝"): a live validation cycle re-runs this
+/// measurement with different thresholds to see the effect, rather than measuring a fixed
+/// heuristic. The chosen options and, per case, the resulting <see cref="LinkageAnalysis"/>
+/// (pair classifications, EM <see cref="EstimationStatus"/>, match prior) are recorded in the
+/// report — <see cref="LinkagePipeline.Analyze"/> depends only on records and options, not the
+/// model, so it is computed once per case rather than once per attempt.
 /// </summary>
 public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 {
@@ -100,6 +110,27 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         public readonly List<int> RelationCounts = [];
         public readonly HashSet<string> EntityTypeShapes = [];
         public readonly List<string> FailureNotes = [];
+        public LinkageAnalysis? Linkage;
+    }
+
+    private static LinkageOptions BuildLinkageOptionsFromEnvironment()
+    {
+        var defaults = LinkageOptions.Default;
+        return new LinkageOptions(
+            MatchThreshold: ParseDouble("EYU_LLM_QUALITY_MATCH_THRESHOLD", defaults.MatchThreshold),
+            NonMatchThreshold: ParseDouble("EYU_LLM_QUALITY_NONMATCH_THRESHOLD", defaults.NonMatchThreshold),
+            MaxIterations: ParseInt("EYU_LLM_QUALITY_MAX_ITERATIONS", defaults.MaxIterations),
+            ConvergenceTolerance: ParseDouble("EYU_LLM_QUALITY_CONVERGENCE_TOLERANCE", defaults.ConvergenceTolerance));
+
+        static double ParseDouble(string variable, double fallback) =>
+            double.TryParse(Environment.GetEnvironmentVariable(variable), NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+                ? value
+                : fallback;
+
+        static int ParseInt(string variable, int fallback) =>
+            int.TryParse(Environment.GetEnvironmentVariable(variable), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+                ? value
+                : fallback;
     }
 
     [Fact]
@@ -108,14 +139,18 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var runs = int.TryParse(Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_RUNS"), out var parsed) && parsed > 0
             ? parsed
             : DefaultRuns;
+        var linkageOptions = BuildLinkageOptionsFromEnvironment();
         var (httpClient, modelClient) = EyuLlmLiveClient.Create();
         using var _ = httpClient;
-        var proposer = new SinglePassOntologyProposer(modelClient);
+        var proposer = new SinglePassOntologyProposer(modelClient, linkageOptions);
 
         var stats = new Dictionary<string, CaseStats>();
         foreach (var qualityCase in Catalog)
         {
-            var caseStats = stats[qualityCase.Name] = new CaseStats();
+            var caseStats = stats[qualityCase.Name] = new CaseStats
+            {
+                Linkage = LinkagePipeline.Analyze(qualityCase.Records, linkageOptions),
+            };
             for (var attempt = 0; attempt < runs; attempt++)
             {
                 caseStats.Attempts++;
@@ -123,7 +158,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             }
         }
 
-        var report = RenderReport(runs, stats);
+        var report = RenderReport(runs, linkageOptions, stats);
         output.WriteLine(report);
         var reportPath = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_REPORT");
         if (!string.IsNullOrWhiteSpace(reportPath))
@@ -201,10 +236,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
     }
 
-    private static string RenderReport(int runs, Dictionary<string, CaseStats> stats)
+    private static string RenderReport(int runs, LinkageOptions linkageOptions, Dictionary<string, CaseStats> stats)
     {
         var report = new StringBuilder()
             .AppendLine(CultureInfo.InvariantCulture, $"# SinglePassOntologyProposer quality measurement — {runs} runs/case")
+            .AppendLine()
+            .AppendLine(CultureInfo.InvariantCulture,
+                $"LinkageOptions: MatchThreshold={linkageOptions.MatchThreshold}, NonMatchThreshold={linkageOptions.NonMatchThreshold}, " +
+                $"MaxIterations={linkageOptions.MaxIterations}, ConvergenceTolerance={linkageOptions.ConvergenceTolerance}")
             .AppendLine()
             .AppendLine("| case | parse ok | grounding violations | overlap violations | entities (min-max) | relations (min-max) | distinct type-shapes |")
             .AppendLine("|---|---|---|---|---|---|---|");
@@ -215,6 +254,26 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             var relationRange = s.RelationCounts.Count == 0 ? "n/a" : $"{s.RelationCounts.Min()}-{s.RelationCounts.Max()}";
             report.AppendLine(CultureInfo.InvariantCulture,
                 $"| {name} | {parseOk}/{s.Attempts} | {s.GroundingViolations} | {s.OverlapViolations} | {entityRange} | {relationRange} | {s.EntityTypeShapes.Count} |");
+        }
+
+        report.AppendLine().AppendLine("## Fellegi-Sunter pre-filter (per case, independent of model attempts)")
+            .AppendLine()
+            .AppendLine("| case | pairs | match | gray-zone | non-match | EM status | match prior |")
+            .AppendLine("|---|---|---|---|---|---|---|");
+        foreach (var (name, s) in stats)
+        {
+            var linkage = s.Linkage;
+            if (linkage is null || linkage.Parameters is null)
+            {
+                report.AppendLine(CultureInfo.InvariantCulture, $"| {name} | 0 | - | - | - | n/a (fewer than 2 records) | n/a |");
+                continue;
+            }
+
+            var match = linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.Match);
+            var grayZone = linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.GrayZone);
+            var nonMatch = linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.NonMatch);
+            report.AppendLine(CultureInfo.InvariantCulture,
+                $"| {name} | {linkage.PairLinkages.Count} | {match} | {grayZone} | {nonMatch} | {linkage.Parameters.Status} | {linkage.Parameters.MatchPrior:F3} |");
         }
 
         var notes = stats.Where(kv => kv.Value.FailureNotes.Count > 0).ToList();

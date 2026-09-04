@@ -102,4 +102,25 @@ public class LinkageConfidenceAdjusterTests
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             LinkageConfidenceAdjuster.AdjustConfidence(["rec-1", "rec-2"], llmConfidence: 1.5, analysis));
     }
+
+    [Fact]
+    public void A_non_neutral_MatchPrior_shifts_a_confirmed_Matchs_confidence_below_the_prior_naive_value()
+    {
+        var lowPriorParameters = new FieldLinkageParameters(
+            new Dictionary<string, double>(), new Dictionary<string, double>(), 0.1, EstimationStatus.Converged);
+        var analysis = new LinkageAnalysis(
+            new ClusteringResult([], []),
+            [new PairLinkage("rec-1", "rec-2", LinkageClassification.Match, 5.0)],
+            lowPriorParameters);
+
+        var adjusted = LinkageConfidenceAdjuster.AdjustConfidence(["rec-1", "rec-2"], llmConfidence: 0.1, analysis);
+
+        var expectedLogOdds = 5.0 + Math.Log(0.1 / 0.9);
+        var expected = 1.0 / (1.0 + Math.Exp(-expectedLogOdds));
+        Assert.Equal(expected, adjusted, precision: 6);
+        // A lower match prior (fewer true matches expected a priori) must pull confidence below
+        // the prior-naive Sigmoid(5.0) a caller ignoring MatchPrior entirely would have returned.
+        var priorNaiveConfidence = 1.0 / (1.0 + Math.Exp(-5.0));
+        Assert.True(adjusted < priorNaiveConfidence);
+    }
 }

@@ -7,7 +7,9 @@ namespace Eyu.Core.Linkage;
 /// whole point of the pre-filter is that clear cases don't depend on self-reported confidence
 /// (design rationale §D). A claim touching a <see cref="LinkageClassification.GrayZone"/> or
 /// <see cref="LinkageClassification.NonMatch"/> pair combines the Fellegi-Sunter prior log-odds
-/// with the model's confidence via a Bayesian update.
+/// with the model's confidence via a Bayesian update. Every posterior computed here folds in
+/// <see cref="FieldLinkageParameters.MatchPrior"/> (via <c>Logit</c>) rather than treating the raw
+/// log-likelihood ratio as if match and non-match were equally likely a priori.
 /// </summary>
 public static class LinkageConfidenceAdjuster
 {
@@ -29,6 +31,7 @@ public static class LinkageConfidenceAdjuster
             return llmConfidence;
         }
 
+        var matchPriorLogOdds = analysis.Parameters is null ? 0.0 : Logit(analysis.Parameters.MatchPrior);
         var citedIds = new HashSet<string>(citedRecordIds, StringComparer.Ordinal);
 
         // A cluster is the transitive closure of Match edges, so a pair inside a confirmed cluster
@@ -43,7 +46,7 @@ public static class LinkageConfidenceAdjuster
 
             if (directMatchEdges.Count > 0)
             {
-                return Math.Clamp(Sigmoid(directMatchEdges.Min(p => p.LogLikelihoodRatio)), ProbabilityFloor, ProbabilityCeiling);
+                return Math.Clamp(Sigmoid(directMatchEdges.Min(p => p.LogLikelihoodRatio) + matchPriorLogOdds), ProbabilityFloor, ProbabilityCeiling);
             }
         }
 
@@ -69,10 +72,10 @@ public static class LinkageConfidenceAdjuster
 
         if (relevantPairs.All(p => p.Classification == LinkageClassification.Match))
         {
-            return Math.Clamp(Sigmoid(relevantPairs.Min(p => p.LogLikelihoodRatio)), ProbabilityFloor, ProbabilityCeiling);
+            return Math.Clamp(Sigmoid(relevantPairs.Min(p => p.LogLikelihoodRatio) + matchPriorLogOdds), ProbabilityFloor, ProbabilityCeiling);
         }
 
-        var priorLogOdds = relevantPairs.Min(p => p.LogLikelihoodRatio);
+        var priorLogOdds = relevantPairs.Min(p => p.LogLikelihoodRatio) + matchPriorLogOdds;
         var llmLogOdds = Logit(Math.Clamp(llmConfidence, ProbabilityFloor, ProbabilityCeiling));
         return Math.Clamp(Sigmoid(priorLogOdds + llmLogOdds), ProbabilityFloor, ProbabilityCeiling);
     }

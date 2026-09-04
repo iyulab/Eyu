@@ -14,7 +14,7 @@ public static class FellegiSunterEstimator
     public const double HeuristicDefaultMAgreeProbability = 0.9;
     public const double HeuristicDefaultUAgreeProbability = 0.1;
     public const double HeuristicDefaultMatchPrior = 0.5;
-    public const int DefaultMaxIterations = 1000;
+    public const int DefaultMaxIterations = 100;
     public const double DefaultConvergenceTolerance = 1e-4;
 
     private const double ProbabilityFloor = 0.01;

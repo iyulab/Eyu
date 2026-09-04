@@ -45,7 +45,7 @@ public class FellegiSunterEstimatorTests
                 ("noisy", i % 2 == 0 ? FieldAgreementLevel.Agree : FieldAgreementLevel.Disagree)));
         }
 
-        var parameters = FellegiSunterEstimator.Estimate(vectors);
+        var parameters = FellegiSunterEstimator.Estimate(vectors, maxIterations: 200);
 
         Assert.True(parameters.MAgreeProbability["discriminating"] > parameters.UAgreeProbability["discriminating"]);
         Assert.Equal(EstimationStatus.Converged, parameters.Status);

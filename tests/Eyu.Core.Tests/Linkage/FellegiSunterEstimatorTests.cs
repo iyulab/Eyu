@@ -22,10 +22,11 @@ public class FellegiSunterEstimatorTests
         Assert.Equal(FellegiSunterEstimator.HeuristicDefaultMAgreeProbability, parameters.MAgreeProbability["name"]);
         Assert.Equal(FellegiSunterEstimator.HeuristicDefaultUAgreeProbability, parameters.UAgreeProbability["name"]);
         Assert.Equal(FellegiSunterEstimator.HeuristicDefaultMatchPrior, parameters.MatchPrior);
+        Assert.Equal(EstimationStatus.HeuristicDefault, parameters.Status);
     }
 
     [Fact]
-    public void EM_learns_that_a_discriminating_field_agrees_more_under_match_than_non_match()
+    public void EM_learns_that_a_discriminating_field_agrees_more_under_match_than_non_match_and_reports_convergence()
     {
         // 10 "matchy" pairs (discriminating field mostly agrees, a noisy field is 50/50) and 10
         // "non-matchy" pairs (discriminating field mostly disagrees) -- enough pairs to clear
@@ -47,6 +48,32 @@ public class FellegiSunterEstimatorTests
         var parameters = FellegiSunterEstimator.Estimate(vectors);
 
         Assert.True(parameters.MAgreeProbability["discriminating"] > parameters.UAgreeProbability["discriminating"]);
+        Assert.Equal(EstimationStatus.Converged, parameters.Status);
+    }
+
+    [Fact]
+    public void A_maxIterations_cap_too_low_to_converge_is_reported_as_NotConverged()
+    {
+        // Same 20-vector batch as the convergence test above, but capped at 1 iteration -- the
+        // parameters move measurably away from their 0.9/0.1 starting point on the very first
+        // M-step, so delta cannot fall below the default tolerance in a single pass.
+        var vectors = new List<IReadOnlyDictionary<string, FieldAgreementLevel>>();
+        for (var i = 0; i < 10; i++)
+        {
+            vectors.Add(Vector(
+                ("discriminating", i % 10 == 0 ? FieldAgreementLevel.Disagree : FieldAgreementLevel.Agree),
+                ("noisy", i % 2 == 0 ? FieldAgreementLevel.Agree : FieldAgreementLevel.Disagree)));
+        }
+        for (var i = 0; i < 10; i++)
+        {
+            vectors.Add(Vector(
+                ("discriminating", i % 10 == 0 ? FieldAgreementLevel.Agree : FieldAgreementLevel.Disagree),
+                ("noisy", i % 2 == 0 ? FieldAgreementLevel.Agree : FieldAgreementLevel.Disagree)));
+        }
+
+        var parameters = FellegiSunterEstimator.Estimate(vectors, maxIterations: 1);
+
+        Assert.Equal(EstimationStatus.NotConverged, parameters.Status);
     }
 
     [Fact]
@@ -55,7 +82,8 @@ public class FellegiSunterEstimatorTests
         var parameters = new FieldLinkageParameters(
             MAgreeProbability: new Dictionary<string, double> { ["name"] = 0.9, ["city"] = 0.9 },
             UAgreeProbability: new Dictionary<string, double> { ["name"] = 0.1, ["city"] = 0.1 },
-            MatchPrior: 0.5);
+            MatchPrior: 0.5,
+            Status: EstimationStatus.Converged);
         var vector = Vector(("name", FieldAgreementLevel.Agree), ("city", FieldAgreementLevel.Agree));
 
         var llr = FellegiSunterEstimator.ComputeLogLikelihoodRatio(vector, parameters);
@@ -69,7 +97,8 @@ public class FellegiSunterEstimatorTests
         var parameters = new FieldLinkageParameters(
             MAgreeProbability: new Dictionary<string, double> { ["name"] = 0.9, ["city"] = 0.9 },
             UAgreeProbability: new Dictionary<string, double> { ["name"] = 0.1, ["city"] = 0.1 },
-            MatchPrior: 0.5);
+            MatchPrior: 0.5,
+            Status: EstimationStatus.Converged);
         var vector = Vector(("name", FieldAgreementLevel.Disagree), ("city", FieldAgreementLevel.Disagree));
 
         var llr = FellegiSunterEstimator.ComputeLogLikelihoodRatio(vector, parameters);
@@ -83,7 +112,8 @@ public class FellegiSunterEstimatorTests
         var parameters = new FieldLinkageParameters(
             MAgreeProbability: new Dictionary<string, double> { ["name"] = 0.9 },
             UAgreeProbability: new Dictionary<string, double> { ["name"] = 0.1 },
-            MatchPrior: 0.5);
+            MatchPrior: 0.5,
+            Status: EstimationStatus.Converged);
         var vector = Vector(("name", FieldAgreementLevel.Agree), ("unseen_field", FieldAgreementLevel.Agree));
 
         var llr = FellegiSunterEstimator.ComputeLogLikelihoodRatio(vector, parameters);

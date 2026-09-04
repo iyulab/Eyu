@@ -14,14 +14,16 @@ public static class FellegiSunterEstimator
     public const double HeuristicDefaultMAgreeProbability = 0.9;
     public const double HeuristicDefaultUAgreeProbability = 0.1;
     public const double HeuristicDefaultMatchPrior = 0.5;
+    public const int DefaultMaxIterations = 100;
+    public const double DefaultConvergenceTolerance = 1e-4;
 
     private const double ProbabilityFloor = 0.01;
     private const double ProbabilityCeiling = 0.99;
 
     public static FieldLinkageParameters Estimate(
         IReadOnlyList<IReadOnlyDictionary<string, FieldAgreementLevel>> comparisonVectors,
-        int maxIterations = 100,
-        double convergenceTolerance = 1e-4)
+        int maxIterations = DefaultMaxIterations,
+        double convergenceTolerance = DefaultConvergenceTolerance)
     {
         ArgumentNullException.ThrowIfNull(comparisonVectors);
 
@@ -32,12 +34,14 @@ public static class FellegiSunterEstimator
             return new FieldLinkageParameters(
                 fieldNames.ToDictionary(f => f, _ => HeuristicDefaultMAgreeProbability, StringComparer.Ordinal),
                 fieldNames.ToDictionary(f => f, _ => HeuristicDefaultUAgreeProbability, StringComparer.Ordinal),
-                HeuristicDefaultMatchPrior);
+                HeuristicDefaultMatchPrior,
+                EstimationStatus.HeuristicDefault);
         }
 
         var m = fieldNames.ToDictionary(f => f, _ => HeuristicDefaultMAgreeProbability, StringComparer.Ordinal);
         var u = fieldNames.ToDictionary(f => f, _ => HeuristicDefaultUAgreeProbability, StringComparer.Ordinal);
         var matchPrior = HeuristicDefaultMatchPrior;
+        var converged = false;
 
         for (var iteration = 0; iteration < maxIterations; iteration++)
         {
@@ -100,11 +104,12 @@ public static class FellegiSunterEstimator
 
             if (delta < convergenceTolerance)
             {
+                converged = true;
                 break;
             }
         }
 
-        return new FieldLinkageParameters(m, u, matchPrior);
+        return new FieldLinkageParameters(m, u, matchPrior, converged ? EstimationStatus.Converged : EstimationStatus.NotConverged);
     }
 
     public static double ComputeLogLikelihoodRatio(

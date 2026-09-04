@@ -5,9 +5,11 @@ namespace Eyu.Core.Linkage;
 /// P(field agrees | the pair is a match), <paramref name="UAgreeProbability"/> is P(field agrees
 /// | the pair is not a match), and <paramref name="MatchPrior"/> is the estimated fraction of
 /// compared pairs that are matches. Keyed by the same field names <see cref="FieldComparator"/>
-/// produces.
+/// produces. <paramref name="Status"/> says which regime produced these values — see
+/// <see cref="EstimationStatus"/>.
 /// </summary>
 public sealed record FieldLinkageParameters(
     IReadOnlyDictionary<string, double> MAgreeProbability,
     IReadOnlyDictionary<string, double> UAgreeProbability,
-    double MatchPrior);
+    double MatchPrior,
+    EstimationStatus Status);

@@ -99,4 +99,28 @@ public class LinkagePipelineTests
         Assert.Equal(LinkageClassification.GrayZone, Assert.Single(defaultAnalysis.PairLinkages).Classification);
         Assert.Equal(LinkageClassification.Match, Assert.Single(loweredThresholdAnalysis.PairLinkages).Classification);
     }
+
+    [Fact]
+    public void Custom_LinkageOptions_EM_tuning_values_reach_the_estimator()
+    {
+        // 4 records, 6 pairs (>= MinimumPairsForEmEstimation) with two fields whose agreement
+        // pattern is genuinely mixed, so the very first EM M-step moves m/u measurably away from
+        // their 0.9/0.1 starting point -- this is what makes maxIterations:1 with the default
+        // tolerance reliably NOT converge, while the same maxIterations:1 with an enormous
+        // tolerance trivially DOES converge (any first-step movement clears it). Both outcomes can
+        // only differ if both LinkageOptions fields actually reach FellegiSunterEstimator.Estimate.
+        var records = new[]
+        {
+            Record("r1", ("f1", "A"), ("f2", "X")),
+            Record("r2", ("f1", "A"), ("f2", "Y")),
+            Record("r3", ("f1", "B"), ("f2", "X")),
+            Record("r4", ("f1", "B"), ("f2", "Y")),
+        };
+
+        var notConverged = LinkagePipeline.Analyze(records, new LinkageOptions(MaxIterations: 1));
+        var converged = LinkagePipeline.Analyze(records, new LinkageOptions(MaxIterations: 1, ConvergenceTolerance: 10.0));
+
+        Assert.Equal(EstimationStatus.NotConverged, notConverged.Parameters!.Status);
+        Assert.Equal(EstimationStatus.Converged, converged.Parameters!.Status);
+    }
 }

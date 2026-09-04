@@ -16,8 +16,8 @@ namespace Eyu.Core.Judgment;
 /// benchmark (a "single baseline" gate) compares against: one prompt, one <see
 /// cref="IModelClient"/> call, one parse, with an optional <see cref="LinkageOptions"/> to tune
 /// the Fellegi-Sunter pre-filter's classification thresholds and EM iteration limits away from
-/// their defaults. Before building the prompt, a Fellegi-Sunter
-/// record-linkage pre-filter (<see cref="LinkagePipeline"/>) classifies every record pair as a
+/// their defaults. Before building the prompt, that pre-filter
+/// (<see cref="LinkagePipeline"/>) classifies every record pair as a
 /// confirmed match, a confirmed non-match, or a gray-zone case needing the model's judgment.
 /// Confirmed matches never use the model's self-reported confidence; gray-zone cases combine the
 /// Fellegi-Sunter prior with it via a Bayesian update (<see cref="LinkageConfidenceAdjuster"/>).

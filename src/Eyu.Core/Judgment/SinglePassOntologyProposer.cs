@@ -13,8 +13,10 @@ namespace Eyu.Core.Judgment;
 
 /// <summary>
 /// The single-baseline <see cref="IOntologyProposer"/> implementation this library's internal
-/// benchmark (a "single baseline" gate) compares against: one prompt, one
-/// <see cref="IModelClient"/> call, one parse. Before building the prompt, a Fellegi-Sunter
+/// benchmark (a "single baseline" gate) compares against: one prompt, one <see
+/// cref="IModelClient"/> call, one parse, with an optional <see cref="LinkageOptions"/> to tune
+/// the Fellegi-Sunter pre-filter's classification thresholds and EM iteration limits away from
+/// their defaults. Before building the prompt, a Fellegi-Sunter
 /// record-linkage pre-filter (<see cref="LinkagePipeline"/>) classifies every record pair as a
 /// confirmed match, a confirmed non-match, or a gray-zone case needing the model's judgment.
 /// Confirmed matches never use the model's self-reported confidence; gray-zone cases combine the
@@ -23,13 +25,14 @@ namespace Eyu.Core.Judgment;
 /// on its own, which no unit test can verify without a real model behind
 /// <see cref="IModelClient"/>.
 /// </summary>
-public sealed class SinglePassOntologyProposer(IModelClient modelClient) : IOntologyProposer
+public sealed class SinglePassOntologyProposer(IModelClient modelClient, LinkageOptions? linkageOptions = null) : IOntologyProposer
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly LinkageOptions options = linkageOptions ?? LinkageOptions.Default;
 
     public async Task<OntologyProposal> ProposeAsync(DeclaredStructure? declaredStructure, IReadOnlyList<RawRecord> records, CancellationToken cancellationToken = default)
     {
-        var linkageAnalysis = LinkagePipeline.Analyze(records);
+        var linkageAnalysis = LinkagePipeline.Analyze(records, options);
         var prompt = BuildPrompt(declaredStructure, records, linkageAnalysis);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt), cancellationToken).ConfigureAwait(false);
         return ParseResponse(response.Text, linkageAnalysis);

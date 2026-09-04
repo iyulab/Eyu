@@ -1,6 +1,7 @@
 using Eyu.Core.Declared;
 using Eyu.Core.Inference;
 using Eyu.Core.Judgment;
+using Eyu.Core.Linkage;
 using Eyu.Core.Ports;
 using Eyu.Core.Primitives;
 using Eyu.Core.Proposals;
@@ -198,6 +199,26 @@ public class SinglePassOntologyProposerTests
 
         var entity = Assert.Single(proposal.Entities);
         Assert.Equal(0.7, entity.Confidence);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_honors_custom_LinkageOptions_thresholds()
+    {
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model, new LinkageOptions(MatchThreshold: 2.0));
+        var records = new[]
+        {
+            new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Acme" }),
+            new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme" }),
+        };
+
+        await proposer.ProposeAsync(declaredStructure: null, records);
+
+        // A single shared agreeing field gives LLR = ln 9 ~ 2.197 -- GrayZone under the default
+        // 4.0 threshold, but Match under this test's lowered 2.0 threshold, so the prompt must
+        // carry the "Pre-linked record groups" hint instead of the "Ambiguous record pairs" one.
+        Assert.Contains("Pre-linked record groups", model.LastPrompt);
+        Assert.DoesNotContain("Ambiguous record pairs", model.LastPrompt);
     }
 
     private sealed class StubModelClient(string responseText) : IModelClient

@@ -109,7 +109,7 @@ public class LinkageConfidenceAdjusterTests
         var lowPriorParameters = new FieldLinkageParameters(
             new Dictionary<string, double>(), new Dictionary<string, double>(), 0.1, EstimationStatus.Converged);
         var analysis = new LinkageAnalysis(
-            new ClusteringResult([], []),
+            new ClusteringResult([new RecordCluster(["rec-1", "rec-2"])], []),
             [new PairLinkage("rec-1", "rec-2", LinkageClassification.Match, 5.0)],
             lowPriorParameters);
 
@@ -122,5 +122,25 @@ public class LinkageConfidenceAdjusterTests
         // the prior-naive Sigmoid(5.0) a caller ignoring MatchPrior entirely would have returned.
         var priorNaiveConfidence = 1.0 / (1.0 + Math.Exp(-5.0));
         Assert.True(adjusted < priorNaiveConfidence);
+    }
+
+    [Fact]
+    public void A_non_neutral_MatchPrior_shifts_the_Bayesian_combine_branchs_posterior()
+    {
+        var lowPriorParameters = new FieldLinkageParameters(
+            new Dictionary<string, double>(), new Dictionary<string, double>(), 0.1, EstimationStatus.Converged);
+        var analysis = new LinkageAnalysis(
+            new ClusteringResult([], []),
+            [new PairLinkage("rec-1", "rec-2", LinkageClassification.GrayZone, 0.0)],
+            lowPriorParameters);
+
+        var adjusted = LinkageConfidenceAdjuster.AdjustConfidence(["rec-1", "rec-2"], llmConfidence: 0.9, analysis);
+
+        // priorLogOdds = 0.0 (pair LLR) + Logit(0.1) = -ln(9); llmLogOdds = Logit(0.9) = +ln(9);
+        // these cancel exactly, so Sigmoid(0) = 0.5 -- a clean, hand-verifiable expected value that
+        // could only come out this way if matchPriorLogOdds is actually being added in this branch
+        // (with the neutral MatchPrior=0.5 fixture, this same setup collapses to 0.9 instead -- see
+        // A_zero_prior_gray_zone_pair_collapses_the_posterior_to_the_LLM_confidence).
+        Assert.Equal(0.5, adjusted, precision: 6);
     }
 }

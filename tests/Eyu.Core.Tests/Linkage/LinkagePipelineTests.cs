@@ -58,4 +58,45 @@ public class LinkagePipelineTests
 
         Assert.Equal(3, analysis.PairLinkages.Count);
     }
+
+    [Fact]
+    public void An_empty_or_single_record_batch_has_no_Parameters()
+    {
+        Assert.Null(LinkagePipeline.Analyze([]).Parameters);
+        Assert.Null(LinkagePipeline.Analyze([Record("rec-1", ("name", "Acme"))]).Parameters);
+    }
+
+    [Fact]
+    public void A_multi_record_batch_exposes_the_parameters_used_to_classify_its_pairs()
+    {
+        var records = new[]
+        {
+            Record("rec-1", ("name", "Acme Corp"), ("city", "Springfield")),
+            Record("rec-2", ("name", "Acme Corp"), ("city", "Springfield")),
+        };
+
+        var analysis = LinkagePipeline.Analyze(records);
+
+        Assert.NotNull(analysis.Parameters);
+        Assert.Equal(FellegiSunterEstimator.HeuristicDefaultMatchPrior, analysis.Parameters!.MatchPrior);
+        Assert.Equal(EstimationStatus.HeuristicDefault, analysis.Parameters.Status);
+    }
+
+    [Fact]
+    public void Custom_LinkageOptions_thresholds_change_classification()
+    {
+        // One shared field, both agree: LLR = ln 9 ~ 2.197 -- GrayZone under the default 4.0
+        // match threshold, but Match under a lowered 2.0 threshold.
+        var records = new[]
+        {
+            Record("rec-1", ("name", "Acme")),
+            Record("rec-2", ("name", "Acme")),
+        };
+
+        var defaultAnalysis = LinkagePipeline.Analyze(records);
+        var loweredThresholdAnalysis = LinkagePipeline.Analyze(records, new LinkageOptions(MatchThreshold: 2.0));
+
+        Assert.Equal(LinkageClassification.GrayZone, Assert.Single(defaultAnalysis.PairLinkages).Classification);
+        Assert.Equal(LinkageClassification.Match, Assert.Single(loweredThresholdAnalysis.PairLinkages).Classification);
+    }
 }

@@ -6,8 +6,11 @@ namespace Eyu.Core.Tests.Linkage;
 
 public class LinkageConfidenceAdjusterTests
 {
+    private static readonly FieldLinkageParameters NeutralParameters = new(
+        new Dictionary<string, double>(), new Dictionary<string, double>(), 0.5, EstimationStatus.HeuristicDefault);
+
     private static LinkageAnalysis Analysis(params PairLinkage[] pairLinkages) =>
-        new(new ClusteringResult([], []), pairLinkages);
+        new(new ClusteringResult([], []), pairLinkages, NeutralParameters);
 
     [Fact]
     public void A_claim_citing_zero_or_one_record_is_returned_unchanged()

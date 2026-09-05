@@ -123,4 +123,26 @@ public class LinkagePipelineTests
         Assert.Equal(EstimationStatus.NotConverged, notConverged.Parameters!.Status);
         Assert.Equal(EstimationStatus.Converged, converged.Parameters!.Status);
     }
+
+    [Fact]
+    public void Enabling_string_similarity_flips_classification_for_notation_only_differences()
+    {
+        // Same repro as ISSUE-Eyu-20260905-fieldcomparator-literal-match-misses-duplicates: two
+        // fields differing only by punctuation/hyphenation literally disagree on both, but agree
+        // on both under string similarity. With the default 0.9/0.1 heuristic M/U probabilities
+        // (batch below MinimumPairsForEmEstimation), 2 agreeing fields yield LLR = 2*ln(9) ~= 4.394
+        // (Match, >= 4.0), while 2 disagreeing fields yield LLR = 2*ln(1/9) ~= -4.394
+        // (NonMatch, <= -4.0).
+        var records = new[]
+        {
+            Record("rec-1", ("name", "Nuclear Power Ler Co., Ltd."), ("registrationNumber", "110111-1234567")),
+            Record("rec-2", ("name", "Nuclear Power Ler Co Ltd"), ("registrationNumber", "1101111234567")),
+        };
+
+        var literalAnalysis = LinkagePipeline.Analyze(records);
+        var similarityAnalysis = LinkagePipeline.Analyze(records, new LinkageOptions(UseStringSimilarityComparator: true));
+
+        Assert.Equal(LinkageClassification.NonMatch, Assert.Single(literalAnalysis.PairLinkages).Classification);
+        Assert.Equal(LinkageClassification.Match, Assert.Single(similarityAnalysis.PairLinkages).Classification);
+    }
 }

@@ -31,7 +31,12 @@ ground truth exists to score the pre-filter's own match/non-match calls against,
 entity-resolution accuracy remains unmeasured — or whether the proposer's self-reported
 confidence is informative on its own, which it was not in an earlier measurement (see
 [design rationale, §D](docs/philosophy.md)); gray-zone cases now combine it with the
-Fellegi-Sunter prior via a Bayesian update instead of using it alone.
+Fellegi-Sunter prior via a Bayesian update instead of using it alone. Field comparison inside
+that pre-filter is exact-match (case/whitespace-insensitive) by default; `LinkageOptions.
+UseStringSimilarityComparator` opts into a Jaro-Winkler threshold instead, so two records
+denoting the same entity but differing only in notation (punctuation, spacing) still register as
+agreeing on that field — still no ground truth to say which mode classifies better on any given
+dataset, so the option exists but the default is unchanged.
 `Eyu.Core` is not yet published, so today the wiring is proven by in-repo mock-backed tests
 rather than by a consumer referencing the package the way the
 [coupling smoke test](tests/Eyu.IntegrationSmoke.Tests/SchemaProposerCouplingSmokeTests.cs)

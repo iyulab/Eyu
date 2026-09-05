@@ -14,6 +14,8 @@ public class LinkageOptionsTests
         Assert.Equal(LinkageClassifier.DefaultNonMatchThreshold, options.NonMatchThreshold);
         Assert.Equal(FellegiSunterEstimator.DefaultMaxIterations, options.MaxIterations);
         Assert.Equal(FellegiSunterEstimator.DefaultConvergenceTolerance, options.ConvergenceTolerance);
+        Assert.False(options.UseStringSimilarityComparator);
+        Assert.Equal(FieldComparator.DefaultStringSimilarityAgreementThreshold, options.StringSimilarityAgreementThreshold);
     }
 
     [Fact]

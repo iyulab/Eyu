@@ -34,7 +34,7 @@ public static class LinkagePipeline
             for (var j = i + 1; j < records.Count; j++)
             {
                 pairs.Add((records[i], records[j]));
-                comparisonVectors.Add(FieldComparator.Compare(records[i], records[j]));
+                comparisonVectors.Add(FieldComparator.Compare(records[i], records[j], opts));
             }
         }
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using Eyu.Core.Grounding;
 using Eyu.Core.Judgment;
 using Eyu.Core.Linkage;
@@ -26,7 +27,13 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// (<see cref="SinglePassOntologyProposer"/>'s prompt carries no resolution instruction — entity
 /// resolution accuracy is not measured here). It measures; it does not gate — the
 /// packaging/benchmark decision is a human call (see
-/// <c>claudedocs/HANDOFF.md</c> "Waiting on you"). Repetitions per case come from
+/// <c>claudedocs/HANDOFF.md</c> "Waiting on you"). Comparing a run against cycle-16/17/29/35's
+/// prose reports required re-reading each cycle-log by hand (<c>BD-20260905-03</c>); when
+/// <c>EYU_LLM_QUALITY_STRUCTURED_LOG_DIR</c> names a directory, this run's stats are additionally
+/// written there as one timestamped JSON file — a git-friendly run-history directory (borrowing
+/// only <c>mloop</c>'s filesystem/git-based run-record convention, not a dependency on it: `mloop`
+/// itself targets ML.NET AutoML training runs, not LLM proposal quality). Unset by default, so a
+/// plain `dotnet test` run never writes one. Repetitions per case come from
 /// <c>EYU_LLM_QUALITY_RUNS</c> (default 2 — lower than formbase's 5: a single real call here
 /// observed ~2 minutes, cycle-16); when <c>EYU_LLM_QUALITY_REPORT</c> names a file, the markdown
 /// report is also written there. The Fellegi-Sunter pre-filter's <see cref="LinkageOptions"/> is
@@ -43,6 +50,8 @@ namespace Eyu.Core.Tests.Live.Llm;
 public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 {
     private const int DefaultRuns = 2;
+
+    private static readonly JsonSerializerOptions StructuredLogJsonOptions = new() { WriteIndented = true };
 
     private sealed record QualityCase(string Name, RawRecord[] Records);
 
@@ -164,6 +173,15 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         if (!string.IsNullOrWhiteSpace(reportPath))
         {
             await File.WriteAllTextAsync(reportPath, report);
+        }
+
+        var structuredLogDir = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_STRUCTURED_LOG_DIR");
+        if (!string.IsNullOrWhiteSpace(structuredLogDir))
+        {
+            var timestamp = DateTimeOffset.UtcNow;
+            Directory.CreateDirectory(structuredLogDir);
+            var logPath = Path.Combine(structuredLogDir, $"run-{timestamp:yyyyMMdd-HHmmss}.json");
+            await File.WriteAllTextAsync(logPath, BuildStructuredLogJson(timestamp, runs, linkageOptions, stats));
         }
 
         // The instrument's own sanity floor, not a graduation gate: a run where nothing ever
@@ -290,5 +308,89 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
 
         return report.ToString();
+    }
+
+    // BD-20260905-03: one JSON file per run, named by timestamp -- a git-friendly run-history
+    // directory a future cycle can `ls`/diff/script over, instead of re-reading cycle-log prose to
+    // compare runs. Field set mirrors RenderReport's two tables so both stay in sync by construction.
+    private sealed record LinkageOptionsSnapshot(
+        double MatchThreshold,
+        double NonMatchThreshold,
+        int MaxIterations,
+        double ConvergenceTolerance,
+        bool UseStringSimilarityComparator,
+        double StringSimilarityAgreementThreshold);
+
+    private sealed record LinkageSnapshot(
+        int Pairs,
+        int Match,
+        int GrayZone,
+        int NonMatch,
+        string EstimationStatus,
+        double? MatchPrior);
+
+    private sealed record CaseLogEntry(
+        string Name,
+        int Attempts,
+        int ParseFailures,
+        int GroundingViolations,
+        int OverlapViolations,
+        int? EntityCountMin,
+        int? EntityCountMax,
+        int? RelationCountMin,
+        int? RelationCountMax,
+        int DistinctEntityTypeShapes,
+        LinkageSnapshot? Linkage);
+
+    private sealed record StructuredLogEntry(
+        string Timestamp,
+        int Runs,
+        LinkageOptionsSnapshot LinkageOptions,
+        IReadOnlyList<CaseLogEntry> Cases);
+
+    private static string BuildStructuredLogJson(
+        DateTimeOffset timestamp, int runs, LinkageOptions linkageOptions, Dictionary<string, CaseStats> stats)
+    {
+        var cases = stats.Select(kv =>
+        {
+            var (name, s) = (kv.Key, kv.Value);
+            var linkage = s.Linkage;
+            var linkageSnapshot = linkage?.Parameters is null
+                ? null
+                : new LinkageSnapshot(
+                    linkage.PairLinkages.Count,
+                    linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.Match),
+                    linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.GrayZone),
+                    linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.NonMatch),
+                    linkage.Parameters.Status.ToString(),
+                    linkage.Parameters.MatchPrior);
+
+            return new CaseLogEntry(
+                name,
+                s.Attempts,
+                s.ParseFailures,
+                s.GroundingViolations,
+                s.OverlapViolations,
+                s.EntityCounts.Count == 0 ? null : s.EntityCounts.Min(),
+                s.EntityCounts.Count == 0 ? null : s.EntityCounts.Max(),
+                s.RelationCounts.Count == 0 ? null : s.RelationCounts.Min(),
+                s.RelationCounts.Count == 0 ? null : s.RelationCounts.Max(),
+                s.EntityTypeShapes.Count,
+                linkageSnapshot);
+        }).ToList();
+
+        var entry = new StructuredLogEntry(
+            timestamp.ToString("O", CultureInfo.InvariantCulture),
+            runs,
+            new LinkageOptionsSnapshot(
+                linkageOptions.MatchThreshold,
+                linkageOptions.NonMatchThreshold,
+                linkageOptions.MaxIterations,
+                linkageOptions.ConvergenceTolerance,
+                linkageOptions.UseStringSimilarityComparator,
+                linkageOptions.StringSimilarityAgreementThreshold),
+            cases);
+
+        return JsonSerializer.Serialize(entry, StructuredLogJsonOptions);
     }
 }

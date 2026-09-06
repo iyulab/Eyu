@@ -17,6 +17,8 @@ namespace Eyu.Core.Inference.Http;
 /// </summary>
 public sealed class HttpModelClient(HttpClient httpClient, string model) : IModelClient
 {
+    private const int DiagnosticExcerptLength = 500;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default)
@@ -35,11 +37,25 @@ public sealed class HttpModelClient(HttpClient httpClient, string model) : IMode
 
         if (messageText is null)
         {
-            throw new InvalidOperationException("The completion response carried no message content.");
+            throw new InvalidOperationException(
+                $"The completion response carried no message content. Response body: {Excerpt(responseBody)}");
         }
 
         return new ModelResponse(messageText);
     }
+
+    /// <summary>
+    /// Bounded excerpt of what the provider actually returned. A parse failure that reports only
+    /// "no content" forces the caller to re-run with logging to learn why (a refusal, a filtered
+    /// completion, a differently-shaped payload) — the body is already in hand here, so the
+    /// exception carries it rather than discarding it.
+    /// </summary>
+    private static string Excerpt(string text) => text.Length switch
+    {
+        0 => "(empty)",
+        <= DiagnosticExcerptLength => text,
+        _ => $"{text[..DiagnosticExcerptLength]}… ({text.Length} chars total)",
+    };
 
     private sealed record ChatCompletionRequest(string Model, IReadOnlyList<ChatMessage> Messages);
 

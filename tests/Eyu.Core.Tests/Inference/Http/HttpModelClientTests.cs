@@ -73,6 +73,46 @@ public class HttpModelClientTests
     }
 
     [Fact]
+    public async Task CompleteAsync_reports_what_the_provider_actually_returned()
+    {
+        // A 2xx with no usable content can be a refusal, a filtered completion, or a payload in a
+        // shape this client does not know. The body is already read at the throw site, so the
+        // exception carries it instead of making the caller re-run with logging to find out.
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """{"error":{"message":"content filtered","code":"content_filter"}}""",
+                Encoding.UTF8,
+                "application/json"),
+        }));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.CompleteAsync(new ModelRequest("anything")));
+
+        Assert.Contains("content_filter", error.Message);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_bounds_the_reported_response_body()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                $$"""{"choices":[],"padding":"{{new string('x', 4000)}}"}""",
+                Encoding.UTF8,
+                "application/json"),
+        }));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.CompleteAsync(new ModelRequest("anything")));
+
+        Assert.True(error.Message.Length < 1000, $"message was {error.Message.Length} chars");
+        Assert.Contains("chars total", error.Message);
+    }
+
+    [Fact]
     public async Task CompleteAsync_surfaces_a_non_success_status_as_a_failure()
     {
         var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));

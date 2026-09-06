@@ -27,6 +27,8 @@ namespace Eyu.Core.Judgment;
 /// </summary>
 public sealed class SinglePassOntologyProposer(IModelClient modelClient, LinkageOptions? linkageOptions = null) : IOntologyProposer
 {
+    private const int DiagnosticExcerptLength = 500;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly LinkageOptions options = linkageOptions ?? LinkageOptions.Default;
 
@@ -97,7 +99,9 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         }
         catch (JsonException ex)
         {
-            throw new FormatException("The model response was not valid JSON.", ex);
+            throw new FormatException(
+                $"The model response was not valid JSON. Response text: {Excerpt(responseText)}",
+                ex);
         }
 
         var entities = (parsed.Entities ?? [])
@@ -119,6 +123,19 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
 
     private static GroundedClaim ToClaim(string claim, IReadOnlyList<string> sources) =>
         GroundedClaim.Create(claim, sources.Select(id => new SourceRef(id)).ToList());
+
+    /// <summary>
+    /// Bounded excerpt of what the model actually returned. A model that wraps its JSON in prose
+    /// or a markdown fence fails here, and without the text the caller cannot tell that apart from
+    /// a truncated or refused completion — the text is already in hand, so the exception carries
+    /// it rather than discarding it.
+    /// </summary>
+    private static string Excerpt(string text) => text.Length switch
+    {
+        0 => "(empty)",
+        <= DiagnosticExcerptLength => text,
+        _ => $"{text[..DiagnosticExcerptLength]}… ({text.Length} chars total)",
+    };
 
     private sealed record ProposalResponse(IReadOnlyList<EntityResponse>? Entities, IReadOnlyList<RelationResponse>? Relations);
 

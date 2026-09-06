@@ -77,6 +77,34 @@ public class SinglePassOntologyProposerTests
     }
 
     [Fact]
+    public async Task ProposeAsync_reports_what_the_model_actually_returned_when_the_json_is_invalid()
+    {
+        // A model that wraps its JSON in prose or a markdown fence fails the same way a truncated
+        // or refused completion does. The text is already in hand at the throw site, so the caller
+        // should not have to re-run with logging to tell those apart.
+        var model = new StubModelClient("Sure! Here is the ontology: ```json {\"entities\":[]}```");
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var error = await Assert.ThrowsAsync<FormatException>(
+            () => proposer.ProposeAsync(declaredStructure: null, records: []));
+
+        Assert.Contains("Sure! Here is the ontology", error.Message);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_bounds_the_reported_response_text()
+    {
+        var model = new StubModelClient(new string('x', 4000));
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var error = await Assert.ThrowsAsync<FormatException>(
+            () => proposer.ProposeAsync(declaredStructure: null, records: []));
+
+        Assert.True(error.Message.Length < 1000, $"message was {error.Message.Length} chars");
+        Assert.Contains("4000 chars total", error.Message);
+    }
+
+    [Fact]
     public async Task ProposeAsync_does_not_swallow_an_out_of_range_confidence()
     {
         // The parser reuses EntityProposal.Create's own validation rather than re-implementing

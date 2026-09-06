@@ -123,6 +123,14 @@ Each consumer implements `IStructureSource`/`IRecordSample` for its own world
 — an owned raw store, a declared schema, a federated read — and gets the same
 proposal logic back through `IOntologyProposer`.
 
+Entity resolution is tuned through a value, not a port: `SinglePassOntologyProposer`
+accepts an optional [`LinkageOptions`](src/Eyu.Core/Linkage/LinkageOptions.cs) record
+covering the record-linkage pre-filter's classification thresholds, its EM iteration
+limits, and whether field comparison is exact or similarity-based. Every default
+reproduces the behavior of passing nothing, so a caller reaches for it only once a live
+run shows the defaults classifying that caller's data badly — what each value does, and
+what is still unmeasured about them, is in Status above.
+
 ## Further reading
 
 [Design rationale](docs/philosophy.md) — why judgment requires structure

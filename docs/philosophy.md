@@ -80,7 +80,11 @@ The distinction matters operationally, not just rhetorically: a realist
 ontology's job is to be *true*; an epistemic ontology's job is to be
 *traceable*. Eyu is built for the second job. `IOntologyProposer`'s output
 is never "the entity resolution is X" — it is "the evidence in these sources,
-read through this path, supports X with this confidence." **Do not read
+read through this path, supports X with this confidence." (The `path[]` slot
+is part of that shape but is caller-supplied: Eyu's own proposer leaves it
+empty, so today the traceability that is actually enforced is
+claim-to-sources, not claim-to-reasoning-steps — see `IGroundingContract`.)
+**Do not read
 Eyu's proposals, or any consumer's persisted version of them, as direct
 assertions about reality** — they are claims about what the source records
 support, and they stop being meaningful the moment they're detached from

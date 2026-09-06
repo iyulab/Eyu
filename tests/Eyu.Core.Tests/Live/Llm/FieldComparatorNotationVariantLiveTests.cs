@@ -7,8 +7,7 @@ using Xunit;
 namespace Eyu.Core.Tests.Live.Llm;
 
 /// <summary>
-/// Live-model regression guard for the notation-variant duplicate-miss defect (umbrella
-/// `claudedocs/issues/closed/ISSUE-Eyu-20260905-fieldcomparator-literal-match-misses-duplicates.md`):
+/// Live-model regression guard for the notation-variant duplicate-miss defect:
 /// three synthetic company records where two (<c>company-a-1</c>/<c>company-a-2</c>) denote the
 /// same company under different punctuation/hyphenation, and one (<c>company-b</c>) is a
 /// genuinely distinct company. With <see cref="LinkageOptions.UseStringSimilarityComparator"/>
@@ -18,7 +17,7 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// classifier half is deterministic and already covered by
 /// <c>LinkagePipelineTests.Enabling_string_similarity_flips_classification_for_notation_only_differences</c>,
 /// no live model needed there). There is deliberately no "default options leaves them unmerged"
-/// counterpart here: a live run during this fix (cycle-36/37, 2026-09-05) found the model
+/// counterpart here: a live run during this fix found the model
 /// sometimes merges the pair through its own reasoning even without the Fellegi-Sunter hint — not
 /// a regression, since Eyu never commits to what the model does absent a hint (README: the
 /// pre-filter's classification, not the model's unaided judgment, is what this library

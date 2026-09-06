@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <RootNamespace>Eyu.IntegrationSmoke.Tests</RootNamespace>
-    <Description>Proves Eyu can reference and satisfy Formbase.Core's ISchemaProposer port from a published package — the first slice of BD-20260830-04. Eyu's own ports are implemented and measured against a real model (see Eyu.Core.Tests), but not yet coverable here the same way, since Eyu.Core itself is not yet published.</Description>
+    <Description>Proves Eyu can reference and satisfy Formbase.Core's ISchemaProposer port from a published package. Eyu's own ports are implemented and measured against a real model (see Eyu.Core.Tests), but not yet coverable here the same way, since Eyu.Core itself is not yet published.</Description>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <NoWarn>$(NoWarn);CA1707</NoWarn>

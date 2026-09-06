@@ -13,7 +13,7 @@ public class GroundingOverlapCheckTests
     public void A_claim_backed_by_its_cited_source_content_is_supported()
     {
         // Same shape as the real gap this check closes: two aviation-sdr records describing the
-        // same cracked floorbeam (`AALA202601050865`/`AALA202601056048`, BD-20260903-02).
+        // same cracked floorbeam (`AALA202601050865`/`AALA202601056048`).
         var records = new[]
         {
             Record("AALA202601050865", ("part_name", "FLOORBEAM"), ("part_condition", "CRACKED"),
@@ -31,7 +31,7 @@ public class GroundingOverlapCheckTests
     [Fact]
     public void A_claim_citing_a_valid_but_unrelated_source_is_not_supported()
     {
-        // The exact gap BD-20260903-02 found: the live quality measurement only checks that a
+        // The exact gap this check closes: the live quality measurement only checks that a
         // cited source id exists among the given records, not that its content backs the claim.
         // Here the source id is real, so the existing id-validity check would pass this — this
         // check is what catches it instead.

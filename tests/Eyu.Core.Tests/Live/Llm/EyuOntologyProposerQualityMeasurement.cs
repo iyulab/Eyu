@@ -22,20 +22,19 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// one of the records actually given — <see cref="Eyu.Core.Grounding.GroundedClaim.Create"/> does
 /// not itself verify this, so a hallucinated source id would otherwise pass silently), and
 /// grounding overlap (<see cref="GroundingOverlapCheck"/> — a valid source id does not by itself
-/// mean the claim's content is backed by that record; BD-20260903-02). What this instrument does
+/// mean the claim's content is backed by that record). What this instrument does
 /// NOT check: whether records that denote the same real-world entity are actually merged
 /// (<see cref="SinglePassOntologyProposer"/>'s prompt carries no resolution instruction — entity
 /// resolution accuracy is not measured here). It measures; it does not gate — the
-/// packaging/benchmark decision is a human call (see
-/// <c>claudedocs/HANDOFF.md</c> "Waiting on you"). Comparing a run against cycle-16/17/29/35's
-/// prose reports required re-reading each cycle-log by hand (<c>BD-20260905-03</c>); when
+/// packaging/benchmark decision is a human call. Comparing one run against another used to mean
+/// re-reading prose reports by hand; when
 /// <c>EYU_LLM_QUALITY_STRUCTURED_LOG_DIR</c> names a directory, this run's stats are additionally
 /// written there as one timestamped JSON file — a git-friendly run-history directory (borrowing
 /// only <c>mloop</c>'s filesystem/git-based run-record convention, not a dependency on it: `mloop`
 /// itself targets ML.NET AutoML training runs, not LLM proposal quality). Unset by default, so a
 /// plain `dotnet test` run never writes one. Repetitions per case come from
-/// <c>EYU_LLM_QUALITY_RUNS</c> (default 2 — lower than formbase's 5: a single real call here
-/// observed ~2 minutes, cycle-16); when <c>EYU_LLM_QUALITY_REPORT</c> names a file, the markdown
+/// <c>EYU_LLM_QUALITY_RUNS</c> (default 2 — lower than formbase's 5: a single real call here was
+/// observed to take ~2 minutes); when <c>EYU_LLM_QUALITY_REPORT</c> names a file, the markdown
 /// report is also written there. The Fellegi-Sunter pre-filter's <see cref="LinkageOptions"/> is
 /// also environment-tunable (<c>EYU_LLM_QUALITY_MATCH_THRESHOLD</c>/
 /// <c>_NONMATCH_THRESHOLD</c>/<c>_MAX_ITERATIONS</c>/<c>_CONVERGENCE_TOLERANCE</c>, each falling
@@ -220,8 +219,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             else
             {
                 // A valid source id (checked above) that shares too little vocabulary with the
-                // claim to actually back it — the gap id-validity alone does not catch
-                // (BD-20260903-02). Ratio + claim text recorded so a human reviewing the report
+                // claim to actually back it — the gap id-validity alone does not catch.
+                // Ratio + claim text recorded so a human reviewing the report
                 // can tell a genuine mismatch apart from framing language diluting the ratio
                 // (heuristic, not semantic — see GroundingOverlapCheck's doc comment).
                 var overlap = GroundingOverlapCheck.Evaluate(entity.Claim, qualityCase.Records);
@@ -310,9 +309,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         return report.ToString();
     }
 
-    // BD-20260905-03: one JSON file per run, named by timestamp -- a git-friendly run-history
-    // directory a future cycle can `ls`/diff/script over, instead of re-reading cycle-log prose to
-    // compare runs. Field set mirrors RenderReport's two tables so both stay in sync by construction.
+    // One JSON file per run, named by timestamp -- a git-friendly run-history directory that can
+    // be listed, diffed and scripted over, instead of re-reading prose reports to compare runs.
+    // Field set mirrors RenderReport's two tables so both stay in sync by construction.
     private sealed record LinkageOptionsSnapshot(
         double MatchThreshold,
         double NonMatchThreshold,

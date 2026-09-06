@@ -8,7 +8,7 @@ namespace Eyu.Core.Grounding;
 /// <see cref="SourceRef.RecordId"/> proves only that the id exists among the records a proposer
 /// was given — it says nothing about whether the claim text is actually substantiated by that
 /// record's content, so a source cited for the wrong reason passes the contract's own shape
-/// check silently (BD-20260903-02). This is a textual-overlap heuristic, not a semantic
+/// check silently. This is a textual-overlap heuristic, not a semantic
 /// verifier — it flags a claim whose cited sources share too little vocabulary with the claim,
 /// which catches a mismatched citation without a human or a second model call in the loop.
 /// </summary>

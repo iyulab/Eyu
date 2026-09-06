@@ -6,7 +6,7 @@ using Xunit;
 namespace Eyu.IntegrationSmoke.Tests;
 
 /// <summary>
-/// L1a↔L2 coupling proof (BD-20260830-04, ROADMAP.md): establishes that Eyu's codebase can
+/// L1a↔L2 coupling proof: establishes that Eyu's codebase can
 /// reference the published `Formbase.Core` package and satisfy its <see cref="ISchemaProposer"/>
 /// port end to end.
 /// <para>

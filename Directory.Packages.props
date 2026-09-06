@@ -5,7 +5,7 @@
 
   <ItemGroup>
     <!--
-      L1a↔L2 coupling smoke test (BD-20260830-04): the only production dependency this repo
+      L1a↔L2 coupling smoke test: the only production dependency this repo
       currently has. Consumed as a published package, never a ProjectReference — Eyu has no
       access to formbase's source tree.
     -->

@@ -14,7 +14,7 @@
       EYU_LLM_ENDPOINT / EYU_LLM_API_KEY / EYU_LLM_MODEL
       dotnet test -p:IncludeEyuLlmLiveTests=true
     Excluded by default: the suite never depends on an external model and cannot hang. Uses only
-    HttpModelClient (BCL HttpClient) — no model SDK package, consistent with cycle-15's decision.
+    HttpModelClient (BCL HttpClient) — deliberately no model SDK package.
   -->
   <ItemGroup Condition="'$(IncludeEyuLlmLiveTests)' != 'true'">
     <Compile Remove="Live/Llm/**/*.cs" />

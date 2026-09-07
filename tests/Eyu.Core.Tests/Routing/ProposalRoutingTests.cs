@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Eyu.Core.Grounding;
 using Eyu.Core.Proposals;
 using Eyu.Core.Routing;
@@ -90,6 +91,18 @@ public class ProposalRoutingTests
         Assert.Equal("Acquired", annotations[ProvenanceAnnotations.Origin]);
         Assert.Equal("Declared", annotations[ProvenanceAnnotations.Basis]);
         Assert.Equal("""["rec-1","rec-2"]""", annotations[ProvenanceAnnotations.Sources]);
+    }
+
+    [Fact]
+    public void Cited_ids_survive_the_annotation_even_when_they_carry_delimiters()
+    {
+        string[] ids = ["rec,1", "rec\"2", "rec 3"];
+        var claim = GroundedClaim.Create("these denote the same person", sources: [.. ids.Select(id => new SourceRef(id))]);
+        var traced = EntityProposal.Create("e1", "Person", claim, VocabularyOrigin.Innate, 0.9, ProposalBasis.Inferred).Trace(Policy);
+
+        var roundTripped = JsonSerializer.Deserialize<string[]>(traced.Provenance.Annotations![ProvenanceAnnotations.Sources]);
+
+        Assert.Equal(ids, roundTripped);
     }
 
     [Fact]

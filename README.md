@@ -146,7 +146,14 @@ Routing is also a value, not a port. A caller builds a
 `proposal.Trace(policy)` for the proposal wrapped in a HoneAI
 `PredictionProvenance` (`SourceLayer = Frontier`, the confidence, the claim as
 rationale, `RequiresReview` for every tier a machine may not act on, and the
-route / origin / basis / cited record ids as annotations). Eyu references only
+route / origin / basis / cited record ids as annotations). Those annotation keys
+are constants on
+[`ProvenanceAnnotations`](src/Eyu.Core/Routing/ProvenanceAnnotations.cs), and the
+stamp's value type is `string`: route, origin and basis are enum names, while the
+cited ids arrive as a **JSON array of strings** — record ids are caller-supplied
+and may contain any delimiter, so they are serialized rather than joined. A
+consumer reading the trace parses that one value; the rest are read as-is. Eyu
+references only
 [`HoneAI.Abstractions`](https://www.nuget.org/packages/HoneAI.Abstractions) —
 the zero-dependency contract package — and never implements `IHitlGate`: opening
 a gate, awaiting the reviewer, and applying an approved proposal are the

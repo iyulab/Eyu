@@ -85,7 +85,9 @@ the target the architecture is built toward, not as a track record.
   [design rationale, §D](docs/philosophy.md).
 - **No claim without a reason.** A response is a structure of
   `{claim, sources[], path[]}`. A claim that can't cite its sources cannot be
-  expressed — this is enforced by the output shape, not by a prompt.
+  expressed — this is enforced by the output shape, not by a prompt — and a
+  source must be a record the call was actually given: a response that cites
+  an id it was never shown is rejected, not passed through.
 
 ## What Eyu is
 

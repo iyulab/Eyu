@@ -39,7 +39,7 @@ public class SinglePassOntologyProposerTests
             """);
         var proposer = new SinglePassOntologyProposer(model);
 
-        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: []);
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")]);
 
         var entity = Assert.Single(proposal.Entities);
         Assert.Equal("e1", entity.EntityId);
@@ -115,8 +115,80 @@ public class SinglePassOntologyProposerTests
             """);
         var proposer = new SinglePassOntologyProposer(model);
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => proposer.ProposeAsync(declaredStructure: null, records: []));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")]));
     }
+
+    [Fact]
+    public async Task ProposeAsync_rejects_a_response_that_cites_a_record_it_was_never_given()
+    {
+        // The record ids are in hand at the call, so a cited id that is not among them needs no
+        // model and no heuristic to detect -- it is the shape of grounding with none of the
+        // substance, and "a claim that can't cite its sources cannot be expressed" has to mean
+        // sources the call actually supplied.
+        var model = new StubModelClient("""
+            {"entities":[{"id":"e1","type":"Asset","claim":"x","sources":["ghost-record"],"origin":"Acquired","confidence":0.9}],"relations":[]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var error = await Assert.ThrowsAsync<FormatException>(
+            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")]));
+
+        Assert.Contains("ghost-record", error.Message);
+        Assert.Contains("1 record(s)", error.Message);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_rejects_the_whole_response_when_one_citation_among_valid_ones_is_unknown()
+    {
+        var model = new StubModelClient("""
+            {"entities":[
+              {"id":"e1","type":"Asset","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9},
+              {"id":"e2","type":"Asset","claim":"y","sources":["rec-1","made-up"],"origin":"Acquired","confidence":0.9}
+            ],"relations":[]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var error = await Assert.ThrowsAsync<FormatException>(
+            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")]));
+
+        Assert.Contains("made-up", error.Message);
+        Assert.StartsWith("The model cited source id(s) it was never given: made-up", error.Message);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_checks_relation_citations_too()
+    {
+        var model = new StubModelClient("""
+            {"entities":[{"id":"e1","type":"Asset","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9}],
+             "relations":[{"name":"r","from":"e1","to":"e1","claim":"z","sources":["nowhere"],"origin":"Acquired","confidence":0.5}]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var error = await Assert.ThrowsAsync<FormatException>(
+            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")]));
+
+        Assert.Contains("nowhere", error.Message);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_with_no_records_can_only_return_an_empty_proposal()
+    {
+        // A declared-only call has nothing citable. A model that cites anything anyway is refused
+        // with a message that says why, so a consumer hitting this learns the rule rather than a
+        // stray id.
+        var model = new StubModelClient("""
+            {"entities":[{"id":"e1","type":"Invoice","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9}],"relations":[]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+        var structure = new DeclaredStructure(SubjectRef.Create("invoice"), Fields: [new DeclaredField("total")], Relations: []);
+
+        var error = await Assert.ThrowsAsync<FormatException>(
+            () => proposer.ProposeAsync(structure, records: []));
+
+        Assert.Contains("no records were supplied to this call", error.Message);
+    }
+
+    private static RawRecord OneRecord(string id) => new(id, new Dictionary<string, string?> { ["name"] = "x" });
 
     [Fact]
     public async Task ProposeAsync_builds_a_prompt_that_carries_the_declared_fields_and_record_contents()

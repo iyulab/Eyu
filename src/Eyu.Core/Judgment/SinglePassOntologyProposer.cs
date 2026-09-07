@@ -41,7 +41,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         var linkageAnalysis = LinkagePipeline.Analyze(records, options);
         var prompt = BuildPrompt(declaredStructure, records, linkageAnalysis);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt), cancellationToken).ConfigureAwait(false);
-        var parsed = ParseResponse(response.Text, linkageAnalysis);
+        var parsed = ParseResponse(response.Text, records, linkageAnalysis);
         return DeclaredStructureMerge.Apply(declaredStructure, parsed.Entities, parsed.Relations);
     }
 
@@ -151,7 +151,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         return facts.Count == 0 ? head : $"{head} ({string.Join(" ", facts)})";
     }
 
-    private static OntologyProposal ParseResponse(string responseText, LinkageAnalysis linkageAnalysis)
+    private static OntologyProposal ParseResponse(string responseText, IReadOnlyList<RawRecord> records, LinkageAnalysis linkageAnalysis)
     {
         ProposalResponse parsed;
         try
@@ -165,6 +165,8 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
                 $"The model response was not valid JSON. Response text: {Excerpt(responseText)}",
                 ex);
         }
+
+        RejectUnknownSources(parsed, records, responseText);
 
         var entities = (parsed.Entities ?? [])
             .Select(e =>
@@ -181,6 +183,32 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             .ToList();
 
         return new OntologyProposal(entities, relations);
+    }
+
+    /// <summary>
+    /// The only sources a claim can cite are the records this call was given. A model that cites an
+    /// id it was never shown has produced the <em>shape</em> of grounding with none of the substance,
+    /// and the set of ids is already in hand — so this is a deterministic check, not a judgment.
+    /// The whole response is refused rather than the offending claim dropped: a dropped entity would
+    /// leave relations pointing at it, and a response that invents evidence once is not one to
+    /// salvage piecemeal.
+    /// </summary>
+    private static void RejectUnknownSources(ProposalResponse parsed, IReadOnlyList<RawRecord> records, string responseText)
+    {
+        var known = records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        var cited = (parsed.Entities ?? []).SelectMany(e => e.Sources ?? [])
+            .Concat((parsed.Relations ?? []).SelectMany(r => r.Sources ?? []));
+        var unknown = cited.Where(id => !known.Contains(id)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        if (unknown.Count == 0)
+        {
+            return;
+        }
+
+        var reason = known.Count == 0
+            ? "no records were supplied to this call, so no source can be cited"
+            : $"the call supplied {known.Count} record(s) and none of these is among them";
+        throw new FormatException(
+            $"The model cited source id(s) it was never given: {string.Join(", ", unknown)} — {reason}. Response text: {Excerpt(responseText)}");
     }
 
     private static GroundedClaim ToClaim(string claim, IReadOnlyList<string> sources) =>

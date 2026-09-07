@@ -9,7 +9,7 @@
       currently has. Consumed as a published package, never a ProjectReference — Eyu has no
       access to formbase's source tree.
     -->
-    <PackageVersion Include="Formbase.Core" Version="0.8.0" />
+    <PackageVersion Include="Formbase.Core" Version="0.9.0" />
   </ItemGroup>
 
   <ItemGroup>

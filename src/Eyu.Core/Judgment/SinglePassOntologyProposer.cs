@@ -167,6 +167,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         }
 
         RejectUnknownSources(parsed, records, responseText);
+        RejectDanglingRelations(parsed, responseText);
 
         var entities = (parsed.Entities ?? [])
             .Select(e =>
@@ -209,6 +210,31 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             : $"the call supplied {known.Count} record(s) and none of these is among them";
         throw new FormatException(
             $"The model cited source id(s) it was never given: {string.Join(", ", unknown)} — {reason}. Response text: {Excerpt(responseText)}");
+    }
+
+    /// <summary>
+    /// A relation's two ends are entities of the same response — that is what makes it a relation
+    /// rather than a name with two strings attached. An end naming an id the response never
+    /// proposed cannot be resolved by anyone downstream, and the ids are all in the same document,
+    /// so this too is a deterministic check. As with an invented source, the whole response is
+    /// refused: a response that is incoherent about its own ids is not one to salvage piecemeal.
+    /// </summary>
+    private static void RejectDanglingRelations(ProposalResponse parsed, string responseText)
+    {
+        var proposed = (parsed.Entities ?? []).Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
+        var dangling = (parsed.Relations ?? [])
+            .SelectMany(r => new[] { r.From, r.To })
+            .Where(id => !proposed.Contains(id))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        if (dangling.Count == 0)
+        {
+            return;
+        }
+
+        throw new FormatException(
+            $"The model related entity id(s) it never proposed: {string.Join(", ", dangling)} — every end of a relation must be an entity of the same response. Response text: {Excerpt(responseText)}");
     }
 
     private static GroundedClaim ToClaim(string claim, IReadOnlyList<string> sources) =>

@@ -87,7 +87,9 @@ the target the architecture is built toward, not as a track record.
   `{claim, sources[], path[]}`. A claim that can't cite its sources cannot be
   expressed — this is enforced by the output shape, not by a prompt — and a
   source must be a record the call was actually given: a response that cites
-  an id it was never shown is rejected, not passed through.
+  an id it was never shown is rejected, not passed through. The same holds
+  for a relation's ends — both must be entities the same response proposed,
+  or the response is refused.
 
 ## What Eyu is
 

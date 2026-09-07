@@ -171,6 +171,43 @@ public class SinglePassOntologyProposerTests
     }
 
     [Fact]
+    public async Task ProposeAsync_rejects_a_relation_whose_end_names_an_entity_the_response_never_proposed()
+    {
+        // The ids are all in the one document, so a relation to an entity that is not there is a
+        // deterministic defect, not a judgment: nobody downstream could resolve that end.
+        var model = new StubModelClient("""
+            {"entities":[{"id":"e1","type":"Asset","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9}],
+             "relations":[
+               {"name":"r","from":"e1","to":"e9","claim":"z","sources":["rec-1"],"origin":"Acquired","confidence":0.5},
+               {"name":"s","from":"e7","to":"e1","claim":"w","sources":["rec-1"],"origin":"Acquired","confidence":0.5}]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var error = await Assert.ThrowsAsync<FormatException>(
+            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken));
+
+        Assert.StartsWith("The model related entity id(s) it never proposed: e7, e9", error.Message);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_accepts_a_relation_whose_both_ends_are_proposed_entities()
+    {
+        var model = new StubModelClient("""
+            {"entities":[
+               {"id":"e1","type":"Asset","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9},
+               {"id":"e2","type":"Site","claim":"y","sources":["rec-1"],"origin":"Acquired","confidence":0.9}],
+             "relations":[{"name":"located_at","from":"e1","to":"e2","claim":"z","sources":["rec-1"],"origin":"Acquired","confidence":0.5}]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
+
+        var relation = Assert.Single(proposal.Relations);
+        Assert.Equal("e1", relation.FromEntityId);
+        Assert.Equal("e2", relation.ToEntityId);
+    }
+
+    [Fact]
     public async Task ProposeAsync_with_no_records_can_only_return_an_empty_proposal()
     {
         // A declared-only call has nothing citable. A model that cites anything anyway is refused

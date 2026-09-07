@@ -106,8 +106,11 @@ public class DeclaredStructureMergeTests
     }
 
     [Fact]
-    public async Task An_end_that_names_no_proposed_entity_cannot_be_checked_and_is_not_held_against_the_relation()
+    public async Task An_end_that_names_no_proposed_entity_is_refused_before_the_merge_has_to_judge_it()
     {
+        // The merge used to let such an end through as "cannot be checked". It never reaches the
+        // merge now: a relation to an entity the response did not propose is refused at parse time,
+        // the same way a citation of a record the call never supplied is.
         const string answer = """
             {
               "entities": [
@@ -119,9 +122,9 @@ public class DeclaredStructureMergeTests
             }
             """;
 
-        var proposal = await Propose(answer, WorkOrder);
+        var error = await Assert.ThrowsAsync<FormatException>(() => Propose(answer, WorkOrder));
 
-        Assert.Equal(ProposalBasis.Declared, Assert.Single(proposal.Relations).Basis);
+        Assert.Contains("missing", error.Message);
     }
 
     [Fact]

@@ -60,19 +60,14 @@ internal static class DeclaredStructureMerge
     }
 
     /// <summary>
-    /// A declared relation runs from the declared subject to its declared target. An end the model
-    /// left pointing at an entity it never proposed cannot be checked and is not held against it;
-    /// an end that resolves to a differently typed entity is a contradiction.
+    /// A declared relation runs from the declared subject to its declared target; an end that
+    /// resolves to a differently typed entity is a contradiction. Both ends always resolve — the
+    /// proposer refuses a response whose relations name an entity it never proposed before anything
+    /// reaches this merge — so there is no unresolvable case to be lenient about here.
     /// </summary>
     private static bool Contradicts(RelationProposal relation, DeclaredRelation declaredRelation, string subject, Dictionary<string, string> entityTypeById)
-    {
-        if (entityTypeById.TryGetValue(relation.FromEntityId, out var fromType) && fromType != subject)
-        {
-            return true;
-        }
-
-        return entityTypeById.TryGetValue(relation.ToEntityId, out var toType) && toType != Normalize(declaredRelation.Target.Value);
-    }
+        => entityTypeById[relation.FromEntityId] != subject
+           || entityTypeById[relation.ToEntityId] != Normalize(declaredRelation.Target.Value);
 
     private static string Normalize(string name)
         => new(name.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());

@@ -102,7 +102,8 @@ particular caller's records have been seen before).
 
 The innate layer anchors to **DOLCE** (Borgo, Ferrario, Gangemi, Guarino,
 Masolo et al., "DOLCE: A Descriptive Ontology for Linguistic and Cognitive
-Engineering", *Applied Ontology* 17(1), 2022), which explicitly frames its
+Engineering", *Applied Ontology* 17(1), 2022; standardised as [ISO/IEC 21838-3:2023](https://www.iso.org/standard/78927.html),
+*Top-level ontologies (TLO) — Part 3: DOLCE*), which explicitly frames its
 categories as a "cognitive bias" — categories of thought about the world,
 not categories of the world — rather than **BFO**. This is worth stating
 plainly because it is easy to get backwards: BFO's own designer, Barry

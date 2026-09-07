@@ -7,7 +7,6 @@ using Eyu.Core.Linkage;
 using Eyu.Core.Proposals;
 using Eyu.Core.Records;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Eyu.Core.Tests.Live.Llm;
 
@@ -171,7 +170,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var reportPath = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_REPORT");
         if (!string.IsNullOrWhiteSpace(reportPath))
         {
-            await File.WriteAllTextAsync(reportPath, report);
+            await File.WriteAllTextAsync(reportPath, report, TestContext.Current.CancellationToken);
         }
 
         var structuredLogDir = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_STRUCTURED_LOG_DIR");
@@ -180,7 +179,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             var timestamp = DateTimeOffset.UtcNow;
             Directory.CreateDirectory(structuredLogDir);
             var logPath = Path.Combine(structuredLogDir, $"run-{timestamp:yyyyMMdd-HHmmss}.json");
-            await File.WriteAllTextAsync(logPath, BuildStructuredLogJson(timestamp, runs, linkageOptions, stats));
+            await File.WriteAllTextAsync(logPath, BuildStructuredLogJson(timestamp, runs, linkageOptions, stats), TestContext.Current.CancellationToken);
         }
 
         // The instrument's own sanity floor, not a graduation gate: a run where nothing ever

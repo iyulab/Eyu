@@ -13,7 +13,7 @@ public class FormbaseRecordSampleTests
         var rawStore = new InMemoryRawStore();
         var sample = new FormbaseRecordSample(rawStore);
 
-        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10);
+        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);
 
         Assert.Empty(records);
     }
@@ -23,10 +23,10 @@ public class FormbaseRecordSampleTests
     {
         var rawStore = new InMemoryRawStore();
         var type = FormTypeRef.Create("invoice");
-        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"lot":"L1","qty":3,"paid":true,"note":null}"""));
+        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"lot":"L1","qty":3,"paid":true,"note":null}"""), TestContext.Current.CancellationToken);
         var sample = new FormbaseRecordSample(rawStore);
 
-        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10);
+        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);
 
         var record = Assert.Single(records);
         Assert.Equal("L1", record.Fields["lot"]);
@@ -43,10 +43,10 @@ public class FormbaseRecordSampleTests
         // judgment, not this adapter, is where deeper structure gets interpreted.
         var rawStore = new InMemoryRawStore();
         var type = FormTypeRef.Create("invoice");
-        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"lines":[{"sku":"A"}]}"""));
+        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"lines":[{"sku":"A"}]}"""), TestContext.Current.CancellationToken);
         var sample = new FormbaseRecordSample(rawStore);
 
-        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10);
+        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);
 
         Assert.Equal("""[{"sku":"A"}]""", Assert.Single(records).Fields["lines"]);
     }
@@ -56,10 +56,10 @@ public class FormbaseRecordSampleTests
     {
         var rawStore = new InMemoryRawStore();
         var type = FormTypeRef.Create("invoice");
-        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("[1,2,3]"));
+        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("[1,2,3]"), TestContext.Current.CancellationToken);
         var sample = new FormbaseRecordSample(rawStore);
 
-        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10);
+        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);
 
         Assert.Empty(Assert.Single(records).Fields);
     }
@@ -71,11 +71,11 @@ public class FormbaseRecordSampleTests
         var type = FormTypeRef.Create("invoice");
         for (var i = 0; i < 5; i++)
         {
-            await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("{}"));
+            await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("{}"), TestContext.Current.CancellationToken);
         }
         var sample = new FormbaseRecordSample(rawStore);
 
-        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 2);
+        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 2, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, records.Count);
     }
@@ -86,10 +86,10 @@ public class FormbaseRecordSampleTests
         var rawStore = new InMemoryRawStore();
         var type = FormTypeRef.Create("invoice");
         var id = DocumentId.New();
-        await rawStore.AppendAsync(type, id, DocumentBody.Parse("{}"));
+        await rawStore.AppendAsync(type, id, DocumentBody.Parse("{}"), TestContext.Current.CancellationToken);
         var sample = new FormbaseRecordSample(rawStore);
 
-        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10);
+        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);
 
         Assert.Equal(id.ToString(), Assert.Single(records).Id);
     }

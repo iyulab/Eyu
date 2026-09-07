@@ -23,7 +23,7 @@ public class PortContractSmokeTests
         IStructureSource source = new StubStructureSource();
         var subject = SubjectRef.Create("invoice");
 
-        var structure = await source.GetStructureAsync(subject);
+        var structure = await source.GetStructureAsync(subject, TestContext.Current.CancellationToken);
 
         Assert.NotNull(structure);
         Assert.Equal(subject, structure!.Subject);
@@ -35,7 +35,7 @@ public class PortContractSmokeTests
     {
         IStructureSource source = new StubStructureSource();
 
-        var structure = await source.GetStructureAsync(SubjectRef.Create("unknown"));
+        var structure = await source.GetStructureAsync(SubjectRef.Create("unknown"), TestContext.Current.CancellationToken);
 
         Assert.Null(structure);
     }
@@ -45,7 +45,7 @@ public class PortContractSmokeTests
     {
         IRecordSample sample = new StubRecordSample();
 
-        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 1);
+        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 1, TestContext.Current.CancellationToken);
 
         Assert.Single(records);
     }
@@ -55,7 +55,7 @@ public class PortContractSmokeTests
     {
         IModelClient model = new StubModelClient();
 
-        var response = await model.CompleteAsync(new ModelRequest("classify: invoice #42"));
+        var response = await model.CompleteAsync(new ModelRequest("classify: invoice #42"), TestContext.Current.CancellationToken);
 
         Assert.Equal("stub-response", response.Text);
     }

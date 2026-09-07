@@ -52,7 +52,7 @@ public class EyuOntologyProposerLiveTests
         var proposer = new SinglePassOntologyProposer(modelClient);
         var recordIds = LerRecords.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
 
-        var proposal = await proposer.ProposeAsync(declaredStructure: null, LerRecords);
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, LerRecords, TestContext.Current.CancellationToken);
 
         // The guards make failure loud: a hallucinated field or malformed reply throws
         // (FormatException / ArgumentOutOfRangeException), so reaching here already means the

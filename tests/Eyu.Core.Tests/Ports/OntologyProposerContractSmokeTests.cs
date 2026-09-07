@@ -27,7 +27,7 @@ public class OntologyProposerContractSmokeTests
             new("rec-1", new Dictionary<string, string?> { ["total"] = "100" }),
         ];
 
-        var proposal = await proposer.ProposeAsync(structure, records);
+        var proposal = await proposer.ProposeAsync(structure, records, TestContext.Current.CancellationToken);
 
         Assert.Single(proposal.Entities);
         Assert.Single(proposal.Relations);
@@ -41,7 +41,7 @@ public class OntologyProposerContractSmokeTests
         IOntologyProposer proposer = new StubOntologyProposer();
         IReadOnlyList<RawRecord> records = [new("rec-1", new Dictionary<string, string?>())];
 
-        var proposal = await proposer.ProposeAsync(declaredStructure: null, records);
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records, TestContext.Current.CancellationToken);
 
         Assert.NotNull(proposal);
     }

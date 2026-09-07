@@ -61,7 +61,7 @@ public class FieldComparatorNotationVariantLiveTests
         using var _ = httpClient;
         var proposer = new SinglePassOntologyProposer(modelClient, new LinkageOptions(UseStringSimilarityComparator: true));
 
-        var proposal = await proposer.ProposeAsync(declaredStructure: null, Records);
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, Records, TestContext.Current.CancellationToken);
 
         Assert.True(AnyEntityMergesBothRecords(proposal, "company-a-1", "company-a-2"));
     }

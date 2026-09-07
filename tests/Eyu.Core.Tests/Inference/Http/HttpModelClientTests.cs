@@ -22,7 +22,7 @@ public class HttpModelClientTests
         });
         var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
 
-        await client.CompleteAsync(new ModelRequest("hello"));
+        await client.CompleteAsync(new ModelRequest("hello"), TestContext.Current.CancellationToken);
 
         Assert.NotNull(captured);
         Assert.Equal(HttpMethod.Post, captured!.Method);
@@ -41,7 +41,7 @@ public class HttpModelClientTests
         var handler = new FakeHandler(_ => Task.FromResult(CannedResponse("the answer")));
         var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
 
-        var response = await client.CompleteAsync(new ModelRequest("anything"));
+        var response = await client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken);
 
         Assert.Equal("the answer", response.Text);
     }
@@ -55,7 +55,7 @@ public class HttpModelClientTests
         var handler = new FakeHandler(_ => Task.FromResult(CannedResponse("x")));
         var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
 
-        var response = await client.CompleteAsync(new ModelRequest("anything"));
+        var response = await client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken);
 
         Assert.Null(response.Confidence);
     }
@@ -69,7 +69,7 @@ public class HttpModelClientTests
         }));
         var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.CompleteAsync(new ModelRequest("anything")));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class HttpModelClientTests
         var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => client.CompleteAsync(new ModelRequest("anything")));
+            () => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
 
         Assert.Contains("content_filter", error.Message);
     }
@@ -106,7 +106,7 @@ public class HttpModelClientTests
         var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => client.CompleteAsync(new ModelRequest("anything")));
+            () => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
 
         Assert.True(error.Message.Length < 1000, $"message was {error.Message.Length} chars");
         Assert.Contains("chars total", error.Message);
@@ -118,7 +118,7 @@ public class HttpModelClientTests
         var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
         var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("anything")));
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
     }
 
     private static HttpResponseMessage CannedResponse(string content) => new(HttpStatusCode.OK)

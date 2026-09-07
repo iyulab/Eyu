@@ -15,7 +15,7 @@ public class FormbaseStructureSourceTests
         var hintSource = new InMemoryFieldHintSource();
         var source = new FormbaseStructureSource(hintSource);
 
-        var structure = await source.GetStructureAsync(SubjectRef.Create("invoice"));
+        var structure = await source.GetStructureAsync(SubjectRef.Create("invoice"), TestContext.Current.CancellationToken);
 
         Assert.Null(structure);
     }
@@ -34,7 +34,7 @@ public class FormbaseStructureSourceTests
             ]));
         var source = new FormbaseStructureSource(hintSource);
 
-        var structure = await source.GetStructureAsync(SubjectRef.Create("invoice"));
+        var structure = await source.GetStructureAsync(SubjectRef.Create("invoice"), TestContext.Current.CancellationToken);
 
         Assert.NotNull(structure);
         Assert.Equal(["lot", "qty"], structure!.Fields.Select(f => f.Name));
@@ -51,7 +51,7 @@ public class FormbaseStructureSourceTests
             Relations: [new RelationHint("customer", RelationKind.Reference, FormTypeRef.Create("customer"), "customer_id")]));
         var source = new FormbaseStructureSource(hintSource);
 
-        var structure = await source.GetStructureAsync(SubjectRef.Create("invoice"));
+        var structure = await source.GetStructureAsync(SubjectRef.Create("invoice"), TestContext.Current.CancellationToken);
 
         Assert.NotNull(structure);
         var relation = Assert.Single(structure!.Relations);
@@ -80,7 +80,7 @@ public class FormbaseStructureSourceTests
             ]));
         var source = new FormbaseStructureSource(hintSource);
 
-        var structure = await source.GetStructureAsync(SubjectRef.Create("work_order"));
+        var structure = await source.GetStructureAsync(SubjectRef.Create("work_order"), TestContext.Current.CancellationToken);
 
         Assert.Equal(
             [
@@ -107,7 +107,7 @@ public class FormbaseStructureSourceTests
             ]));
         var source = new FormbaseStructureSource(hintSource);
 
-        var structure = await source.GetStructureAsync(SubjectRef.Create("work_order"));
+        var structure = await source.GetStructureAsync(SubjectRef.Create("work_order"), TestContext.Current.CancellationToken);
 
         Assert.Equal(true, structure!.Fields.Single(f => f.Name == "wo_no").Required);
         Assert.Equal(false, structure.Fields.Single(f => f.Name == "qty").Required);
@@ -130,7 +130,7 @@ public class FormbaseStructureSourceTests
             ]));
         var source = new FormbaseStructureSource(hintSource);
 
-        var structure = await source.GetStructureAsync(SubjectRef.Create("work_order"));
+        var structure = await source.GetStructureAsync(SubjectRef.Create("work_order"), TestContext.Current.CancellationToken);
 
         var reference = structure!.Relations.Single(r => r.Name == "asset");
         Assert.Equal(DeclaredRelationKind.Reference, reference.Kind);
@@ -151,7 +151,7 @@ public class FormbaseStructureSourceTests
             Fields: [new FieldHint("lot", ColumnType.Text)]));
         var source = new FormbaseStructureSource(hintSource);
 
-        var structure = await source.GetStructureAsync(SubjectRef.Create("invoice"));
+        var structure = await source.GetStructureAsync(SubjectRef.Create("invoice"), TestContext.Current.CancellationToken);
 
         Assert.NotNull(structure);
         Assert.Empty(structure!.Relations);
@@ -168,7 +168,7 @@ public class FormbaseStructureSourceTests
             DeclarationVersion: 3));
         var source = new FormbaseStructureSource(hintSource);
 
-        var structure = await source.GetStructureAsync(SubjectRef.Create("invoice"));
+        var structure = await source.GetStructureAsync(SubjectRef.Create("invoice"), TestContext.Current.CancellationToken);
 
         Assert.Equal("3", structure!.Version);
     }

@@ -3,6 +3,7 @@
   <PropertyGroup>
     <RootNamespace>Eyu.IntegrationSmoke.Tests</RootNamespace>
     <Description>Proves Eyu can reference and satisfy Formbase.Core's ISchemaProposer port from a published package. Eyu's own ports are implemented and measured against a real model (see Eyu.Core.Tests), but not yet coverable here the same way, since Eyu.Core itself is not yet published.</Description>
+    <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <NoWarn>$(NoWarn);CA1707</NoWarn>
@@ -11,7 +12,7 @@
   <ItemGroup>
     <PackageReference Include="Formbase.Core" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 

@@ -29,7 +29,7 @@ public class SchemaProposerCouplingSmokeTests
         ISchemaProposer proposer = new StubProposer();
         var type = FormTypeRef.Create("invoice");
 
-        var schema = await proposer.ProposeAsync(type);
+        var schema = await proposer.ProposeAsync(type, TestContext.Current.CancellationToken);
 
         Assert.NotNull(schema);
         Assert.Equal("invoice", schema!.TableName);

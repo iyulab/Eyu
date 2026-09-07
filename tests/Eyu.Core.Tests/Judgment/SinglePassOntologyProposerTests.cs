@@ -18,7 +18,7 @@ public class SinglePassOntologyProposerTests
         var model = new StubModelClient("""{"entities":[],"relations":[]}""");
         var proposer = new SinglePassOntologyProposer(model);
 
-        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: []);
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [], TestContext.Current.CancellationToken);
 
         Assert.Empty(proposal.Entities);
         Assert.Empty(proposal.Relations);
@@ -39,7 +39,7 @@ public class SinglePassOntologyProposerTests
             """);
         var proposer = new SinglePassOntologyProposer(model);
 
-        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")]);
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
 
         var entity = Assert.Single(proposal.Entities);
         Assert.Equal("e1", entity.EntityId);
@@ -61,7 +61,7 @@ public class SinglePassOntologyProposerTests
         var model = new StubModelClient("{}");
         var proposer = new SinglePassOntologyProposer(model);
 
-        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: []);
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [], TestContext.Current.CancellationToken);
 
         Assert.Empty(proposal.Entities);
         Assert.Empty(proposal.Relations);
@@ -73,7 +73,7 @@ public class SinglePassOntologyProposerTests
         var model = new StubModelClient("not json at all");
         var proposer = new SinglePassOntologyProposer(model);
 
-        await Assert.ThrowsAsync<FormatException>(() => proposer.ProposeAsync(declaredStructure: null, records: []));
+        await Assert.ThrowsAsync<FormatException>(() => proposer.ProposeAsync(declaredStructure: null, records: [], TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public class SinglePassOntologyProposerTests
         var proposer = new SinglePassOntologyProposer(model);
 
         var error = await Assert.ThrowsAsync<FormatException>(
-            () => proposer.ProposeAsync(declaredStructure: null, records: []));
+            () => proposer.ProposeAsync(declaredStructure: null, records: [], TestContext.Current.CancellationToken));
 
         Assert.Contains("Sure! Here is the ontology", error.Message);
     }
@@ -98,7 +98,7 @@ public class SinglePassOntologyProposerTests
         var proposer = new SinglePassOntologyProposer(model);
 
         var error = await Assert.ThrowsAsync<FormatException>(
-            () => proposer.ProposeAsync(declaredStructure: null, records: []));
+            () => proposer.ProposeAsync(declaredStructure: null, records: [], TestContext.Current.CancellationToken));
 
         Assert.True(error.Message.Length < 1000, $"message was {error.Message.Length} chars");
         Assert.Contains("4000 chars total", error.Message);
@@ -115,7 +115,7 @@ public class SinglePassOntologyProposerTests
             """);
         var proposer = new SinglePassOntologyProposer(model);
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")]));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class SinglePassOntologyProposerTests
         var proposer = new SinglePassOntologyProposer(model);
 
         var error = await Assert.ThrowsAsync<FormatException>(
-            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")]));
+            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken));
 
         Assert.Contains("ghost-record", error.Message);
         Assert.Contains("1 record(s)", error.Message);
@@ -149,7 +149,7 @@ public class SinglePassOntologyProposerTests
         var proposer = new SinglePassOntologyProposer(model);
 
         var error = await Assert.ThrowsAsync<FormatException>(
-            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")]));
+            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken));
 
         Assert.Contains("made-up", error.Message);
         Assert.StartsWith("The model cited source id(s) it was never given: made-up", error.Message);
@@ -165,7 +165,7 @@ public class SinglePassOntologyProposerTests
         var proposer = new SinglePassOntologyProposer(model);
 
         var error = await Assert.ThrowsAsync<FormatException>(
-            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")]));
+            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken));
 
         Assert.Contains("nowhere", error.Message);
     }
@@ -183,7 +183,7 @@ public class SinglePassOntologyProposerTests
         var structure = new DeclaredStructure(SubjectRef.Create("invoice"), Fields: [new DeclaredField("total")], Relations: []);
 
         var error = await Assert.ThrowsAsync<FormatException>(
-            () => proposer.ProposeAsync(structure, records: []));
+            () => proposer.ProposeAsync(structure, records: [], TestContext.Current.CancellationToken));
 
         Assert.Contains("no records were supplied to this call", error.Message);
     }
@@ -198,7 +198,7 @@ public class SinglePassOntologyProposerTests
         var structure = new DeclaredStructure(SubjectRef.Create("invoice"), Fields: [new DeclaredField("total")], Relations: []);
         var records = new[] { new RawRecord("rec-1", new Dictionary<string, string?> { ["total"] = "100" }) };
 
-        await proposer.ProposeAsync(structure, records);
+        await proposer.ProposeAsync(structure, records, TestContext.Current.CancellationToken);
 
         Assert.Contains("total", model.LastPrompt);
         Assert.Contains("rec-1", model.LastPrompt);
@@ -229,7 +229,7 @@ public class SinglePassOntologyProposerTests
             ]);
         var records = new[] { new RawRecord("rec-1", new Dictionary<string, string?> { ["wo_no"] = "WO-1" }) };
 
-        await proposer.ProposeAsync(structure, records);
+        await proposer.ProposeAsync(structure, records, TestContext.Current.CancellationToken);
 
         Assert.Contains("Declared structure is authoritative", model.LastPrompt);
         Assert.Contains("wo_no (text, required)", model.LastPrompt);
@@ -251,7 +251,7 @@ public class SinglePassOntologyProposerTests
             new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
         };
 
-        await proposer.ProposeAsync(declaredStructure: null, records);
+        await proposer.ProposeAsync(declaredStructure: null, records, TestContext.Current.CancellationToken);
 
         Assert.Contains("Pre-linked record groups", model.LastPrompt);
         Assert.Contains("rec-1", model.LastPrompt);
@@ -269,7 +269,7 @@ public class SinglePassOntologyProposerTests
             new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Portland" }),
         };
 
-        await proposer.ProposeAsync(declaredStructure: null, records);
+        await proposer.ProposeAsync(declaredStructure: null, records, TestContext.Current.CancellationToken);
 
         Assert.Contains("Ambiguous record pairs needing your judgment", model.LastPrompt);
         Assert.Contains("prior log-odds", model.LastPrompt);
@@ -288,7 +288,7 @@ public class SinglePassOntologyProposerTests
             new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
         };
 
-        var proposal = await proposer.ProposeAsync(declaredStructure: null, records);
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records, TestContext.Current.CancellationToken);
 
         var entity = Assert.Single(proposal.Entities);
         // Below the EM floor (2 records -> 1 pair), so the heuristic default m=0.9/u=0.1 applies.
@@ -313,7 +313,7 @@ public class SinglePassOntologyProposerTests
             new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Portland" }),
         };
 
-        var proposal = await proposer.ProposeAsync(declaredStructure: null, records);
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records, TestContext.Current.CancellationToken);
 
         var entity = Assert.Single(proposal.Entities);
         // One field agrees, one disagrees -> heuristic LLR = ln(9) + ln(1/9) = 0 (a neutral
@@ -330,7 +330,7 @@ public class SinglePassOntologyProposerTests
         var proposer = new SinglePassOntologyProposer(model);
         var records = new[] { new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Jane Doe" }) };
 
-        var proposal = await proposer.ProposeAsync(declaredStructure: null, records);
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records, TestContext.Current.CancellationToken);
 
         var entity = Assert.Single(proposal.Entities);
         Assert.Equal(0.7, entity.Confidence);
@@ -347,7 +347,7 @@ public class SinglePassOntologyProposerTests
             new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme" }),
         };
 
-        await proposer.ProposeAsync(declaredStructure: null, records);
+        await proposer.ProposeAsync(declaredStructure: null, records, TestContext.Current.CancellationToken);
 
         // A single shared agreeing field gives LLR = ln 9 ~ 2.197 -- GrayZone under the default
         // 4.0 threshold, but Match under this test's lowered 2.0 threshold, so the prompt must

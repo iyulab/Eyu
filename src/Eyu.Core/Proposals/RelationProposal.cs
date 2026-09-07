@@ -14,10 +14,13 @@ public sealed record RelationProposal
     public GroundedClaim Claim { get; }
     public VocabularyOrigin Origin { get; }
 
+    /// <summary>Whether <see cref="RelationName"/> is declared by the caller or inferred by the model — see <see cref="ProposalBasis"/>.</summary>
+    public ProposalBasis Basis { get; }
+
     /// <summary>Routing signal only — see <see cref="EntityProposal.Confidence"/> for the same caveat.</summary>
     public double Confidence { get; }
 
-    private RelationProposal(string relationName, string fromEntityId, string toEntityId, GroundedClaim claim, VocabularyOrigin origin, double confidence)
+    private RelationProposal(string relationName, string fromEntityId, string toEntityId, GroundedClaim claim, VocabularyOrigin origin, double confidence, ProposalBasis basis)
     {
         RelationName = relationName;
         FromEntityId = fromEntityId;
@@ -25,9 +28,10 @@ public sealed record RelationProposal
         Claim = claim;
         Origin = origin;
         Confidence = confidence;
+        Basis = basis;
     }
 
-    public static RelationProposal Create(string relationName, string fromEntityId, string toEntityId, GroundedClaim claim, VocabularyOrigin origin, double confidence)
+    public static RelationProposal Create(string relationName, string fromEntityId, string toEntityId, GroundedClaim claim, VocabularyOrigin origin, double confidence, ProposalBasis basis = ProposalBasis.Inferred)
     {
         if (string.IsNullOrWhiteSpace(relationName))
         {
@@ -49,6 +53,9 @@ public sealed record RelationProposal
             throw new ArgumentOutOfRangeException(nameof(confidence), confidence, "Confidence must be within [0, 1].");
         }
 
-        return new RelationProposal(relationName, fromEntityId, toEntityId, claim, origin, confidence);
+        return new RelationProposal(relationName, fromEntityId, toEntityId, claim, origin, confidence, basis);
     }
+
+    /// <summary>The same proposal with <see cref="Basis"/> set — used by the declared-structure merge, never by a model.</summary>
+    internal RelationProposal WithBasis(ProposalBasis basis) => new(RelationName, FromEntityId, ToEntityId, Claim, Origin, Confidence, basis);
 }

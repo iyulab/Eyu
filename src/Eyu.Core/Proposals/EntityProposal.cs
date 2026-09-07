@@ -17,22 +17,26 @@ public sealed record EntityProposal
     public GroundedClaim Claim { get; }
     public VocabularyOrigin Origin { get; }
 
+    /// <summary>Whether <see cref="EntityType"/> is declared by the caller or inferred by the model — see <see cref="ProposalBasis"/>.</summary>
+    public ProposalBasis Basis { get; }
+
     /// <summary>
     /// Routing signal only — must be treated as uncalibrated unless the producing
     /// <c>IOntologyProposer</c> implementation states otherwise (design rationale §D).
     /// </summary>
     public double Confidence { get; }
 
-    private EntityProposal(string entityId, string entityType, GroundedClaim claim, VocabularyOrigin origin, double confidence)
+    private EntityProposal(string entityId, string entityType, GroundedClaim claim, VocabularyOrigin origin, double confidence, ProposalBasis basis)
     {
         EntityId = entityId;
         EntityType = entityType;
         Claim = claim;
         Origin = origin;
         Confidence = confidence;
+        Basis = basis;
     }
 
-    public static EntityProposal Create(string entityId, string entityType, GroundedClaim claim, VocabularyOrigin origin, double confidence)
+    public static EntityProposal Create(string entityId, string entityType, GroundedClaim claim, VocabularyOrigin origin, double confidence, ProposalBasis basis = ProposalBasis.Inferred)
     {
         if (string.IsNullOrWhiteSpace(entityId))
         {
@@ -49,6 +53,9 @@ public sealed record EntityProposal
             throw new ArgumentOutOfRangeException(nameof(confidence), confidence, "Confidence must be within [0, 1].");
         }
 
-        return new EntityProposal(entityId, entityType, claim, origin, confidence);
+        return new EntityProposal(entityId, entityType, claim, origin, confidence, basis);
     }
+
+    /// <summary>The same proposal with <see cref="Basis"/> set — used by the declared-structure merge, never by a model.</summary>
+    internal EntityProposal WithBasis(ProposalBasis basis) => new(EntityId, EntityType, Claim, Origin, Confidence, basis);
 }

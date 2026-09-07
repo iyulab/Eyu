@@ -21,6 +21,10 @@ namespace Eyu.Core.Judgment;
 /// confirmed match, a confirmed non-match, or a gray-zone case needing the model's judgment.
 /// Confirmed matches never use the model's self-reported confidence; gray-zone cases combine the
 /// Fellegi-Sunter prior with it via a Bayesian update (<see cref="LinkageConfidenceAdjuster"/>).
+/// After the parse, <see cref="DeclaredStructureMerge"/> applies the deterministic half of "Declared
+/// always wins": declared types are stamped as such and a relation that misuses a declared name is
+/// dropped, so the prompt's authority sentence is a request to the model and the merge is the
+/// guarantee to the caller.
 /// This class still only proves the wiring is correct; it makes no claim about judgment quality
 /// on its own, which no unit test can verify without a real model behind
 /// <see cref="IModelClient"/>.
@@ -37,7 +41,8 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         var linkageAnalysis = LinkagePipeline.Analyze(records, options);
         var prompt = BuildPrompt(declaredStructure, records, linkageAnalysis);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt), cancellationToken).ConfigureAwait(false);
-        return ParseResponse(response.Text, linkageAnalysis);
+        var parsed = ParseResponse(response.Text, linkageAnalysis);
+        return DeclaredStructureMerge.Apply(declaredStructure, parsed.Entities, parsed.Relations);
     }
 
     private static string BuildPrompt(DeclaredStructure? declaredStructure, IReadOnlyList<RawRecord> records, LinkageAnalysis linkageAnalysis)

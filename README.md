@@ -74,6 +74,10 @@ the target the architecture is built toward, not as a track record.
   records to look at. What the caller doesn't supply, Eyu doesn't know.
 - **Declared always wins.** Where structure is explicitly declared, the
   declaration is the answer. Inference only fills what nothing declared.
+  Enforced after the model answers, not only asked of it: every proposal
+  carries whether its type was declared (`ProposalBasis`), and a relation
+  proposed under a declared name whose ends contradict the declaration is
+  dropped rather than returned.
 - **Confidence routes, it doesn't decide.** Every proposal carries a
   confidence score; a caller-defined threshold routes it to auto-apply,
   human review, or draft-only. Eyu proposes — it never applies anything.

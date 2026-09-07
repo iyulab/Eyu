@@ -85,7 +85,11 @@ entities that exist." Robert B. Allen's "From Ontology to Structured Applied
 Epistemology" (arXiv:1610.07241, 2016) frames the same shift as
 representations that "make a claim" rather than merely "having" one — the
 closest prior formulation to what `IGroundingContract` enforces at the type
-level.
+level. This is also the footing the methodology layer upstream of Eyu —
+[formology](https://github.com/iyulab/formology) — stands on: its own design
+rationale reaches for the same epistemic-ontology position for the same
+reason, so the lineage inside this stack runs formology → Eyu, one stance
+inherited, not two independent arrivals at one paper.
 
 The distinction matters operationally, not just rhetorically: a realist
 ontology's job is to be *true*; an epistemic ontology's job is to be

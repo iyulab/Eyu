@@ -190,6 +190,26 @@ public class SinglePassOntologyProposerTests
     }
 
     [Fact]
+    public async Task ProposeAsync_rejects_a_response_that_proposes_two_entities_under_one_id()
+    {
+        // Before this check the collision surfaced as an ArgumentException from a dictionary deep
+        // in the merge -- true, but unreadable. Now it is refused where the other malformed
+        // responses are, with the offending ids in the message.
+        var model = new StubModelClient("""
+            {"entities":[
+               {"id":"e1","type":"Asset","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9},
+               {"id":"e1","type":"Site","claim":"y","sources":["rec-1"],"origin":"Acquired","confidence":0.9}],
+             "relations":[]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var error = await Assert.ThrowsAsync<FormatException>(
+            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken));
+
+        Assert.StartsWith("The model proposed more than one entity under the same id: e1", error.Message);
+    }
+
+    [Fact]
     public async Task ProposeAsync_accepts_a_relation_whose_both_ends_are_proposed_entities()
     {
         var model = new StubModelClient("""

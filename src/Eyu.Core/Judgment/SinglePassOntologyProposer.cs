@@ -167,6 +167,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         }
 
         RejectUnknownSources(parsed, records, responseText);
+        RejectDuplicateEntityIds(parsed, responseText);
         RejectDanglingRelations(parsed, responseText);
 
         var entities = (parsed.Entities ?? [])
@@ -210,6 +211,29 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             : $"the call supplied {known.Count} record(s) and none of these is among them";
         throw new FormatException(
             $"The model cited source id(s) it was never given: {string.Join(", ", unknown)} — {reason}. Response text: {Excerpt(responseText)}");
+    }
+
+    /// <summary>
+    /// An entity id names one entity. A response that proposes two entities under one id has
+    /// made every relation to that id ambiguous, so it is refused like the other malformed
+    /// responses — with the ids named — rather than failing later, inside the merge, as a
+    /// dictionary collision no consumer could read.
+    /// </summary>
+    private static void RejectDuplicateEntityIds(ProposalResponse parsed, string responseText)
+    {
+        var duplicated = (parsed.Entities ?? [])
+            .GroupBy(e => e.Id, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        if (duplicated.Count == 0)
+        {
+            return;
+        }
+
+        throw new FormatException(
+            $"The model proposed more than one entity under the same id: {string.Join(", ", duplicated)} — an entity id must name one entity. Response text: {Excerpt(responseText)}");
     }
 
     /// <summary>

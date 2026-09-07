@@ -289,7 +289,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             var grayZone = linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.GrayZone);
             var nonMatch = linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.NonMatch);
             report.AppendLine(CultureInfo.InvariantCulture,
-                $"| {name} | {linkage.PairLinkages.Count} | {match} | {grayZone} | {nonMatch} | {linkage.Parameters.Status} | {linkage.Parameters.MatchPrior:F3} |");
+                $"| {name} | {linkage.PairLinkages.Count} | {match} | {grayZone} | {nonMatch} | {linkage.Parameters.Status}{(linkage.Parameters.LabelsSwapped ? " (relabeled)" : "")} | {linkage.Parameters.MatchPrior:F3} |");
         }
 
         var notes = stats.Where(kv => kv.Value.FailureNotes.Count > 0).ToList();
@@ -360,7 +360,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                     linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.Match),
                     linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.GrayZone),
                     linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.NonMatch),
-                    linkage.Parameters.Status.ToString(),
+                    linkage.Parameters.Status + (linkage.Parameters.LabelsSwapped ? "(relabeled)" : ""),
                     linkage.Parameters.MatchPrior);
 
             return new CaseLogEntry(

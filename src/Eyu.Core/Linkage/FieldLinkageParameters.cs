@@ -21,4 +21,13 @@ public sealed record FieldLinkageParameters(
     public double MatchPrior { get; init; } = MatchPrior is > 0.0 and < 1.0
         ? MatchPrior
         : throw new ArgumentOutOfRangeException(nameof(MatchPrior), MatchPrior, "Must be strictly between 0 and 1.");
+
+    /// <summary>
+    /// True when the estimator found EM had converged with its two components the wrong way round
+    /// — the component it was calling "match" agreed less than the one it was calling "non-match"
+    /// — and swapped them back (see <see cref="FellegiSunterEstimator.WithMatchComponentFirst"/>).
+    /// The values here are already in the right order; the flag is for a harness that wants to
+    /// know the batch needed it. Never set on a <see cref="EstimationStatus.HeuristicDefault"/>.
+    /// </summary>
+    public bool LabelsSwapped { get; init; }
 }

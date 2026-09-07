@@ -111,7 +111,41 @@ public static class FellegiSunterEstimator
             }
         }
 
-        return new FieldLinkageParameters(m, u, matchPrior, converged ? EstimationStatus.Converged : EstimationStatus.NotConverged);
+        return WithMatchComponentFirst(
+            new FieldLinkageParameters(m, u, matchPrior, converged ? EstimationStatus.Converged : EstimationStatus.NotConverged));
+    }
+
+    /// <summary>
+    /// Pins down which mixture component is the match component. A two-component mixture is
+    /// symmetric under relabeling — <c>(m, u, p)</c> and <c>(u, m, 1 - p)</c> have identical
+    /// likelihood — so EM may converge with the two swapped ("label switching"), and every
+    /// log-likelihood ratio then carries the wrong sign: <see cref="LinkageClassification.Match"/>
+    /// would mean non-match. The identifying constraint of Fellegi-Sunter is that agreement is
+    /// evidence <em>for</em> a match, i.e. an all-agree comparison vector has a non-negative
+    /// log-likelihood ratio; when the estimate violates that, the components are swapped back.
+    /// The decision is made on the whole model, not per field: a single field whose agreement
+    /// happens to favor non-match is a weak or inverted field, not a relabeled model, and is left
+    /// to carry its negative weight.
+    /// </summary>
+    public static FieldLinkageParameters WithMatchComponentFirst(FieldLinkageParameters parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+
+        var allAgreeLogLikelihoodRatio = parameters.MAgreeProbability.Keys
+            .Where(parameters.UAgreeProbability.ContainsKey)
+            .Sum(field => Math.Log(parameters.MAgreeProbability[field] / parameters.UAgreeProbability[field]));
+
+        if (allAgreeLogLikelihoodRatio >= 0.0)
+        {
+            return parameters;
+        }
+
+        return new FieldLinkageParameters(
+            parameters.UAgreeProbability,
+            parameters.MAgreeProbability,
+            1.0 - parameters.MatchPrior,
+            parameters.Status)
+        { LabelsSwapped = true };
     }
 
     public static double ComputeLogLikelihoodRatio(

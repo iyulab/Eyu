@@ -89,7 +89,10 @@ the target the architecture is built toward, not as a track record.
   source must be a record the call was actually given: a response that cites
   an id it was never shown is rejected, not passed through. The same holds
   for a relation's ends — both must be entities the same response proposed,
-  or the response is refused.
+  or the response is refused. ("Grounding" throughout means this citation
+  back to records — not the normalization of a mention to an ontology term
+  id that biomedical extraction tools call ontology grounding; Eyu does no
+  such lookup. See [design rationale, §B](docs/philosophy.md).)
 
 ## What Eyu is
 

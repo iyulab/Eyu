@@ -64,6 +64,17 @@ entities, relations, and confidence, always expressed through
 sources cannot be expressed at all. That's a deliberate epistemological
 stance, not just an audit-log feature.
 
+A note on the word, because it is overloaded. *Grounding* here means the
+citation itself: every claim points back at the source records it was read
+from, and the check that is enforced is that those records exist and were
+supplied to the call. It does **not** mean what LLM-based biomedical
+extractors (OntoGPT and its relatives) call *ontology-based grounding* —
+normalizing an extracted mention to a term identifier in a reference
+ontology. Eyu performs no such normalization; a proposed entity type is a
+label the model chose or the caller declared, not a lookup into a controlled
+vocabulary. Read "grounded" throughout these documents as "traceable to
+records", never as "resolved to a term id".
+
 Gilles Kassel's *epistemic ontology* position — "we advocate the use of
 'epistemic' ontologies, i.e., systems of categories representing our
 knowledge of the world, rather than the world directly" ("A plea for

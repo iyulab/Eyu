@@ -5,9 +5,8 @@
 
   <ItemGroup>
     <!--
-      L1a↔L2 coupling smoke test: the only production dependency this repo
-      currently has. Consumed as a published package, never a ProjectReference — Eyu has no
-      access to formbase's source tree.
+      L1a↔L2 coupling smoke test (Eyu.Formbase only). Consumed as a published package, never a
+      ProjectReference — Eyu has no access to formbase's source tree.
     -->
     <PackageVersion Include="Formbase.Core" Version="0.9.0" />
     <!--

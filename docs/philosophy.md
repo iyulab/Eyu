@@ -75,6 +75,27 @@ label the model chose or the caller declared, not a lookup into a controlled
 vocabulary. Read "grounded" throughout these documents as "traceable to
 records", never as "resolved to a term id".
 
+Two further words carry a settled meaning elsewhere, and both are about
+*what the output is*. **Entity resolution**, in the record-linkage tradition
+this engine borrows its statistics from, names a process whose product is a
+decision: matching records are linked or merged and duplicates eliminated,
+leaving one consolidated view. Eyu runs that machinery — Fellegi-Sunter
+scoring over field comparisons — and then deliberately stops before the last
+step. Nothing is merged, nothing is written, and what the caller receives is
+a proposal carrying a confidence and a route (§D). A reader who expects the
+usual product will look for the consolidated dataset and not find one; it is
+not missing, it was never promised. **Schema**, in LLM knowledge-graph
+construction, is a constraint applied to extraction — LlamaIndex's
+`SchemaLLMPathExtractor` extracts paths following a strict schema of allowed
+entities and relations so the model cannot predict outside the spec. Declared
+structure does the opposite job here: it is not a filter narrowing what the
+model may say, it is the authority the model's output is measured against,
+and where structure is already declared the declaration *is* the answer
+rather than a candidate competing with an extraction (README, "Declared
+always wins"). The practical difference is that constraining extraction
+improves a graph you are building, and here no graph is being built at all.
+
+
 Gilles Kassel's *epistemic ontology* position — "we advocate the use of
 'epistemic' ontologies, i.e., systems of categories representing our
 knowledge of the world, rather than the world directly" ("A plea for
@@ -230,3 +251,10 @@ re-litigating why they were set aside:
   — the interesting design act, if there is one, is choosing what fields the
   structure has in the first place, and that choice is made upstream of Eyu
   (by whoever declares the structure), not inside it.
+- **The characterizations of other systems in §B are not competitive claims,
+  and are not maintained as though they were.** They exist only to stop a
+  reader importing a different promise into these words, and they describe
+  those systems as of 2026-09. Nothing gates them — they are not this
+  project's code — so if one of them changes, the correction is to fix the
+  sentence or drop it, never to defend it. A stale characterization of
+  someone else's design is worse than none.

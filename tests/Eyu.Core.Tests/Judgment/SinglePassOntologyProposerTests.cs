@@ -134,6 +134,41 @@ public class SinglePassOntologyProposerTests
     }
 
     [Fact]
+    public async Task ProposeAsync_tells_the_model_every_declared_fact_and_that_declared_structure_is_authoritative()
+    {
+        // A declaration that reaches the prompt as a bare list of names has lost its type, its
+        // required-ness and which field realises a relation -- the model then re-infers what the
+        // caller already declared, which is the inference "Declared always wins" says must not win.
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model);
+        var structure = new DeclaredStructure(
+            SubjectRef.Create("work_order"),
+            Fields:
+            [
+                new DeclaredField("wo_no", Kind: DeclaredValueKind.Text, Required: true),
+                new DeclaredField("qty", Kind: DeclaredValueKind.WholeNumber),
+                new DeclaredField("total", SemanticHint: "monetary amount, minor units", Kind: DeclaredValueKind.FractionalNumber),
+                new DeclaredField("note"),
+            ],
+            Relations:
+            [
+                new DeclaredRelation("asset", SubjectRef.Create("asset"), ViaField: "asset_tag", Kind: DeclaredRelationKind.Reference),
+                new DeclaredRelation("owner", SubjectRef.Create("person")),
+            ]);
+        var records = new[] { new RawRecord("rec-1", new Dictionary<string, string?> { ["wo_no"] = "WO-1" }) };
+
+        await proposer.ProposeAsync(structure, records);
+
+        Assert.Contains("Declared structure is authoritative", model.LastPrompt);
+        Assert.Contains("wo_no (text, required)", model.LastPrompt);
+        Assert.Contains("qty (integer)", model.LastPrompt);
+        Assert.Contains("total (decimal; monetary amount, minor units)", model.LastPrompt);
+        Assert.Contains(", note", model.LastPrompt);
+        Assert.Contains("Declared relation: asset -> asset (reference via asset_tag)", model.LastPrompt);
+        Assert.Contains("Declared relation: owner -> person", model.LastPrompt);
+    }
+
+    [Fact]
     public async Task ProposeAsync_tells_the_model_which_record_groups_are_already_linked()
     {
         var model = new StubModelClient("""{"entities":[],"relations":[]}""");

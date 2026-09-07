@@ -50,10 +50,11 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         if (declaredStructure is not null)
         {
             text.AppendLine();
-            text.AppendLine(CultureInfo.InvariantCulture, $"Declared fields for {declaredStructure.Subject}: {string.Join(", ", declaredStructure.Fields.Select(f => f.Name))}");
+            text.AppendLine("Declared structure is authoritative: a declared field or relation is fact, not a hypothesis. Propose a relation a declared relation describes under its declared name, never contradict declared structure, and infer only what nothing declares.");
+            text.AppendLine(CultureInfo.InvariantCulture, $"Declared fields for {declaredStructure.Subject}: {string.Join(", ", declaredStructure.Fields.Select(DescribeField))}");
             foreach (var relation in declaredStructure.Relations)
             {
-                text.AppendLine(CultureInfo.InvariantCulture, $"Declared relation: {relation.Name} -> {relation.Target}");
+                text.AppendLine(CultureInfo.InvariantCulture, $"Declared relation: {DescribeRelation(relation)}");
             }
         }
 
@@ -87,6 +88,62 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         }
 
         return text.ToString();
+    }
+
+    /// <summary>
+    /// "qty (integer, required; monetary amount)" — every declared fact the caller supplied, so the
+    /// model is told what is declared rather than left to re-infer it from a sample.
+    /// </summary>
+    private static string DescribeField(DeclaredField field)
+    {
+        var facts = new List<string>();
+        if (field.Kind is { } kind)
+        {
+            facts.Add(Describe(kind));
+        }
+
+        if (field.Required == true)
+        {
+            facts.Add("required");
+        }
+
+        var detail = string.Join(", ", facts);
+        if (!string.IsNullOrWhiteSpace(field.SemanticHint))
+        {
+            detail = detail.Length == 0 ? field.SemanticHint : $"{detail}; {field.SemanticHint}";
+        }
+
+        return detail.Length == 0 ? field.Name : $"{field.Name} ({detail})";
+    }
+
+    private static string Describe(DeclaredValueKind kind) => kind switch
+    {
+        DeclaredValueKind.Text => "text",
+        DeclaredValueKind.WholeNumber => "integer",
+        DeclaredValueKind.FractionalNumber => "decimal",
+        DeclaredValueKind.Boolean => "boolean",
+        DeclaredValueKind.Timestamp => "timestamp",
+        DeclaredValueKind.Identifier => "identifier",
+        DeclaredValueKind.Structured => "structured",
+        _ => kind.ToString().ToLowerInvariant(),
+    };
+
+    /// <summary>"asset -> asset (reference via asset_tag)" — which field carries the relation, and on which side.</summary>
+    private static string DescribeRelation(DeclaredRelation relation)
+    {
+        var facts = new List<string>();
+        if (relation.Kind is { } kind)
+        {
+            facts.Add(kind.ToString().ToLowerInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(relation.ViaField))
+        {
+            facts.Add($"via {relation.ViaField}");
+        }
+
+        var head = $"{relation.Name} -> {relation.Target}";
+        return facts.Count == 0 ? head : $"{head} ({string.Join(" ", facts)})";
     }
 
     private static OntologyProposal ParseResponse(string responseText, LinkageAnalysis linkageAnalysis)

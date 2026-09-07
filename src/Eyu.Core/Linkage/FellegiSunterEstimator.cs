@@ -26,6 +26,8 @@ public static class FellegiSunterEstimator
         double convergenceTolerance = DefaultConvergenceTolerance)
     {
         ArgumentNullException.ThrowIfNull(comparisonVectors);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxIterations, 1);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(convergenceTolerance);
 
         var fieldNames = comparisonVectors.SelectMany(v => v.Keys).Distinct(StringComparer.Ordinal).ToList();
 

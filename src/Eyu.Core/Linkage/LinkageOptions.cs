@@ -20,4 +20,27 @@ public sealed record LinkageOptions(
     double StringSimilarityAgreementThreshold = FieldComparator.DefaultStringSimilarityAgreementThreshold)
 {
     public static readonly LinkageOptions Default = new();
+
+    /// <summary>
+    /// Throws when a value could not be honoured: thresholds that do not order, an iteration
+    /// count that would run EM zero times, a non-positive tolerance, or a similarity threshold
+    /// outside [0, 1]. <see cref="LinkagePipeline.Analyze"/> calls this before it looks at the
+    /// batch, so a bad option fails the same way whether the batch has one record or a thousand.
+    /// </summary>
+    public void Validate()
+    {
+        if (MatchThreshold <= NonMatchThreshold)
+        {
+            throw new ArgumentException(
+                $"{nameof(MatchThreshold)} ({MatchThreshold}) must be greater than {nameof(NonMatchThreshold)} ({NonMatchThreshold}).",
+                nameof(MatchThreshold));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfLessThan(MaxIterations, 1, nameof(MaxIterations));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(ConvergenceTolerance, nameof(ConvergenceTolerance));
+        if (StringSimilarityAgreementThreshold is < 0.0 or > 1.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(StringSimilarityAgreementThreshold), StringSimilarityAgreementThreshold, "Must be within [0, 1].");
+        }
+    }
 }

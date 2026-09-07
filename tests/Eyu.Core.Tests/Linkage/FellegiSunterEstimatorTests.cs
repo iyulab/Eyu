@@ -5,6 +5,25 @@ namespace Eyu.Core.Tests.Linkage;
 
 public class FellegiSunterEstimatorTests
 {
+    [Fact]
+    public void An_iteration_count_below_one_is_refused_rather_than_reported_as_not_converged()
+    {
+        var vectors = Enumerable.Range(0, FellegiSunterEstimator.MinimumPairsForEmEstimation)
+            .Select(_ => (IReadOnlyDictionary<string, FieldAgreementLevel>)new Dictionary<string, FieldAgreementLevel> { ["name"] = FieldAgreementLevel.Agree })
+            .ToList();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => FellegiSunterEstimator.Estimate(vectors, maxIterations: 0));
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(1.0)]
+    public void A_match_prior_on_the_boundary_cannot_be_represented(double prior)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new FieldLinkageParameters(
+            new Dictionary<string, double>(), new Dictionary<string, double>(), prior, EstimationStatus.HeuristicDefault));
+    }
+
     private static IReadOnlyDictionary<string, FieldAgreementLevel> Vector(params (string Field, FieldAgreementLevel Level)[] entries) =>
         entries.ToDictionary(e => e.Field, e => e.Level);
 

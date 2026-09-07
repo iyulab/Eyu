@@ -19,6 +19,28 @@ public class LinkagePipelineTests
     }
 
     [Fact]
+    public void Bad_options_are_refused_regardless_of_batch_size()
+    {
+        // The threshold check used to live in the classifier, which a one-record batch never
+        // reaches -- so the same bad option threw for two records and passed for one.
+        var options = new LinkageOptions(MatchThreshold: -4.0, NonMatchThreshold: 4.0);
+
+        Assert.Throws<ArgumentException>(() => LinkagePipeline.Analyze([Record("rec-1", ("name", "Acme"))], options));
+        Assert.Throws<ArgumentException>(() => LinkagePipeline.Analyze([Record("rec-1", ("name", "Acme")), Record("rec-2", ("name", "Acme"))], options));
+    }
+
+    [Fact]
+    public void Duplicate_record_ids_are_refused_by_name()
+    {
+        var records = new[] { Record("rec-1", ("name", "Acme")), Record("rec-1", ("name", "Acme Inc")), Record("rec-2", ("name", "Other")) };
+
+        var error = Assert.Throws<ArgumentException>(() => LinkagePipeline.Analyze(records));
+
+        Assert.Contains("rec-1", error.Message);
+        Assert.DoesNotContain("rec-2", error.Message);
+    }
+
+    [Fact]
     public void A_single_record_batch_produces_one_singleton_cluster_and_no_pair_linkages()
     {
         var analysis = LinkagePipeline.Analyze([Record("rec-1", ("name", "Acme"))]);

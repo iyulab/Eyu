@@ -5,6 +5,9 @@ namespace Eyu.Core.Tests.Linkage;
 
 public class EntityClustererTests
 {
+    private static readonly string[] AandB = ["a", "b"];
+    private static readonly string[] AandBandC = ["a", "b", "c"];
+
     [Fact]
     public void Two_records_linked_by_Match_end_up_in_one_cluster()
     {
@@ -13,7 +16,7 @@ public class EntityClustererTests
         var result = EntityClusterer.Cluster(["a", "b"], pairLinkages);
 
         var cluster = Assert.Single(result.Clusters);
-        Assert.Equal(new[] { "a", "b" }, cluster.RecordIds.OrderBy(id => id));
+        Assert.Equal(AandB, cluster.RecordIds.OrderBy(id => id));
         Assert.Empty(result.GrayZonePairs);
     }
 
@@ -56,7 +59,7 @@ public class EntityClustererTests
         var result = EntityClusterer.Cluster(["a", "b", "c"], pairLinkages);
 
         var cluster = Assert.Single(result.Clusters, c => c.RecordIds.Count == 2);
-        Assert.Equal(new[] { "a", "b" }, cluster.RecordIds.OrderBy(id => id));
+        Assert.Equal(AandB, cluster.RecordIds.OrderBy(id => id));
         var grayPair = Assert.Single(result.GrayZonePairs);
         Assert.Equal(("b", "c"), (grayPair.RecordIdA, grayPair.RecordIdB));
     }
@@ -76,7 +79,7 @@ public class EntityClustererTests
         var result = EntityClusterer.Cluster(["a", "b", "c"], pairLinkages);
 
         var cluster = Assert.Single(result.Clusters);
-        Assert.Equal(new[] { "a", "b", "c" }, cluster.RecordIds.OrderBy(id => id));
+        Assert.Equal(AandBandC, cluster.RecordIds.OrderBy(id => id));
         Assert.Empty(result.GrayZonePairs);
     }
 

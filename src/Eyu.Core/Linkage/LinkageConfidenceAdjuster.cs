@@ -31,8 +31,10 @@ public static class LinkageConfidenceAdjuster
             return llmConfidence;
         }
 
-        var matchPriorLogOdds = analysis.Parameters is null ? 0.0 : Logit(analysis.Parameters.MatchPrior);
         var citedIds = new HashSet<string>(citedRecordIds, StringComparer.Ordinal);
+        var matchPriorLogOdds = analysis.Parameters is null ? 0.0 : Logit(analysis.Parameters.MatchPrior);
+        double Posterior(double logLikelihoodRatio) =>
+            Math.Clamp(Sigmoid(logLikelihoodRatio + matchPriorLogOdds), ProbabilityFloor, ProbabilityCeiling);
 
         // A cluster is the transitive closure of Match edges, so a pair inside a confirmed cluster
         // can still read GrayZone on its own -- consulting only PairLinkages would blend the
@@ -46,8 +48,15 @@ public static class LinkageConfidenceAdjuster
 
             if (directMatchEdges.Count > 0)
             {
-                return Math.Clamp(Sigmoid(directMatchEdges.Min(p => p.LogLikelihoodRatio) + matchPriorLogOdds), ProbabilityFloor, ProbabilityCeiling);
+                return Posterior(directMatchEdges.Min(p => p.LogLikelihoodRatio));
             }
+        }
+
+        // One lookup keyed by the unordered pair, instead of a scan of every linkage per cited pair.
+        var byPair = new Dictionary<(string, string), PairLinkage>();
+        foreach (var pair in analysis.PairLinkages)
+        {
+            byPair[PairKey(pair.RecordIdA, pair.RecordIdB)] = pair;
         }
 
         var relevantPairs = new List<PairLinkage>();
@@ -55,10 +64,7 @@ public static class LinkageConfidenceAdjuster
         {
             for (var j = i + 1; j < citedRecordIds.Count; j++)
             {
-                var pair = analysis.PairLinkages.FirstOrDefault(p =>
-                    (p.RecordIdA == citedRecordIds[i] && p.RecordIdB == citedRecordIds[j]) ||
-                    (p.RecordIdA == citedRecordIds[j] && p.RecordIdB == citedRecordIds[i]));
-                if (pair is not null)
+                if (byPair.TryGetValue(PairKey(citedRecordIds[i], citedRecordIds[j]), out var pair))
                 {
                     relevantPairs.Add(pair);
                 }
@@ -72,13 +78,16 @@ public static class LinkageConfidenceAdjuster
 
         if (relevantPairs.All(p => p.Classification == LinkageClassification.Match))
         {
-            return Math.Clamp(Sigmoid(relevantPairs.Min(p => p.LogLikelihoodRatio) + matchPriorLogOdds), ProbabilityFloor, ProbabilityCeiling);
+            return Posterior(relevantPairs.Min(p => p.LogLikelihoodRatio));
         }
 
         var priorLogOdds = relevantPairs.Min(p => p.LogLikelihoodRatio) + matchPriorLogOdds;
         var llmLogOdds = Logit(Math.Clamp(llmConfidence, ProbabilityFloor, ProbabilityCeiling));
         return Math.Clamp(Sigmoid(priorLogOdds + llmLogOdds), ProbabilityFloor, ProbabilityCeiling);
     }
+
+    private static (string, string) PairKey(string a, string b) =>
+        string.CompareOrdinal(a, b) <= 0 ? (a, b) : (b, a);
 
     private static double Sigmoid(double logOdds) => 1.0 / (1.0 + Math.Exp(-logOdds));
 

@@ -13,6 +13,7 @@ public static class EntityClusterer
     {
         ArgumentNullException.ThrowIfNull(recordIds);
         ArgumentNullException.ThrowIfNull(pairLinkages);
+        LinkagePipeline.ThrowIfDuplicateIds(recordIds);
 
         var parent = recordIds.ToDictionary(id => id, id => id, StringComparer.Ordinal);
 

@@ -181,6 +181,17 @@ consumer- or `IModelClient`-implementation concern; Eyu's contract does not
 mandate one specific technique, but it does mandate that raw confidence
 never be trusted uncalibrated.
 
+The three tiers are exposed as code rather than as prose the caller must
+re-implement: `RoutingPolicy` (one `RoutingThresholds` pair per
+`VocabularyOrigin`, because §C says the two regimes do not share a
+calibration curve) turns a confidence into a `ProposalRoute`, and `Trace`
+carries the result in HoneAI's `ITracedPrediction<T>` /
+`PredictionProvenance` — an existing, zero-dependency provenance contract
+from the same organisation, reused instead of reinvented. No default
+thresholds ship, for the reason this section gives: a default would be a
+calibration claim Eyu cannot make. The gate itself (`IHitlGate`) stays on
+the consumer side — Eyu proposes, it never applies.
+
 ## E. Does Eyu become the thing the methodology argues against? 🟢
 
 The methodology this stack is built on argues against requiring an ontology

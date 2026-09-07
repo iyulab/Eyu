@@ -10,6 +10,12 @@
       access to formbase's source tree.
     -->
     <PackageVersion Include="Formbase.Core" Version="0.9.0" />
+    <!--
+      Provenance carrier for routed proposals (ITracedPrediction<T> / PredictionProvenance).
+      Contract-only package with zero dependencies; HoneAI.Core and HoneAI.Agents are deliberately
+      not referenced — the review gate itself is the consumer's to wire (README, "Confidence routes").
+    -->
+    <PackageVersion Include="HoneAI.Abstractions" Version="0.2.1" />
   </ItemGroup>
 
   <ItemGroup>

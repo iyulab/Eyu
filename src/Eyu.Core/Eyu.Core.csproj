@@ -5,4 +5,8 @@
     <Description>Eyu core contract — source-agnostic ontology inference ports (IStructureSource, IRecordSample, IOntologyProposer, IGroundingContract, IModelClient).</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="HoneAI.Abstractions" />
+  </ItemGroup>
+
 </Project>

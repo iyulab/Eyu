@@ -81,8 +81,13 @@ the target the architecture is built toward, not as a track record.
 - **Confidence routes, it doesn't decide.** Every proposal carries a
   confidence score; a caller-defined threshold routes it to auto-apply,
   human review, or draft-only. Eyu proposes — it never applies anything.
-  Self-reported confidence is not trustworthy uncalibrated — see
-  [design rationale, §D](docs/philosophy.md).
+  The routing is code, not a convention left to the caller: a
+  [`RoutingPolicy`](src/Eyu.Core/Routing/RoutingPolicy.cs) holds the
+  caller's thresholds (per origin — see §C), `Route` returns the tier, and
+  `Trace` wraps the proposal in HoneAI's `ITracedPrediction<T>` provenance
+  stamp so any `IHitlGate`-style review flow can consume it. There is no
+  default threshold, on purpose: self-reported confidence is not
+  trustworthy uncalibrated — see [design rationale, §D](docs/philosophy.md).
 - **No claim without a reason.** A response is a structure of
   `{claim, sources[], path[]}`. A claim that can't cite its sources cannot be
   expressed — this is enforced by the output shape, not by a prompt — and a
@@ -133,6 +138,19 @@ the target the architecture is built toward, not as a track record.
 Each consumer implements `IStructureSource`/`IRecordSample` for its own world
 — an owned raw store, a declared schema, a federated read — and gets the same
 proposal logic back through `IOntologyProposer`.
+
+Routing is also a value, not a port. A caller builds a
+[`RoutingPolicy`](src/Eyu.Core/Routing/RoutingPolicy.cs) from its own
+`RoutingThresholds` (auto-apply / review lower bounds, one pair per
+`VocabularyOrigin`), then calls `proposal.Route(policy)` for the tier or
+`proposal.Trace(policy)` for the proposal wrapped in a HoneAI
+`PredictionProvenance` (`SourceLayer = Frontier`, the confidence, the claim as
+rationale, `RequiresReview` for every tier a machine may not act on, and the
+route / origin / basis / cited record ids as annotations). Eyu references only
+[`HoneAI.Abstractions`](https://www.nuget.org/packages/HoneAI.Abstractions) —
+the zero-dependency contract package — and never implements `IHitlGate`: opening
+a gate, awaiting the reviewer, and applying an approved proposal are the
+consumer's, because Eyu never applies anything.
 
 Entity resolution is tuned through a value, not a port: `SinglePassOntologyProposer`
 accepts an optional [`LinkageOptions`](src/Eyu.Core/Linkage/LinkageOptions.cs) record

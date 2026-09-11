@@ -6,9 +6,12 @@ namespace Eyu.Core.Linkage;
 /// <see cref="PairLinkage"/> in <paramref name="PairLinkages"/> — exposed so a caller inspecting
 /// this directly (e.g. a live validation harness) can see the match prior and whether EM actually
 /// converged (<see cref="EstimationStatus"/>). Null only when the record batch had fewer than two
-/// records, so there was nothing to compare.
+/// records, so there was nothing to compare. <paramref name="ErrorRates"/> is the unlabeled
+/// estimate of the pre-filter's own error rates on this batch, built from the same parameters
+/// (see <see cref="LinkageErrorRateEstimate"/>); null exactly when <paramref name="Parameters"/> is.
 /// </summary>
 public sealed record LinkageAnalysis(
     ClusteringResult Clustering,
     IReadOnlyList<PairLinkage> PairLinkages,
-    FieldLinkageParameters? Parameters);
+    FieldLinkageParameters? Parameters,
+    LinkageErrorRateEstimate? ErrorRates = null);

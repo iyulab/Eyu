@@ -28,7 +28,12 @@ Match/GrayZone/NonMatch, EM convergence status, match prior) and that changing t
 measurably changes both the resulting prompt and the grounding-overlap counts. What that run does
 **not** establish: whether any particular threshold setting is more *correct* — no labeled
 ground truth exists to score the pre-filter's own match/non-match calls against, so
-entity-resolution accuracy remains unmeasured — or whether the proposer's self-reported
+entity-resolution accuracy remains unmeasured; what the pre-filter does report is an
+*unlabeled estimate* of its own error rates (`LinkageAnalysis.ErrorRates`: the false-match and
+false-non-match rates the fitted EM mixture expects of its own calls, with the preconditions of
+that estimate flagged when they did not hold — an estimate is not a measurement, and it says
+whether a clerical review of a sample is worth running, not what it would find) — or whether
+the proposer's self-reported
 confidence is informative on its own, which it was not in an earlier measurement (see
 [design rationale, §D](docs/philosophy.md)); gray-zone cases now combine it with the
 Fellegi-Sunter prior via a Bayesian update instead of using it alone. Field comparison inside

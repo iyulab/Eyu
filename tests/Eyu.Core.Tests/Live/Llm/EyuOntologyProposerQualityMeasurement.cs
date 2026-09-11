@@ -274,22 +274,23 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         report.AppendLine().AppendLine("## Fellegi-Sunter pre-filter (per case, independent of model attempts)")
             .AppendLine()
-            .AppendLine("| case | pairs | match | gray-zone | non-match | EM status | match prior |")
-            .AppendLine("|---|---|---|---|---|---|---|");
+            .AppendLine("| case | pairs | match | gray-zone | non-match | EM status | match prior | est. false-match | est. false-non-match | estimate caveats |")
+            .AppendLine("|---|---|---|---|---|---|---|---|---|---|");
         foreach (var (name, s) in stats)
         {
             var linkage = s.Linkage;
             if (linkage is null || linkage.Parameters is null)
             {
-                report.AppendLine(CultureInfo.InvariantCulture, $"| {name} | 0 | - | - | - | n/a (fewer than 2 records) | n/a |");
+                report.AppendLine(CultureInfo.InvariantCulture, $"| {name} | 0 | - | - | - | n/a (fewer than 2 records) | n/a | n/a | n/a | n/a |");
                 continue;
             }
 
             var match = linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.Match);
             var grayZone = linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.GrayZone);
             var nonMatch = linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.NonMatch);
+            var errorRates = linkage.ErrorRates;
             report.AppendLine(CultureInfo.InvariantCulture,
-                $"| {name} | {linkage.PairLinkages.Count} | {match} | {grayZone} | {nonMatch} | {linkage.Parameters.Status}{(linkage.Parameters.LabelsSwapped ? " (relabeled)" : "")} | {linkage.Parameters.MatchPrior:F3} |");
+                $"| {name} | {linkage.PairLinkages.Count} | {match} | {grayZone} | {nonMatch} | {linkage.Parameters.Status}{(linkage.Parameters.LabelsSwapped ? " (relabeled)" : "")} | {linkage.Parameters.MatchPrior:F3} | {errorRates?.FalseMatchRate.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | {errorRates?.FalseNonMatchRate.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | {(errorRates is null ? "n/a" : errorRates.IsReliable ? "none" : errorRates.Caveats.ToString())} |");
         }
 
         var notes = stats.Where(kv => kv.Value.FailureNotes.Count > 0).ToList();
@@ -325,7 +326,10 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         int GrayZone,
         int NonMatch,
         string EstimationStatus,
-        double? MatchPrior);
+        double? MatchPrior,
+        double? EstimatedFalseMatchRate,
+        double? EstimatedFalseNonMatchRate,
+        string? ErrorRateCaveats);
 
     private sealed record CaseLogEntry(
         string Name,
@@ -361,7 +365,10 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                     linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.GrayZone),
                     linkage.PairLinkages.Count(p => p.Classification == LinkageClassification.NonMatch),
                     linkage.Parameters.Status + (linkage.Parameters.LabelsSwapped ? "(relabeled)" : ""),
-                    linkage.Parameters.MatchPrior);
+                    linkage.Parameters.MatchPrior,
+                    linkage.ErrorRates?.FalseMatchRate,
+                    linkage.ErrorRates?.FalseNonMatchRate,
+                    linkage.ErrorRates is null ? null : linkage.ErrorRates.IsReliable ? "none" : linkage.ErrorRates.Caveats.ToString());
 
             return new CaseLogEntry(
                 name,

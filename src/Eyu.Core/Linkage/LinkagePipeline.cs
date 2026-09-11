@@ -5,7 +5,8 @@ namespace Eyu.Core.Linkage;
 /// <summary>
 /// Orchestrates <see cref="FieldComparator"/> -&gt; <see cref="FellegiSunterEstimator"/> -&gt;
 /// <see cref="LinkageClassifier"/> -&gt; <see cref="EntityClusterer"/> into one
-/// <see cref="LinkageAnalysis"/> per record batch. Fewer than two records has nothing to compare,
+/// <see cref="LinkageAnalysis"/> per record batch, with <see cref="LinkageErrorRateEstimator"/>
+/// reporting what the fitted model expects its own classification to have got wrong. Fewer than two records has nothing to compare,
 /// so the pipeline is skipped entirely and every record becomes its own singleton cluster.
 /// <paramref name="options"/> defaults to <see cref="LinkageOptions.Default"/> — matching every
 /// tuning value <see cref="LinkageClassifier"/> and <see cref="FellegiSunterEstimator"/> already
@@ -76,6 +77,7 @@ public static class LinkagePipeline
         }
 
         var clustering = EntityClusterer.Cluster(recordIds, pairLinkages);
-        return new LinkageAnalysis(clustering, pairLinkages, parameters);
+        var errorRates = LinkageErrorRateEstimator.Estimate(pairLinkages, parameters);
+        return new LinkageAnalysis(clustering, pairLinkages, parameters, errorRates);
     }
 }

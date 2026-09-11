@@ -32,7 +32,9 @@ entity-resolution accuracy remains unmeasured; what the pre-filter does report i
 *unlabeled estimate* of its own error rates (`LinkageAnalysis.ErrorRates`: the false-match and
 false-non-match rates the fitted EM mixture expects of its own calls, with the preconditions of
 that estimate flagged when they did not hold — an estimate is not a measurement, and it says
-whether a clerical review of a sample is worth running, not what it would find) — or whether
+whether a clerical review of a sample is worth running, not what it would find; the unit such a
+review will be scored on is already fixed as B-cubed per record, not per pair,
+`ClusteringMetrics.BCubed`) — or whether
 the proposer's self-reported
 confidence is informative on its own, which it was not in an earlier measurement (see
 [design rationale, §D](docs/philosophy.md)); gray-zone cases now combine it with the

@@ -108,4 +108,48 @@ public class ClusteringMetricsTests
 
         Assert.Equal(1.0, score.F1, 12);
     }
+
+    // The per-record scores are what a stratified review estimates from, so they have to be the
+    // same numbers BCubed averages -- not a second computation that could drift from it.
+    [Fact]
+    public void Per_record_scores_average_to_the_score_BCubed_reports()
+    {
+        List<RecordCluster> predicted = [new(["a", "b", "c"]), new(["d"])];
+        List<RecordCluster> reference = [new(["a", "b"]), new(["c", "d"])];
+
+        var perRecord = ClusteringMetrics.BCubedPerRecord(predicted, reference);
+        var score = ClusteringMetrics.BCubed(predicted, reference);
+
+        Assert.Equal(4, perRecord.Count);
+        Assert.Equal(score.Precision, perRecord.Values.Average(s => s.Precision), 12);
+        Assert.Equal(score.Recall, perRecord.Values.Average(s => s.Recall), 12);
+    }
+
+    // A record the system put with two strangers keeps 1/3 of its cluster right, and found the one
+    // other member of its true cluster it was supposed to find -- precision and recall come apart
+    // per record, which is the whole reason the estimate is built from them rather than from a mean.
+    [Fact]
+    public void One_records_precision_and_recall_are_reported_separately()
+    {
+        var perRecord = ClusteringMetrics.BCubedPerRecord(
+            [new(["a", "b", "c"])],
+            [new(["a", "b"]), new(["c"])]);
+
+        Assert.Equal(2.0 / 3.0, perRecord["a"].Precision, 12);
+        Assert.Equal(1.0, perRecord["a"].Recall, 12);
+        Assert.Equal(1.0 / 3.0, perRecord["c"].Precision, 12);
+        Assert.Equal(1.0, perRecord["c"].Recall, 12);
+    }
+
+    // Same refusal as BCubed: a record on one side only is a mismatch between what was clustered
+    // and what was labeled, not a clustering mistake to be scored as one.
+    [Fact]
+    public void Per_record_scoring_refuses_clusterings_that_cover_different_records()
+    {
+        var error = Assert.Throws<ArgumentException>(() => ClusteringMetrics.BCubedPerRecord(
+            [new(["a", "b"])],
+            [new(["a"])]));
+
+        Assert.Contains("b", error.Message, StringComparison.Ordinal);
+    }
 }

@@ -7,6 +7,15 @@ namespace Eyu.Core.Linkage;
 public sealed record ClusteringScore(double Precision, double Recall, double F1);
 
 /// <summary>
+/// One record's B-cubed precision and recall, before they are averaged away. B-cubed is defined
+/// per record, and a clerical review of a sample estimates a population score from exactly these
+/// per-record numbers (<c>docs/clerical-review.md</c> section 3 -- the stratum mean and variance
+/// are taken over them). Averaging inside <see cref="ClusteringMetrics.BCubed"/> and keeping only
+/// the mean leaves that estimator with nothing to consume.
+/// </summary>
+public sealed record RecordScore(double Precision, double Recall);
+
+/// <summary>
 /// Scores a clustering the way entity resolution is scored: per record, per cluster — not per
 /// pair. Pairwise precision/recall weights a cluster by the square of its size, so one large
 /// cluster decides the score and every small one vanishes; B-cubed (Bagga &amp; Baldwin 1998)
@@ -31,8 +40,73 @@ public static class ClusteringMetrics
         var predictedOf = ClusterOf(predicted, nameof(predicted));
         var referenceOf = ClusterOf(reference, nameof(reference));
 
-        var onlyPredicted = predictedOf.Keys.Except(referenceOf.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
-        var onlyReference = referenceOf.Keys.Except(predictedOf.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        RequireSameRecordIds(predictedOf, referenceOf);
+
+        if (predictedOf.Count == 0)
+        {
+            return new ClusteringScore(1.0, 1.0, 1.0);
+        }
+
+        double precisionSum = 0, recallSum = 0;
+        foreach (var score in ScoreEachRecord(predictedOf, referenceOf).Values)
+        {
+            precisionSum += score.Precision;
+            recallSum += score.Recall;
+        }
+
+        var precision = precisionSum / predictedOf.Count;
+        var recall = recallSum / predictedOf.Count;
+        var f1 = precision + recall <= 0.0 ? 0.0 : 2.0 * precision * recall / (precision + recall);
+        return new ClusteringScore(precision, recall, f1);
+    }
+
+    /// <summary>
+    /// The same scores <see cref="BCubed"/> averages, kept per record. This is the input a
+    /// stratified estimate of a population score is built from (see
+    /// <see cref="ClericalReviewEstimator"/>): the mean is a summary of a census, while an
+    /// estimate from a reviewed sample needs the individual values to get a variance out of them.
+    /// Arguments are validated exactly as <see cref="BCubed"/> validates them.
+    /// </summary>
+    public static IReadOnlyDictionary<string, RecordScore> BCubedPerRecord(
+        IReadOnlyList<RecordCluster> predicted,
+        IReadOnlyList<RecordCluster> reference)
+    {
+        ArgumentNullException.ThrowIfNull(predicted);
+        ArgumentNullException.ThrowIfNull(reference);
+
+        var predictedOf = ClusterOf(predicted, nameof(predicted));
+        var referenceOf = ClusterOf(reference, nameof(reference));
+        RequireSameRecordIds(predictedOf, referenceOf);
+        return ScoreEachRecord(predictedOf, referenceOf);
+    }
+
+    private static Dictionary<string, RecordScore> ScoreEachRecord(
+        Dictionary<string, HashSet<string>> predictedOf,
+        Dictionary<string, HashSet<string>> referenceOf)
+    {
+        var scores = new Dictionary<string, RecordScore>(predictedOf.Count, StringComparer.Ordinal);
+        foreach (var (id, predictedCluster) in predictedOf)
+        {
+            var referenceCluster = referenceOf[id];
+            var shared = predictedCluster.Count(referenceCluster.Contains);
+            scores[id] = new RecordScore(
+                (double)shared / predictedCluster.Count,
+                (double)shared / referenceCluster.Count);
+        }
+
+        return scores;
+    }
+
+    /// <summary>
+    /// Parameters are named for the public arguments they came from, so the refusal message and
+    /// the <c>paramName</c> it carries point at what the caller actually passed.
+    /// </summary>
+    private static void RequireSameRecordIds(
+        Dictionary<string, HashSet<string>> predicted,
+        Dictionary<string, HashSet<string>> reference)
+    {
+        var onlyPredicted = predicted.Keys.Except(reference.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        var onlyReference = reference.Keys.Except(predicted.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         if (onlyPredicted.Count > 0 || onlyReference.Count > 0)
         {
             throw new ArgumentException(
@@ -41,25 +115,6 @@ public static class ClusteringMetrics
                 + (onlyReference.Count > 0 ? $"Only in {nameof(reference)}: {string.Join(", ", onlyReference)}." : ""),
                 nameof(reference));
         }
-
-        if (predictedOf.Count == 0)
-        {
-            return new ClusteringScore(1.0, 1.0, 1.0);
-        }
-
-        double precisionSum = 0, recallSum = 0;
-        foreach (var (id, predictedCluster) in predictedOf)
-        {
-            var referenceCluster = referenceOf[id];
-            var shared = predictedCluster.Count(referenceCluster.Contains);
-            precisionSum += (double)shared / predictedCluster.Count;
-            recallSum += (double)shared / referenceCluster.Count;
-        }
-
-        var precision = precisionSum / predictedOf.Count;
-        var recall = recallSum / predictedOf.Count;
-        var f1 = precision + recall <= 0.0 ? 0.0 : 2.0 * precision * recall / (precision + recall);
-        return new ClusteringScore(precision, recall, f1);
     }
 
     private static Dictionary<string, HashSet<string>> ClusterOf(IReadOnlyList<RecordCluster> clusters, string parameterName)

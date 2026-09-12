@@ -71,6 +71,11 @@ standard error  SE = sqrt( Σ_h (N_h / N)² · (1 − n_h/N_h) · s²_h / n_h )
 interval        x̄ ± 1.96 · SE          (95%, normal approximation)
 ```
 
+Computed by `ClericalReviewEstimator.Estimate`, over the per-record scores
+`ClusteringMetrics.BCubedPerRecord` returns. Both intervals come back on one
+`ClericalReviewEstimate`, unclamped, with the assumptions that did not hold reported as caveats
+rather than as silence.
+
 Two cautions that decide whether the interval means anything:
 
 - **The scores are bounded and skewed.** In S1 and S2 most records score exactly 1.0, so the
@@ -116,8 +121,8 @@ One table, and no prose that outruns it:
 | Line | Content |
 |---|---|
 | Population | `N`, and `N_h` per stratum, with the configuration that produced them |
-| Sample | `n_h` per stratum, allocation rule, draw method and seed |
-| Scores | B-cubed precision and recall, each with its 95% interval (normal and bootstrap) |
+| Sample | `n_h` per stratum, allocation rule, draw method and seed (the estimate carries the seed it used) |
+| Scores | B-cubed precision and recall, each with its 95% interval (normal and bootstrap) — one `ClericalReviewEstimate` per measure |
 | Reviewer agreement | κ on the double-reviewed subsample, and its size |
 | Exclusions | *cannot tell* rate per stratum |
 | Out of scope | blocking loss — measured separately, or stated as unmeasured |

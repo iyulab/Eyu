@@ -48,6 +48,8 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    env:
+      IncludeEyuLlmLiveTests: 'true'
 
     steps:
       - name: Checkout
@@ -61,13 +63,20 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      # The live-test files are removed from the default compilation, and `dotnet format` works
-      # off the compilation -- so without this the gate silently does not see them. Measured:
+      # The live-test files are removed from the default compilation, so nothing in the build job
+      # sees them: measured, a call to a method that does not exist in one of them passes both
+      # `dotnet build` (file excluded) and `dotnet format` (which reports formatting, not semantic
+      # errors). Compiling them here is what catches that. The build job cannot do it -- turning
+      # the flag on there would make its `dotnet test` try to reach a live model. Building is
+      # enough; running these tests needs an endpoint, which CI does not have.
+      #
+      # The same flag also opens the formatting gate over those files. Measured when it was added:
       # green by default, 580 violations in two files with the flag on. `dotnet format` takes no
-      # -p:, but MSBuild reads environment variables as properties.
+      # -p:, but MSBuild reads environment variables as properties, which is why this is `env`.
+      - name: Compile the live-only test configuration
+        run: dotnet build --no-restore --configuration Release
+
       - name: Check formatting
-        env:
-          IncludeEyuLlmLiveTests: 'true'
         run: dotnet format --verify-no-changes --verbosity diagnostic
 
   security:

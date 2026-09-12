@@ -10,7 +10,7 @@
 
   <!--
     Real-model smoke for SinglePassOntologyProposer, mirroring formbase's Live/Llm gate
-    (tests/Formbase.Core.Tests/Formbase.Core.Tests.csproj) one repo over. Needs a reachable
+    (tests/Formbase.Core.Tests/Formbase.Core.Tests.csproj). Needs a reachable
     OpenAI-compatible chat-completions endpoint:
       EYU_LLM_ENDPOINT / EYU_LLM_API_KEY / EYU_LLM_MODEL
       dotnet test -p:IncludeEyuLlmLiveTests=true

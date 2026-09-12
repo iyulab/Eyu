@@ -61,7 +61,13 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
+      # The live-test files are removed from the default compilation, and `dotnet format` works
+      # off the compilation -- so without this the gate silently does not see them. Measured:
+      # green by default, 580 violations in two files with the flag on. `dotnet format` takes no
+      # -p:, but MSBuild reads environment variables as properties.
       - name: Check formatting
+        env:
+          IncludeEyuLlmLiveTests: 'true'
         run: dotnet format --verify-no-changes --verbosity diagnostic
 
   security:

@@ -25,6 +25,10 @@ namespace Eyu.Core.Judgment;
 /// always wins": declared types are stamped as such and a relation that misuses a declared name is
 /// dropped, so the prompt's authority sentence is a request to the model and the merge is the
 /// guarantee to the caller.
+/// The prompt's preamble deliberately does not say what counts as an entity or which kinds should
+/// become types rather than instances: that is the innate grammar's question (design rationale, §C
+/// and §E), not this class's, so the model's type-versus-instance choices are measured rather than
+/// steered, and a test pins the preamble so a steering sentence cannot arrive by accident.
 /// This class still only proves the wiring is correct; it makes no claim about judgment quality
 /// on its own, which no unit test can verify without a real model behind
 /// <see cref="IModelClient"/>.

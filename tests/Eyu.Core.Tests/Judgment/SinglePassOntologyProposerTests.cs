@@ -413,6 +413,32 @@ public class SinglePassOntologyProposerTests
         Assert.DoesNotContain("Ambiguous record pairs", model.LastPrompt);
     }
 
+    [Fact]
+    public async Task ProposeAsync_prompt_preamble_does_not_say_what_counts_as_an_entity()
+    {
+        // The preamble is deliberately silent on what an entity is and on which kinds should
+        // become types rather than instances. That question belongs to the innate grammar
+        // (docs/philosophy.md, §C and §E), which is not adopted; a sentence steering it here would
+        // be that decision made in the wrong place, and it would turn the competency-question
+        // harness from a measurement of the model's modelling choices into a target the prompt is
+        // tuned against. This test pins the preamble so the sentence cannot arrive by accident --
+        // changing it is a design decision, and the failure is the reminder.
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model);
+
+        await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
+
+        var expectedPreamble = string.Join(Environment.NewLine,
+        [
+            "Propose entities and relations grounded in the input below.",
+            "Respond with JSON only: {\"entities\":[{\"id\",\"type\",\"claim\",\"sources\",\"origin\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"origin\",\"confidence\"}]}.",
+            "\"origin\" is \"Innate\" or \"Acquired\". Every claim must cite at least one source id.",
+            "",
+            "Records:",
+        ]) + Environment.NewLine;
+        Assert.StartsWith(expectedPreamble, model.LastPrompt);
+    }
+
     private sealed class StubModelClient(string responseText) : IModelClient
     {
         public string? LastPrompt { get; private set; }

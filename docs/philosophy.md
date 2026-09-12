@@ -234,6 +234,20 @@ it. The innate layer is closer to a fixed piece of infrastructure (like
 agreeing what a timestamp format is) than to the kind of ontology authorship
 the methodology is arguing against.
 
+One consequence of that scope is already visible in the code, and is kept
+there on purpose: `SinglePassOntologyProposer`'s prompt does not say what
+counts as an entity, nor which kinds named in the records should become
+types rather than instances of a more general type. A model given a record
+that names a *kind* of cause may stand that kind up as its own type or fold
+it into an instance of `Cause`; the competency-question harness reports
+which it did, and a question that can only be answered by the former stays
+unreached when the model chose the latter. That is a measurement of the
+model's modelling choice, not a defect in the prompt — and a prompt sentence
+steering the choice would be an innate-grammar decision made in the wrong
+place, one that also turns the harness from an instrument into a target.
+Until the innate layer is adopted, the preamble stays silent, and a test
+pins it so that silence cannot end by accident.
+
 ## What this document deliberately does not claim 🔴
 
 Recorded here so a future revision doesn't reintroduce them without

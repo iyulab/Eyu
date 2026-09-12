@@ -10,8 +10,8 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// (<c>SinglePassOntologyProposerTests</c>) pins parsing and prompt construction; what only a live
 /// model can answer is whether an actual completion, with all its formatting habits, survives the
 /// strict parse and grounds every claim in a source id that was actually given. Records below are a
-/// real 3-row slice of <c>league/corpus/nuclear-power/nrc-ler-2020-2026.json</c> (NRC Licensee
-/// Event Reports, public data) — declaredStructure is <c>null</c> on purpose: this is raw external
+/// real 3-row slice of NRC Licensee Event Reports (public US Nuclear Regulatory Commission
+/// filings) — declaredStructure is <c>null</c> on purpose: this is raw external
 /// data with no Formbase-declared schema behind it, and Eyu only knows what a caller supplies.
 /// </summary>
 public class EyuOntologyProposerLiveTests

@@ -75,6 +75,13 @@ jobs:
       # it runs before the SDK is set up and fails the job in seconds when it fails.
       - name: Internal token scan
         uses: iyulab/dotnet-ci-actions/internal-token-scan@7e501c0d46f7c06e73a8945f4b0f83fcb347eb53 # main, 2026-09-06
+        with:
+          # The evaluation corpus the live measurement draws from lives in a private tree
+          # outside this repository. A path into it resolves for nobody reading the published
+          # source, so the catalog names the dataset (NRC Licensee Event Reports, FAA Service
+          # Difficulty Reports) instead of the file it was sliced from. The character class in
+          # the pattern below keeps it from matching itself -- this file is scanned too.
+          extra-patterns: '\bleague[/]'
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

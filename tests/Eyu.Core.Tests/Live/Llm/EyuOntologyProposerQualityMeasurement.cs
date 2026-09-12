@@ -13,8 +13,8 @@ namespace Eyu.Core.Tests.Live.Llm;
 
 /// <summary>
 /// The measurement instrument for <see cref="SinglePassOntologyProposer"/>, mirroring formbase's
-/// <c>LlmProposerQualityMeasurement</c> one repo over: runs the proposer repeatedly over a fixed
-/// catalog of real <c>league/</c> records from different domains and reports objective quality
+/// <c>LlmProposerQualityMeasurement</c>: runs the proposer repeatedly over a fixed catalog of real
+/// public-dataset records from different domains and reports objective quality
 /// rates. Eyu's proposal shape is open-vocabulary (entity/relation names the model invents), unlike
 /// formbase's fixed column-type schema, so the metrics here differ in kind from formbase's — there
 /// is no "expected type" ground truth to score against. What *is* objectively checkable without a
@@ -68,7 +68,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
     private static readonly QualityCase[] Catalog =
     [
-        // league/corpus/nuclear-power/nrc-ler-2020-2026.json -- real NRC Licensee Event Reports.
+        // Real NRC Licensee Event Reports -- public US Nuclear Regulatory Commission filings.
         new("nuclear-power-ler",
         [
             new("0252022001", new Dictionary<string, string?>
@@ -98,7 +98,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             new("Which events are attributed to a procedural or work-process deficiency?",
                 ["procedure|process|guidance|work", "cause|deficiency|inadequate|reason"]),
         ]),
-        // league/corpus/aviation/SDR-2026.csv -- real FAA Service Difficulty Reports.
+        // Real FAA Service Difficulty Reports -- public US Federal Aviation Administration data.
         new("aviation-sdr",
         [
             new("AALA202601050865", new Dictionary<string, string?>

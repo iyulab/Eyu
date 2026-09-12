@@ -79,10 +79,18 @@ standard error  SE = sqrt( Σ_h (N_h / N)² · (1 − n_h/N_h) · s²_h / n_h )
 interval        x̄ ± 1.96 · SE          (95%, normal approximation)
 ```
 
-Computed by `ClericalReviewEstimator.Estimate`, over the per-record scores
-`ClusteringMetrics.BCubedPerRecord` returns. Both intervals come back on one
-`ClericalReviewEstimate`, unclamped, with the assumptions that did not hold reported as caveats
-rather than as silence.
+Computed by `ClericalReviewEstimator.Estimate`, over per-record scores. Those come from
+`ClericalReviewScoring`, which composes each sampled record's true cluster from the reviewer's
+verdicts alone — the predicted cluster minus the co-members judged *different*, plus the outside
+candidates judged *same* (Binette et al. 2024, §3.2) — and scores the record against it. No
+reference clustering of the population is needed or wanted: a sampled review never has one, and
+assembling one by leaving unreviewed records where the system put them scores a false merge's
+unreviewed partners as if they were right. (`ClusteringMetrics.BCubedPerRecord` is the census
+form of the same per-record score, for the case where the whole truth is known.) Records are
+composed one at a time; two sampled records in one predicted cluster can be given true clusters
+that contradict each other, and that is reported as reviewer disagreement (§4), not reconciled.
+Both intervals come back on one `ClericalReviewEstimate`, unclamped, with the assumptions that
+did not hold reported as caveats rather than as silence.
 
 Two cautions that decide whether the interval means anything:
 
@@ -110,11 +118,21 @@ is known — and report the two numbers apart. Silently adding them gives a reca
   record*. The third is a finding about the data, not a failure to decide; it is reported as its
   own rate and never silently folded into either side. A record whose cluster cannot be settled
   is excluded from the scored set and counted in the exclusion line, and the exclusion rate is
-  reported next to the score.
+  reported next to the score. In code: any *cannot tell* verdict on a sampled record's candidates
+  leaves that record unscored (`ScoredRecord.IsExcluded`, with the unresolved candidates named),
+  and `ReviewScoring.Exclusions` carries the line per stratum.
 - **Double-review a subsample.** 20% of each stratum goes to a second reviewer. Report Cohen's
-  κ. A κ below roughly 0.6 means the interval understates the real uncertainty — the disagreement
-  is between reviewers, and no amount of sampling fixes it. Fix the instructions and re-review
-  before reporting a score.
+  κ, pooled over every double-reviewed pair rather than per stratum — a stratum's subsample is a
+  handful of verdicts and a coefficient over a handful says nothing. Report Gwet's AC1 (Gwet 2008)
+  and per-outcome specific agreement beside it: in S1 and S2 nearly every verdict is the same
+  outcome, and under that prevalence κ collapses toward zero (or is undefined) while the
+  reviewers in fact agreed on almost everything — the κ-below-0.6 rule reads as failure exactly
+  where the review is going well. Read κ where the outcomes are mixed and AC1 where they are
+  not (`ClericalReviewAgreement.Measure`). A low coefficient where the outcomes *are* mixed means
+  the interval understates the real uncertainty — the disagreement is between reviewers, and no
+  amount of sampling fixes it. Fix the instructions and re-review before reporting a score.
+  Scoring itself runs under one designated reviewer's verdicts (`ClericalReviewScoring.Score`);
+  the second reviewer's are for this line, never averaged into the true clusters.
 - **Write the rule down when it is invented.** Whenever adjudication needs a rule the protocol
   did not anticipate (initials, a merged organization, a renamed entity), record it and apply it
   to everything reviewed so far. A rule invented halfway through makes the first half a different
@@ -131,7 +149,7 @@ One table, and no prose that outruns it:
 | Population | `N`, and `N_h` per stratum, with the configuration that produced them |
 | Sample | `n_h` per stratum, allocation rule, draw method and seed (the estimate carries the seed it used) |
 | Scores | B-cubed precision and recall, each with its 95% interval (normal and bootstrap) — one `ClericalReviewEstimate` per measure |
-| Reviewer agreement | κ on the double-reviewed subsample, and its size |
+| Reviewer agreement | κ and Gwet's AC1 on the double-reviewed subsample, its size, and specific agreement per outcome |
 | Exclusions | *cannot tell* rate per stratum |
 | Out of scope | blocking loss — measured separately, or stated as unmeasured |
 | Comparison | the pre-filter's unlabeled estimate for the same run, side by side |

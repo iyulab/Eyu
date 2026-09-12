@@ -23,6 +23,13 @@ public sealed record RecordScore(double Precision, double Recall);
 /// cluster it found, and averages over records — which is the unit a clerical review of a
 /// sample can be scored on (Binette et al. 2024). The scoring unit is fixed here before any
 /// labeled sample exists, so the sample is drawn to feed this and not the other way round.
+/// <para>
+/// The estimand a clerical review targets is exactly the population mean <see cref="BCubed"/>
+/// computes when the whole truth is known: the average over every record of that record's
+/// precision (and, separately, recall). A review estimates it from a sample of records scored one
+/// at a time by <see cref="ClericalReviewScoring"/>; this class is the census form of the same
+/// quantity, which is why the two must not drift apart.
+/// </para>
 /// </summary>
 public static class ClusteringMetrics
 {

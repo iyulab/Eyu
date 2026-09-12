@@ -36,8 +36,10 @@ whether a clerical review of a sample is worth running, not what it would find; 
 review will be scored on is already fixed as B-cubed per record, not per pair,
 `ClusteringMetrics.BCubed`, and the sampling and adjudication design for that review is
 [docs/clerical-review.md](docs/clerical-review.md), whose estimator is in the library as
-`ClericalReviewEstimator` — the arithmetic that turns a reviewed sample into a population score
-with an interval exists; what is still missing is a reviewed sample to feed it) — or whether
+`ClericalReviewEstimator`, and the path from a reviewer's verdicts to the per-record scores it
+consumes is `ClericalReviewScoring` — the arithmetic that turns a reviewed sample into a
+population score with an interval exists end to end; what is still missing is a review actually
+run under it) — or whether
 the proposer's self-reported
 confidence is informative on its own, which it was not in an earlier measurement (see
 [design rationale, §D](docs/philosophy.md)); gray-zone cases now combine it with the

@@ -166,15 +166,42 @@ One table, and no prose that outruns it:
 | Line | Content |
 |---|---|
 | Population | `N`, and `N_h` per stratum, with the configuration that produced them |
+| Specification | the matching variables and how each is compared (`LinkageOptions`, the comparators in use), the blocking step or its absence, the thresholds, and the fitted `m`/`u` probabilities and match prior with their `EstimationStatus` — "the configuration" spelled out, so another run can be the same one |
 | Sample | `n_h` per stratum, allocation rule, draw method and seed (the estimate carries the seed it used) |
+| Reviewers | how many, the written adjudication instructions (and every rule added under §4), and what they were shown with |
 | Scores | B-cubed precision and recall, each with its 95% interval (normal and bootstrap) — one `ClericalReviewEstimate` per measure |
+| Linkage rate | records placed in a cluster of size ≥ 2 as a fraction of `N`, and the same per stratum — the number that decides how much of the data any downstream analysis actually sees |
+| Differential error | precision and recall per subgroup that matters downstream (record source, period, a key attribute's presence), where the sample supports it — linkage error is not random, and an error concentrated in one subgroup biases whatever is computed on the linked set |
 | Reviewer agreement | κ and Gwet's AC1 on the double-reviewed subsample, its size, and specific agreement per outcome |
 | Exclusions | *cannot tell* rate per stratum, and the worst/best-case band the excluded records could move each score within |
+| Threshold sensitivity | how the pre-filter's *unlabeled* error-rate estimate moves across neighbouring thresholds — never a re-scoring of this sample (see below) |
 | Out of scope | blocking loss — measured separately, or stated as unmeasured |
 | Comparison | the pre-filter's unlabeled estimate for the same run, side by side |
+| Other metrics *(optional)* | pairwise precision/recall and cluster-level precision/recall for the same run, labelled as such and reported beside — never instead of — the B-cubed lines |
 
-The last line is the one worth running the review for: it says whether the cheap estimate can be
-trusted on this kind of data, which is what every future run without a review depends on.
+The specification, reviewer, linkage-rate, differential-error and sensitivity lines are the items
+the reporting guidance for linked data asks for (GUILD, Gilbert et al. 2018; Harron et al. 2017):
+what was linked on and how, who adjudicated and under which rules, how much of the data linked,
+whether the errors fall evenly, and how fragile the result is to the thresholds. A review that
+reports a score without them says what the number is and not what it is a number *of*.
+
+**Threshold sensitivity is not measured on the sample.** §3 and §6 are firm that a change of
+thresholds changes the strata and voids the design weights, so re-scoring the reviewed records
+under another threshold produces a number with no design behind it. The sensitivity line is
+therefore filled from the cheap side: the pre-filter's unlabeled estimate
+(`LinkageErrorRateEstimate`) re-fitted at neighbouring thresholds, which costs nothing and needs no
+sample. The comparison line says whether that estimate can be trusted on this data; if it can,
+its movement across thresholds is the sensitivity; if it cannot, the line reports that, and a
+different threshold means a different review.
+
+**Other metrics are a side-by-side, not a replacement.** The scoring unit is B-cubed per record
+(§1) and this table's estimates are built on that design; pairwise and cluster-level figures are
+what most tooling reports and what a reader may want to compare against, so they may be shown for
+the same run — but they are a census over the predicted clustering against whatever truth is
+available, carry no interval from this design, and must be labelled as such.
+
+The comparison line is the one worth running the review for: it says whether the cheap estimate
+can be trusted on this kind of data, which is what every future run without a review depends on.
 
 ---
 

@@ -59,7 +59,9 @@ public enum ClericalReviewCaveat
 /// bounded in [0, 1] and pile up at 1.0, so the normal approximation runs past the boundary while
 /// the bootstrap does not. Neither is clamped into range — a normal interval reaching above 1.0 is
 /// the signal that it should not be trusted here, and clamping would hide it. Prefer
-/// <paramref name="Bootstrap"/> when the two disagree.
+/// <paramref name="Bootstrap"/> when the two disagree. Both are built on the same design: the
+/// bootstrap is the Rao–Wu rescaling bootstrap, which carries the finite-population correction the
+/// standard error carries, so where they differ it is the skew talking and not the method.
 /// </para>
 /// <para>
 /// This is a measurement, unlike <see cref="LinkageErrorRateEstimate"/>, which infers error rates
@@ -196,28 +198,60 @@ public static class ClericalReviewEstimator
     }
 
     /// <summary>
-    /// Percentile bootstrap: resample each stratum with replacement to its own reviewed size,
-    /// recompute the weighted estimate, and take the 2.5th and 97.5th percentiles of the draws.
+    /// Percentile bootstrap under the sampling design — the rescaling bootstrap of Rao and Wu
+    /// (1988) for stratified sampling without replacement. Each stratum is resampled with
+    /// replacement to <c>m_h = n_h − 1</c> draws and the resampled mean is pulled back toward the
+    /// observed one by <c>λ_h = sqrt(m_h (1 − f_h) / (n_h − 1)) = sqrt(1 − n_h/N_h)</c>, so that
+    /// the draws' variance is <c>(1 − f_h) s²_h / n_h</c> — the same quantity the normal standard
+    /// error uses. A plain resample to <c>n_h</c> ignores the finite-population correction: a
+    /// stratum reviewed in full would then still scatter, and the two intervals would disagree by
+    /// design rather than because the scores are skewed. With the rescaling, a census stratum
+    /// contributes exactly nothing, as it does to the standard error.
+    /// <para>
     /// Resampling happens <em>within</em> each stratum so the design is preserved — pooling the
-    /// strata first would estimate a simple random sample, which this is not.
+    /// strata first would estimate a simple random sample, which this is not. A stratum reviewed
+    /// once has no draw to make (<c>m_h = 0</c>) and contributes its single score unchanged, which
+    /// is the same understatement <see cref="ClericalReviewCaveat.StratumTooSmall"/> already
+    /// reports for the standard error.
+    /// </para>
     /// </summary>
     private static ScoreInterval Bootstrap(IReadOnlyList<ReviewStratum> strata, long population, int seed)
     {
         var random = new Random(seed);
+        var means = new double[strata.Count];
+        var rescale = new double[strata.Count];
+        for (var s = 0; s < strata.Count; s++)
+        {
+            var stratum = strata[s];
+            means[s] = Mean(stratum.ReviewedScores);
+            var reviewed = stratum.ReviewedScores.Count;
+            rescale[s] = reviewed < MinimumReviewedPerStratum
+                ? 0.0
+                : Math.Sqrt(1.0 - ((double)reviewed / stratum.PopulationSize));
+        }
+
         var draws = new double[BootstrapDraws];
         for (var draw = 0; draw < BootstrapDraws; draw++)
         {
             double resampled = 0;
-            foreach (var stratum in strata)
+            for (var s = 0; s < strata.Count; s++)
             {
-                var scores = stratum.ReviewedScores;
+                var scores = strata[s].ReviewedScores;
+                var weight = (double)strata[s].PopulationSize / population;
+                var m = scores.Count - 1;
+                if (m < 1 || rescale[s] == 0.0)
+                {
+                    resampled += weight * means[s];
+                    continue;
+                }
+
                 double sum = 0;
-                for (var i = 0; i < scores.Count; i++)
+                for (var i = 0; i < m; i++)
                 {
                     sum += scores[random.Next(scores.Count)];
                 }
 
-                resampled += (double)stratum.PopulationSize / population * (sum / scores.Count);
+                resampled += weight * (means[s] + (rescale[s] * ((sum / m) - means[s])));
             }
 
             draws[draw] = resampled;

@@ -80,6 +80,39 @@ public class ClericalReviewScoringTests
         Assert.Equal(["c"], scored.UnresolvedCandidateIds);
     }
 
+    // Predicted {a, b, c}, one outside candidate d. b is the same, c and d cannot be told.
+    // Precision: c counted as different gives 2/3, as the same gives 3/3.
+    // Recall: worst case c is different and d is a missed member -> 2 / (2 + 1); best case c is
+    // the same and d is not a member -> 3 / 3.
+    [Fact]
+    public void An_excluded_record_carries_the_scores_its_unresolved_candidates_could_still_give_it()
+    {
+        var scored = ClericalReviewScoring.ScoreRecord(
+            "a",
+            ["a", "b", "c"],
+            ["d"],
+            [V("a", "b", ReviewOutcome.Same), V("a", "c", ReviewOutcome.CannotTell), V("a", "d", ReviewOutcome.CannotTell)]);
+
+        Assert.True(scored.IsExcluded);
+        Assert.Equal(2.0 / 3.0, scored.LowerBound.Precision, 12);
+        Assert.Equal(1.0, scored.UpperBound.Precision, 12);
+        Assert.Equal(2.0 / 3.0, scored.LowerBound.Recall, 12);
+        Assert.Equal(1.0, scored.UpperBound.Recall, 12);
+    }
+
+    [Fact]
+    public void A_resolved_record_has_its_score_as_both_bounds()
+    {
+        var scored = ClericalReviewScoring.ScoreRecord(
+            "a",
+            ["a", "b"],
+            [],
+            [V("a", "b", ReviewOutcome.Different)]);
+
+        Assert.Equal(scored.Score, scored.LowerBound);
+        Assert.Equal(scored.Score, scored.UpperBound);
+    }
+
     [Fact]
     public void A_missing_verdict_is_refused_by_name()
     {
@@ -191,6 +224,17 @@ public class ClericalReviewScoringTests
         Assert.Equal(1, singleton.Excluded);
         Assert.Equal(0.5, singleton.Rate, 12);
         Assert.Equal([1.0], Assert.Single(scoring.Precision).ReviewedScores);
+
+        // The bounds put the excluded record back: a is a singleton whose only candidate b cannot
+        // be told -- precision is 1 either way, recall is 1/2 if b is a missed member and 1 if not.
+        Assert.Equal([1.0, 1.0], Assert.Single(scoring.PrecisionBounds.Lower).ReviewedScores);
+        Assert.Equal(2, Assert.Single(scoring.RecallBounds.Lower).ReviewedScores.Count);
+        Assert.Contains(0.5, Assert.Single(scoring.RecallBounds.Lower).ReviewedScores);
+        Assert.Equal([1.0, 1.0], Assert.Single(scoring.RecallBounds.Upper).ReviewedScores);
+        var low = ClericalReviewEstimator.Estimate(scoring.RecallBounds.Lower, seed: 1).Estimate;
+        var high = ClericalReviewEstimator.Estimate(scoring.RecallBounds.Upper, seed: 1).Estimate;
+        Assert.Equal(0.75, low, 12);
+        Assert.Equal(1.0, high, 12);
     }
 
     [Fact]

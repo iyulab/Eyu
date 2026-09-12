@@ -94,7 +94,9 @@ public class ClericalReviewEstimatorTests
     }
 
     // A stratum reviewed in full has no sampling variance left to estimate -- that is correct, not
-    // a fault, but a reader comparing standard errors needs to know one stratum was a census.
+    // a fault, but a reader comparing standard errors needs to know one stratum was a census. The
+    // bootstrap agrees: under the Rao-Wu rescaling a census stratum's draws collapse onto its mean,
+    // where a plain resample would still scatter and the two intervals would disagree by design.
     [Fact]
     public void A_stratum_reviewed_in_full_contributes_no_sampling_variance_and_says_so()
     {
@@ -103,7 +105,26 @@ public class ClericalReviewEstimatorTests
             Seed);
 
         Assert.Equal(0.0, estimate.StandardError, 12);
+        Assert.Equal(0.5, estimate.Bootstrap.Low, 12);
+        Assert.Equal(0.5, estimate.Bootstrap.High, 12);
         Assert.True(estimate.Caveats.HasFlag(ClericalReviewCaveat.StratumIsCensus));
+    }
+
+    // The rescaling carries the finite-population correction, so the bootstrap's spread tracks the
+    // standard error instead of the with-replacement variance: reviewing half a stratum halves the
+    // variance, and the percentile interval should sit near the normal one rather than outside it.
+    [Fact]
+    public void The_bootstrap_interval_tracks_the_finite_population_standard_error()
+    {
+        var scores = Enumerable.Range(0, 40).Select(i => i % 4 == 0 ? 0.5 : 1.0).ToArray();   // mean 0.875
+        var estimate = ClericalReviewEstimator.Estimate([new ReviewStratum("half-reviewed", 80, scores)], Seed);
+
+        var normalHalfWidth = ClericalReviewEstimator.NormalQuantile95 * estimate.StandardError;
+        var bootstrapHalfWidth = (estimate.Bootstrap.High - estimate.Bootstrap.Low) / 2.0;
+        Assert.True(bootstrapHalfWidth > 0.7 * normalHalfWidth && bootstrapHalfWidth < 1.3 * normalHalfWidth,
+            $"bootstrap half-width {bootstrapHalfWidth} vs normal {normalHalfWidth}");
+        // A with-replacement resample of all 40 would be wider by 1/sqrt(1 - 40/80) = 1.41.
+        Assert.True(bootstrapHalfWidth < 1.25 * normalHalfWidth, $"bootstrap half-width {bootstrapHalfWidth} ignores the correction");
     }
 
     // One observation has no sample variance. Taking it as zero understates the standard error, so

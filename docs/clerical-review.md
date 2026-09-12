@@ -65,6 +65,14 @@ no estimate, and its weight does not disappear from the population.
 `ClericalReviewSampler.DrawPilot` draws the pilot (seeded, without replacement, a stratum smaller
 than the request taken whole rather than skipped); `AllocateNeyman` sizes the round after it from
 the pilot's per-stratum deviations, with a floor of one record per stratum for the same reason.
+Two design-stage rules keep that arithmetic from planning against what a small pilot merely
+failed to see: a pilot deviation is read no lower than that of a score failing one time in
+twenty (`MinimumDesignDeviation`, `sqrt(0.05 · 0.95)`), because a stratum whose pilot records
+all scored 1.0 has not measured its spread but bounded it — planned against literally, the
+population's largest stratum gets one record in the next round; and a stratum that would be
+allocated more records than it holds is capped there and its surplus handed to the strata that
+can still take records, in the same proportions, so the review budget is spent rather than
+silently returned short.
 
 ---
 
@@ -96,8 +104,13 @@ Two cautions that decide whether the interval means anything:
 
 - **The scores are bounded and skewed.** In S1 and S2 most records score exactly 1.0, so the
   normal approximation is poor near the boundary. Report a **bootstrap percentile interval**
-  (resample reviewed records within each stratum, recompute `x̄`, 2000 draws) alongside it, and
-  prefer the bootstrap when the two disagree.
+  alongside it, and prefer the bootstrap when the two disagree. The bootstrap is the rescaling
+  bootstrap of Rao and Wu (1988) for stratified sampling without replacement: within each stratum,
+  `n_h − 1` draws with replacement, the resampled mean pulled toward the observed one by
+  `sqrt(1 − n_h/N_h)`, 2000 replicates of `x̄`. That rescaling is what makes the two intervals
+  comparable — it carries the same finite-population correction the standard error carries, so a
+  stratum reviewed in full contributes no spread to either, and where the intervals still differ
+  it is the skew, not the method.
 - **The weights are design weights, not fit weights.** `N_h / N` comes from the population the
   sample was drawn from — the corpus as the system clustered it. Re-running the pipeline with
   different thresholds changes the strata, which invalidates the weights; a new configuration
@@ -120,7 +133,13 @@ is known — and report the two numbers apart. Silently adding them gives a reca
   is excluded from the scored set and counted in the exclusion line, and the exclusion rate is
   reported next to the score. In code: any *cannot tell* verdict on a sampled record's candidates
   leaves that record unscored (`ScoredRecord.IsExcluded`, with the unresolved candidates named),
-  and `ReviewScoring.Exclusions` carries the line per stratum.
+  and `ReviewScoring.Exclusions` carries the line per stratum. Exclusion is not missing at random
+  — the records a reviewer cannot settle are where the errors concentrate — so the score is also
+  **bounded**: each excluded record is put back at the worst and the best score its unresolved
+  candidates could still give it (`ScoredRecord.LowerBound` / `UpperBound`), and estimating
+  `ReviewScoring.PrecisionBounds` / `RecallBounds` gives the band the exclusions could move the
+  population score within. Report the band next to the exclusion rate; a band that straddles the
+  decision being made means the unresolved records have to be resolved, not counted.
 - **Double-review a subsample.** 20% of each stratum goes to a second reviewer. Report Cohen's
   κ, pooled over every double-reviewed pair rather than per stratum — a stratum's subsample is a
   handful of verdicts and a coefficient over a handful says nothing. Report Gwet's AC1 (Gwet 2008)
@@ -150,7 +169,7 @@ One table, and no prose that outruns it:
 | Sample | `n_h` per stratum, allocation rule, draw method and seed (the estimate carries the seed it used) |
 | Scores | B-cubed precision and recall, each with its 95% interval (normal and bootstrap) — one `ClericalReviewEstimate` per measure |
 | Reviewer agreement | κ and Gwet's AC1 on the double-reviewed subsample, its size, and specific agreement per outcome |
-| Exclusions | *cannot tell* rate per stratum |
+| Exclusions | *cannot tell* rate per stratum, and the worst/best-case band the excluded records could move each score within |
 | Out of scope | blocking loss — measured separately, or stated as unmeasured |
 | Comparison | the pre-filter's unlabeled estimate for the same run, side by side |
 

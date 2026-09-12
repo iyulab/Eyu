@@ -31,8 +31,14 @@ public sealed record ReviewVerdict(string RecordId, string CandidateId, ReviewOu
 /// <paramref name="Score"/> is null when the record was excluded: at least one candidate came
 /// back <see cref="ReviewOutcome.CannotTell"/>, so the true cluster cannot be settled and the
 /// protocol keeps the record out of the scored set and counts it in the exclusion line instead.
-/// <paramref name="UnresolvedCandidateIds"/> names those candidates, so an excluded record can
-/// still be bounded later rather than only counted.
+/// <paramref name="UnresolvedCandidateIds"/> names those candidates, and
+/// <paramref name="LowerBound"/> / <paramref name="UpperBound"/> are the scores the record would
+/// get if every unresolved candidate went the worst way and the best way: for precision, an
+/// unresolved co-member counted as different, then as the same; for recall, an unresolved
+/// co-member counted as different and an unresolved outsider as a missed member, then the
+/// reverse. Exclusion is informative — the records a reviewer cannot settle are where the errors
+/// concentrate — so the bounds say what the exclusion line could be hiding. A resolved record's
+/// bounds are both its score.
 /// </para>
 /// <para>
 /// <paramref name="FalseMergeIds"/> is the reviewer's <c>A_r</c> — predicted co-members judged
@@ -45,6 +51,8 @@ public sealed record ReviewVerdict(string RecordId, string CandidateId, ReviewOu
 public sealed record ScoredRecord(
     string RecordId,
     RecordScore? Score,
+    RecordScore LowerBound,
+    RecordScore UpperBound,
     IReadOnlyList<string> FalseMergeIds,
     IReadOnlyList<string> MissedMemberIds,
     IReadOnlyList<string> UnresolvedCandidateIds)
@@ -52,6 +60,15 @@ public sealed record ScoredRecord(
     /// <summary>True when the reviewer could not settle the record's cluster and it was left unscored.</summary>
     public bool IsExcluded => Score is null;
 }
+
+/// <summary>
+/// The scored strata with every excluded record put back at its worst-case score
+/// (<paramref name="Lower"/>) and at its best-case score (<paramref name="Upper"/>). Estimating
+/// each gives the band the exclusions could move the population score within; a band that
+/// straddles the decision being made is the sign that the unresolved records must be resolved,
+/// not just counted.
+/// </summary>
+public sealed record StrataBounds(IReadOnlyList<ReviewStratum> Lower, IReadOnlyList<ReviewStratum> Upper);
 
 /// <summary>
 /// The exclusion line of one stratum: how many of its sampled records were reviewed, and how many
@@ -79,6 +96,8 @@ public sealed record StratumExclusion(ReviewStratumKind Kind, int Reviewed, int 
 public sealed record ReviewScoring(
     IReadOnlyList<ReviewStratum> Precision,
     IReadOnlyList<ReviewStratum> Recall,
+    StrataBounds PrecisionBounds,
+    StrataBounds RecallBounds,
     IReadOnlyList<StratumExclusion> Exclusions,
     IReadOnlyList<ScoredRecord> Records);
 
@@ -171,12 +190,21 @@ public static class ClericalReviewScoring
 
         var precision = new List<ReviewStratum>(sample.Strata.Count);
         var recall = new List<ReviewStratum>(sample.Strata.Count);
+        var precisionLower = new List<ReviewStratum>(sample.Strata.Count);
+        var precisionUpper = new List<ReviewStratum>(sample.Strata.Count);
+        var recallLower = new List<ReviewStratum>(sample.Strata.Count);
+        var recallUpper = new List<ReviewStratum>(sample.Strata.Count);
         var exclusions = new List<StratumExclusion>(sample.Strata.Count);
         var records = new List<ScoredRecord>();
         foreach (var stratum in sample.Strata)
         {
-            var precisions = new List<double>(stratum.SelectedRecordIds.Count);
-            var recalls = new List<double>(stratum.SelectedRecordIds.Count);
+            var count = stratum.SelectedRecordIds.Count;
+            var precisions = new List<double>(count);
+            var recalls = new List<double>(count);
+            var pLow = new List<double>(count);
+            var pHigh = new List<double>(count);
+            var rLow = new List<double>(count);
+            var rHigh = new List<double>(count);
             var excluded = 0;
             foreach (var id in stratum.SelectedRecordIds)
             {
@@ -197,15 +225,30 @@ public static class ClericalReviewScoring
                 {
                     excluded++;
                 }
+
+                pLow.Add(scored.LowerBound.Precision);
+                pHigh.Add(scored.UpperBound.Precision);
+                rLow.Add(scored.LowerBound.Recall);
+                rHigh.Add(scored.UpperBound.Recall);
             }
 
             var name = stratum.Kind.ToString();
             precision.Add(new ReviewStratum(name, stratum.PopulationSize, precisions));
             recall.Add(new ReviewStratum(name, stratum.PopulationSize, recalls));
-            exclusions.Add(new StratumExclusion(stratum.Kind, stratum.SelectedRecordIds.Count, excluded));
+            precisionLower.Add(new ReviewStratum(name, stratum.PopulationSize, pLow));
+            precisionUpper.Add(new ReviewStratum(name, stratum.PopulationSize, pHigh));
+            recallLower.Add(new ReviewStratum(name, stratum.PopulationSize, rLow));
+            recallUpper.Add(new ReviewStratum(name, stratum.PopulationSize, rHigh));
+            exclusions.Add(new StratumExclusion(stratum.Kind, count, excluded));
         }
 
-        return new ReviewScoring(precision, recall, exclusions, records);
+        return new ReviewScoring(
+            precision,
+            recall,
+            new StrataBounds(precisionLower, precisionUpper),
+            new StrataBounds(recallLower, recallUpper),
+            exclusions,
+            records);
     }
 
     /// <summary>
@@ -282,12 +325,18 @@ public static class ClericalReviewScoring
         var falseMerges = new List<string>();
         var missedMembers = new List<string>();
         var unresolved = new List<string>();
+        var unresolvedInside = 0;
         foreach (var (candidate, outcome) in outcomeOf.OrderBy(entry => entry.Key, StringComparer.Ordinal))
         {
             switch (outcome)
             {
                 case ReviewOutcome.CannotTell:
                     unresolved.Add(candidate);
+                    if (predicted.Contains(candidate))
+                    {
+                        unresolvedInside++;
+                    }
+
                     break;
                 case ReviewOutcome.Different when predicted.Contains(candidate):
                     falseMerges.Add(candidate);
@@ -300,20 +349,24 @@ public static class ClericalReviewScoring
             }
         }
 
+        // c(r) = ĉ(r) \ A_r ∪ B_r, and then section 1's two ratios over it. The shared part is
+        // the predicted cluster minus the false merges; an unresolved co-member sits on neither
+        // side until the bounds below send it to one.
+        var unresolvedOutside = unresolved.Count - unresolvedInside;
+        var sharedResolved = predicted.Count - falseMerges.Count - unresolvedInside;
+        var lower = new RecordScore(
+            (double)sharedResolved / predicted.Count,
+            (double)sharedResolved / (sharedResolved + missedMembers.Count + unresolvedOutside));
+        var upper = new RecordScore(
+            (double)(sharedResolved + unresolvedInside) / predicted.Count,
+            (double)(sharedResolved + unresolvedInside) / (sharedResolved + unresolvedInside + missedMembers.Count));
+
         if (unresolved.Count > 0)
         {
-            return new ScoredRecord(recordId, null, falseMerges, missedMembers, unresolved);
+            return new ScoredRecord(recordId, null, lower, upper, falseMerges, missedMembers, unresolved);
         }
 
-        // c(r) = ĉ(r) \ A_r ∪ B_r, and then section 1's two ratios over it.
-        var trueSize = predicted.Count - falseMerges.Count + missedMembers.Count;
-        var shared = predicted.Count - falseMerges.Count;
-        return new ScoredRecord(
-            recordId,
-            new RecordScore((double)shared / predicted.Count, (double)shared / trueSize),
-            falseMerges,
-            missedMembers,
-            unresolved);
+        return new ScoredRecord(recordId, lower, lower, upper, falseMerges, missedMembers, unresolved);
     }
 
     private static void Admit(Dictionary<string, HashSet<string>> candidatesOf, string record, string candidate)

@@ -208,11 +208,24 @@ public static class ClericalReviewSampler
     }
 
     /// <summary>
+    /// The smallest per-stratum spread the allocation will plan against: the standard deviation
+    /// of a score that fails one time in twenty (<c>sqrt(0.05 · 0.95)</c>). A pilot that saw no
+    /// error in a stratum reports a deviation of zero, which is not a measurement of the stratum's
+    /// spread but a bound on it from a handful of records; planned against literally, it hands the
+    /// stratum one record in the next round — the population's largest stratum, typically. The
+    /// design proportion is therefore truncated away from the boundary at the planning stage, the
+    /// way survey allocation does when a pilot proportion comes back at 0 or 1.
+    /// </summary>
+    public static readonly double MinimumDesignDeviation = Math.Sqrt(0.05 * 0.95);
+
+    /// <summary>
     /// Neyman allocation for the round after a pilot: spend the budget in proportion to
-    /// <c>N_h · s_h</c>, so a stratum that is large or noisy gets more of it. Every stratum gets at
-    /// least one record — the protocol forbids leaving one unsampled — and none is asked for more
-    /// records than it holds, so the returned counts can sum to less than
-    /// <paramref name="totalBudget"/> when a small stratum's share exceeds its size.
+    /// <c>N_h · s_h</c>, so a stratum that is large or noisy gets more of it, with <c>s_h</c> read
+    /// no lower than <see cref="MinimumDesignDeviation"/>. Every stratum gets at least one record —
+    /// the protocol forbids leaving one unsampled — and none is asked for more records than it
+    /// holds; what a capped stratum cannot take is handed on to the strata that still can, in the
+    /// same proportions, so the counts sum to <paramref name="totalBudget"/> unless the strata
+    /// together hold fewer records than that.
     /// </summary>
     /// <exception cref="ArgumentException">When no strata are given, or a stratum's population is not positive.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When the budget cannot give every stratum one record.</exception>
@@ -236,53 +249,91 @@ public static class ClericalReviewSampler
 
         ArgumentOutOfRangeException.ThrowIfLessThan(totalBudget, strata.Count);
 
-        double weightTotal = 0;
         var weights = new double[strata.Count];
         for (var i = 0; i < strata.Count; i++)
         {
-            // A zero deviation would take a stratum's whole share away, so the floor of one record
-            // below does the work instead of a weight the caller cannot see.
-            weights[i] = strata[i].PopulationSize * Math.Max(strata[i].StandardDeviation, 0.0);
-            weightTotal += weights[i];
+            weights[i] = strata[i].PopulationSize * Math.Max(strata[i].StandardDeviation, MinimumDesignDeviation);
         }
 
+        // Share the budget by weight among the strata still open; any stratum that lands below its
+        // floor of one or above its population is fixed there and leaves the sharing, and the
+        // budget that fixing freed (or consumed) is shared again among the rest. Repeats until a
+        // round fixes nothing -- the shape of capped Neyman allocation, so a stratum's surplus goes
+        // to the others instead of nowhere.
         var allocation = new int[strata.Count];
-        if (weightTotal <= 0.0)
+        var fixedAt = new bool[strata.Count];
+        var open = new List<int>(Enumerable.Range(0, strata.Count));
+        while (true)
         {
-            // No spread anywhere (a pilot where every record scored the same): nothing recommends
-            // one stratum over another, so split the budget by population instead.
+            var remaining = totalBudget;
             for (var i = 0; i < strata.Count; i++)
             {
-                weights[i] = strata[i].PopulationSize;
-                weightTotal += weights[i];
+                if (fixedAt[i])
+                {
+                    remaining -= allocation[i];
+                }
             }
-        }
 
-        var remainders = new (int Index, double Fraction)[strata.Count];
-        var assigned = 0;
-        for (var i = 0; i < strata.Count; i++)
-        {
-            var ideal = totalBudget * weights[i] / weightTotal;
-            allocation[i] = (int)Math.Floor(ideal);
-            remainders[i] = (i, ideal - allocation[i]);
-            assigned += allocation[i];
-        }
-
-        // Largest remainder, so the counts sum to the budget instead of to whatever rounding left.
-        foreach (var (index, _) in remainders.OrderByDescending(r => r.Fraction).ThenBy(r => r.Index))
-        {
-            if (assigned >= totalBudget)
+            if (open.Count == 0)
             {
                 break;
             }
 
-            allocation[index]++;
-            assigned++;
-        }
+            double weightTotal = 0;
+            foreach (var i in open)
+            {
+                weightTotal += weights[i];
+            }
 
-        for (var i = 0; i < strata.Count; i++)
-        {
-            allocation[i] = (int)Math.Clamp(allocation[i], 1, strata[i].PopulationSize);
+            var remainders = new List<(int Index, double Fraction)>(open.Count);
+            var handedOut = 0;
+            foreach (var i in open)
+            {
+                var ideal = Math.Max(remaining, 0) * weights[i] / weightTotal;
+                allocation[i] = (int)Math.Floor(ideal);
+                handedOut += allocation[i];
+                remainders.Add((i, ideal - allocation[i]));
+            }
+
+            // Largest remainder, so this round's counts sum to what was shared and not to whatever
+            // rounding left.
+            foreach (var (index, _) in remainders.OrderByDescending(r => r.Fraction).ThenBy(r => r.Index))
+            {
+                if (handedOut >= remaining)
+                {
+                    break;
+                }
+
+                allocation[index]++;
+                handedOut++;
+            }
+
+            var fixedThisRound = false;
+            foreach (var i in open.ToArray())
+            {
+                var capacity = strata[i].PopulationSize;
+                if (allocation[i] < 1)
+                {
+                    allocation[i] = 1;
+                }
+                else if (allocation[i] <= capacity)
+                {
+                    continue;
+                }
+                else
+                {
+                    allocation[i] = (int)capacity;
+                }
+
+                fixedAt[i] = true;
+                open.Remove(i);
+                fixedThisRound = true;
+            }
+
+            if (!fixedThisRound)
+            {
+                break;
+            }
         }
 
         return allocation;

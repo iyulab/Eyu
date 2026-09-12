@@ -138,19 +138,71 @@ public class ClericalReviewSamplerTests
     public void Allocation_follows_population_times_spread_and_sums_to_the_budget()
     {
         var allocation = ClericalReviewSampler.AllocateNeyman(
+            [new StratumSpread(100, 0.5), new StratumSpread(900, 0.3)],
+            100);
+
+        // weights 50 : 270 -> 15.6 : 84.4 -> largest remainder gives the second the odd record
+        Assert.Equal([16, 84], allocation);
+    }
+
+    // A pilot deviation below the design floor is planned against the floor: 0.1 is read as
+    // sqrt(0.05 * 0.95) = 0.218, so the large stratum's weight is 900 * 0.218 = 196.1 against
+    // 100 * 0.5 = 50, not the 900 * 0.1 = 90 a literal reading would give.
+    [Fact]
+    public void A_pilot_deviation_below_the_design_floor_is_planned_against_the_floor()
+    {
+        var allocation = ClericalReviewSampler.AllocateNeyman(
             [new StratumSpread(100, 0.5), new StratumSpread(900, 0.1)],
             100);
 
-        Assert.Equal([36, 64], allocation);
+        Assert.Equal([20, 80], allocation);
+    }
+
+    // The pilot that produced [1, 1, 5]: two strata whose pilot records all scored the same, one
+    // contested stratum with some spread, budget 12. Read literally, the zero deviations put the
+    // whole budget on the contested stratum, which was capped at its 5 records, and 5 of the 12
+    // went nowhere. With the design floor the quiet strata keep a share, and what the capped
+    // stratum cannot take is handed on, so the budget is spent.
+    [Fact]
+    public void A_stratum_with_no_pilot_spread_keeps_a_share_and_a_capped_stratum_hands_its_surplus_on()
+    {
+        var allocation = ClericalReviewSampler.AllocateNeyman(
+            [new StratumSpread(3, 0.0), new StratumSpread(8, 0.0), new StratumSpread(5, 0.14)],
+            12);
+
+        Assert.Equal(12, allocation.Sum());
+        Assert.Equal([2, 6, 4], allocation);
+    }
+
+    [Fact]
+    public void A_capped_stratum_passes_its_surplus_to_the_others_until_the_budget_is_spent()
+    {
+        var allocation = ClericalReviewSampler.AllocateNeyman(
+            [new StratumSpread(3, 0.9), new StratumSpread(100, 0.3)],
+            50);
+
+        Assert.Equal(3, allocation[0]);
+        Assert.Equal(47, allocation[1]);
+    }
+
+    [Fact]
+    public void A_budget_larger_than_the_population_stops_at_the_population()
+    {
+        var allocation = ClericalReviewSampler.AllocateNeyman(
+            [new StratumSpread(3, 0.5), new StratumSpread(4, 0.5)],
+            50);
+
+        Assert.Equal([3, 4], allocation);
     }
 
     // A noisy small stratum can out-earn a quiet large one -- which is the whole reason to allocate
-    // by N*s instead of by N.
+    // by N*s instead of by N. "Quiet" is read at the design floor (0.218), so the large stratum's
+    // weight is 300 * 0.218 = 65 against the small one's 100 * 0.9 = 90.
     [Fact]
     public void A_small_noisy_stratum_outranks_a_large_quiet_one()
     {
         var allocation = ClericalReviewSampler.AllocateNeyman(
-            [new StratumSpread(100, 0.5), new StratumSpread(400, 0.01)],
+            [new StratumSpread(100, 0.9), new StratumSpread(300, 0.01)],
             100);
 
         Assert.True(allocation[0] > allocation[1], $"got [{allocation[0]}, {allocation[1]}]");
@@ -167,9 +219,8 @@ public class ClericalReviewSamplerTests
         Assert.True(allocation[0] <= 5, $"first stratum got {allocation[0]}, which is more than it holds");
     }
 
-    // A pilot where every record scored the same leaves Neyman with nothing to weigh, and a
-    // straight N*0 would hand every stratum a zero share. Falling back to population keeps the
-    // allocation meaningful instead of letting the floor decide it.
+    // A pilot where every record scored the same leaves Neyman with nothing to weigh; every
+    // stratum is then planned against the same design floor, which splits the budget by population.
     [Fact]
     public void With_no_spread_anywhere_the_budget_splits_by_population()
     {

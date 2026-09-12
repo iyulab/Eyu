@@ -129,7 +129,7 @@ public static class ClericalReviewEstimator
             if (stratum.ReviewedScores.Count == 0)
             {
                 throw new ArgumentException(
-                    $"Stratum '{stratum.Name}' holds {stratum.PopulationSize} records but none were reviewed. Its mean is undefined, and leaving it out would estimate a different population than the one described.",
+                    $"Stratum '{stratum.Name}' holds {stratum.PopulationSize} records but has no scored record -- none was reviewed, or every reviewed one was excluded as unresolvable. Its mean is undefined, and leaving it out would estimate a different population than the one described.",
                     nameof(strata));
             }
 

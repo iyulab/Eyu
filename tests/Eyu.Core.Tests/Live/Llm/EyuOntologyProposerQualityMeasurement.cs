@@ -91,10 +91,10 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             }),
         ],
         [
-            new("Which reported events belong to a given plant?", ["plant|unit|site", "event|report|occurrence"]),
+            new("Which reported events belong to a given plant?", ["plant|unit|site|facility|station", "event|report|occurrence"]),
 
             new("Which plant did a given event occur at?",
-                ["plant|unit|site", "event|report|occurrence", "occurred|reported|belongs|located|happened"]),
+                ["plant|unit|site|facility|station", "event|report|occurrence", "occurred|reported|belongs|located|happened"]),
             new("Which events are attributed to a procedural or work-process deficiency?",
                 ["procedure|process|guidance|work", "cause|deficiency|inadequate|reason"]),
         ]),
@@ -304,9 +304,38 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             else
             {
                 stats.FailureNotes.Add(
-                    $"unreachable question \"{question.Question}\" — vocabulary was [{string.Join(", ", vocabulary.Distinct())}]");
+                    $"unreachable question \"{question.Question}\" — vocabulary was [{string.Join(", ", vocabulary.Distinct())}]"
+                    + RenderReachedConcepts(CompetencyQuestionReach.ReachedConcepts(question, proposal)));
             }
         }
+    }
+
+    /// <summary>How many stand-in entities one concept is worth printing before the note stops being read.</summary>
+    private const int StandInsPerConcept = 2;
+
+    /// <summary>
+    /// The tail of an unreachable-question note: what the proposal built where the missing concept
+    /// belonged. Without it the note lists a vocabulary and leaves the reader to work out whether
+    /// the model skipped the idea or expressed it another way, which is the part worth knowing.
+    /// </summary>
+    private static string RenderReachedConcepts(IReadOnlyList<ReachedConcept> reached)
+    {
+        if (reached.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var parts = reached.Select(concept => concept.Entities.Count == 0
+            ? $"reached \"{concept.Concept}\" through a relation name only"
+            : $"reached \"{concept.Concept}\" through "
+                + string.Join("; ", concept.Entities
+                    .Take(StandInsPerConcept)
+                    .Select(entity => $"{entity.EntityType} {entity.EntityId} (\"{entity.Claim.Claim}\")"))
+                + (concept.Entities.Count > StandInsPerConcept
+                    ? $" (+{concept.Entities.Count - StandInsPerConcept} more)"
+                    : string.Empty));
+
+        return " — " + string.Join(", ", parts);
     }
 
     private static string RenderReport(int runs, LinkageOptions linkageOptions, Dictionary<string, CaseStats> stats)

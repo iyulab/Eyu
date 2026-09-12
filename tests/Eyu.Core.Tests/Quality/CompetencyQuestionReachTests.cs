@@ -87,4 +87,87 @@ public class CompetencyQuestionReachTests
         Assert.True(CompetencyQuestionReach.Reaches(
             new CompetencyQuestion("q", ["aircraft", "component"]), vocabulary));
     }
+
+    // The point of the diagnostic: the nuclear catalog's procedural-cause question misses because
+    // no type says "procedure", while the model did express causation -- as a generic type whose
+    // claim carries the specific cause. Reporting the stand-in is what separates "the model
+    // ignored this" from "the model put it somewhere the question cannot reach".
+    [Fact]
+    public void A_missed_question_reports_the_entities_standing_for_the_concepts_it_did_reach()
+    {
+        var proposal = Proposal(["ReactorEvent", "Cause"], ["caused_by"]);
+        var question = new CompetencyQuestion(
+            "Which events are attributed to a procedural deficiency?",
+            ["procedure|process|guidance|work", "cause|deficiency|inadequate|reason"]);
+
+        Assert.False(CompetencyQuestionReach.Reaches(question, CompetencyQuestionReach.Vocabulary(proposal)));
+
+        var reached = CompetencyQuestionReach.ReachedConcepts(question, proposal);
+
+        var only = Assert.Single(reached);
+        Assert.Equal("cause|deficiency|inadequate|reason", only.Concept);
+        Assert.Equal("Cause", Assert.Single(only.Entities).EntityType);
+    }
+
+    // A concept can be carried by a relation name with no entity behind it. That is a different
+    // finding from "never reached" -- the empty list keeps the two apart instead of collapsing
+    // them into one silent absence.
+    [Fact]
+    public void A_concept_carried_only_by_a_relation_comes_back_with_no_entity()
+    {
+        var proposal = Proposal(["ReactorEvent"], ["caused_by"]);
+        var question = new CompetencyQuestion(
+            "Which events are attributed to a procedural deficiency?",
+            ["procedure|process|guidance|work", "cause|deficiency|inadequate|reason"]);
+
+        var only = Assert.Single(CompetencyQuestionReach.ReachedConcepts(question, proposal));
+
+        Assert.Equal("cause|deficiency|inadequate|reason", only.Concept);
+        Assert.Empty(only.Entities);
+    }
+
+    // Nothing is reported for a concept the proposal never reached -- the report already names it
+    // as the miss, and repeating it as an empty stand-in would read as a finding.
+    [Fact]
+    public void A_concept_that_was_never_reached_is_not_reported_as_a_stand_in()
+    {
+        var proposal = Proposal(["ReactorEvent"], []);
+        var question = new CompetencyQuestion("Which plant?", ["plant|site", "event|report"]);
+
+        var only = Assert.Single(CompetencyQuestionReach.ReachedConcepts(question, proposal));
+
+        Assert.Equal("event|report", only.Concept);
+    }
+
+    // Alternatives are matched case-insensitively on both sides. A capitalised alternative used to
+    // match nothing at all, because only the vocabulary was lowered -- a question that asks less
+    // than its author wrote is exactly what this check exists to prevent.
+    [Fact]
+    public void A_capitalised_alternative_reaches_the_same_types_a_lowercase_one_does()
+    {
+        var proposal = Proposal(["PowerPlant"], []);
+
+        Assert.True(CompetencyQuestionReach.Reaches(
+            new CompetencyQuestion("Which plant?", ["Plant"]),
+            CompetencyQuestionReach.Vocabulary(proposal)));
+    }
+
+    // A live run named the plant a Facility, and two questions that had reached on every previous
+    // run went unreached -- not because the structure was missing but because the concept listed
+    // three spellings and the model used a fourth. Alternatives exist so the check measures
+    // structure rather than wording; an incomplete list quietly turns it back into a wording check.
+    [Fact]
+    public void The_plant_concept_is_reached_by_every_spelling_the_catalog_lists()
+    {
+        var concept = "plant|unit|site|facility|station";
+
+        foreach (var type in new[] { "Plant", "PowerPlant", "Unit", "Site", "Facility", "Station" })
+        {
+            Assert.True(
+                CompetencyQuestionReach.Reaches(
+                    new CompetencyQuestion("Which plant?", [concept]),
+                    CompetencyQuestionReach.Vocabulary(Proposal([type], []))),
+                $"type \"{type}\" should reach the plant concept");
+        }
+    }
 }

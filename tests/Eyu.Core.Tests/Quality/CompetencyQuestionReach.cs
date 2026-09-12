@@ -98,7 +98,52 @@ internal static class CompetencyQuestionReach
     public static bool Reaches(CompetencyQuestion question, IReadOnlyList<string> vocabulary) =>
         question.RequiredConcepts.All(concept => IsReached(concept, vocabulary));
 
+    /// <summary>
+    /// For a question that was <em>not</em> reached: each concept it did reach, with the entities
+    /// whose type carries that concept. A missed question names the concept that is absent, which
+    /// leaves a reader to guess whether the model ignored the idea or expressed it some other way.
+    /// It usually expressed it some other way — a specific cause folded into a generic
+    /// <c>Cause</c> type, say — and the entity's claim is what says so. Reporting that with the
+    /// miss turns "one concept is missing" into "here is the modelling choice that replaced it",
+    /// which is the actionable half and otherwise has to be re-derived by hand from a list of
+    /// type names.
+    /// <para>
+    /// Entities only. A relation name can carry a concept as well, but only an entity brings a
+    /// claim explaining what the model meant by the type. A concept carried by a relation name
+    /// alone therefore comes back with an empty list rather than being dropped, so "no entity
+    /// stands for this" stays distinguishable from "this concept was never reached".
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<ReachedConcept> ReachedConcepts(CompetencyQuestion question, OntologyProposal proposal)
+    {
+        var vocabulary = Vocabulary(proposal);
+        return
+        [
+            .. question.RequiredConcepts
+                .Where(concept => IsReached(concept, vocabulary))
+                .Select(concept => new ReachedConcept(
+                    concept,
+                    [.. proposal.Entities.Where(entity => Carries(entity.EntityType, concept))]))
+        ];
+    }
+
     private static bool IsReached(string concept, IReadOnlyList<string> vocabulary) =>
+        vocabulary.Any(term => Carries(term, concept));
+
+    /// <summary>
+    /// Whether one structural term carries one concept. Both sides are lowered: the vocabulary
+    /// arrives lowered already, but an entity type handed in directly does not, and neither does
+    /// an alternative a catalog author happened to capitalise — a concept that silently matches
+    /// nothing is the failure this whole check exists to avoid.
+    /// </summary>
+    private static bool Carries(string term, string concept) =>
         CompetencyQuestion.Alternatives(concept)
-            .Any(alternative => vocabulary.Any(term => term.Contains(alternative, StringComparison.Ordinal)));
+            .Any(alternative => term.ToLowerInvariant()
+                .Contains(alternative.ToLowerInvariant(), StringComparison.Ordinal));
 }
+
+/// <summary>
+/// One concept a competency question reached, and the entities standing for it. Read alongside an
+/// unreachable question: these are what the proposal did build where the missing concept belonged.
+/// </summary>
+internal sealed record ReachedConcept(string Concept, IReadOnlyList<EntityProposal> Entities);

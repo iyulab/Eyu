@@ -50,13 +50,21 @@ information the system already has:
 | **S3 contested** | the record has at least one pair inside the gray zone (`AmbiguousPosteriorLow`..`High`) | Where the model already says it does not know — the highest error density per reviewed record |
 
 The gray-zone bounds are the estimator's own constants, so a run's strata are reproducible from
-its configuration rather than from a reviewer's judgment.
+its configuration rather than from a reviewer's judgment. Assigned by
+`ClericalReviewSampler.StratifyRecords`, which reads the posterior band
+(`LinkageErrorRateEstimator.IsAmbiguous`) rather than `LinkageClassification.GrayZone` — the
+classification is a threshold on the ratio and drops pairs a chain of matches already resolved,
+while the stratum wants every record the fitted model was unsure about, resolved or not.
 
 **Allocation.** Sample every stratum, with unequal fractions: S3 heaviest, S1 lightest. With no
 prior variance, a pilot of 30–50 reviewed records per stratum is enough to size the next round;
 after that, allocate proportionally to `N_h · s_h` (Neyman) using the pilot's own per-stratum
 standard deviations. Never let a stratum go unsampled to save budget — an unsampled stratum has
 no estimate, and its weight does not disappear from the population.
+
+`ClericalReviewSampler.DrawPilot` draws the pilot (seeded, without replacement, a stratum smaller
+than the request taken whole rather than skipped); `AllocateNeyman` sizes the round after it from
+the pilot's per-stratum deviations, with a floor of one record per stratum for the same reason.
 
 ---
 

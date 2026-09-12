@@ -87,21 +87,44 @@ public static class LinkageErrorRateEstimator
     /// </summary>
     public const double MaxAmbiguousShare = 0.5;
 
+    /// <summary>
+    /// The posterior match probability a pair's log-likelihood ratio implies once the prior is
+    /// folded in -- the same quantity <see cref="LinkageConfidenceAdjuster"/> folds into a claim's
+    /// confidence. Exposed because the clerical review protocol forms its strata from this band
+    /// rather than from <see cref="LinkageClassification"/>, and two places computing it from the
+    /// ratio by hand would eventually disagree about what the gray zone is.
+    /// </summary>
+    public static double PosteriorMatchProbability(PairLinkage pair, FieldLinkageParameters parameters)
+    {
+        ArgumentNullException.ThrowIfNull(pair);
+        ArgumentNullException.ThrowIfNull(parameters);
+
+        return Posterior(pair.LogLikelihoodRatio, PriorLogOdds(parameters));
+    }
+
+    /// <summary>Whether a pair sits in the band where the fitted mixture does not really know which component it belongs to.</summary>
+    public static bool IsAmbiguous(PairLinkage pair, FieldLinkageParameters parameters) =>
+        PosteriorMatchProbability(pair, parameters) is > AmbiguousPosteriorLow and < AmbiguousPosteriorHigh;
+
+    private static double PriorLogOdds(FieldLinkageParameters parameters) =>
+        Math.Log(parameters.MatchPrior / (1.0 - parameters.MatchPrior));
+
+    private static double Posterior(double logLikelihoodRatio, double priorLogOdds) =>
+        1.0 / (1.0 + Math.Exp(-(logLikelihoodRatio + priorLogOdds)));
+
     public static LinkageErrorRateEstimate Estimate(IReadOnlyList<PairLinkage> pairs, FieldLinkageParameters parameters)
     {
         ArgumentNullException.ThrowIfNull(pairs);
         ArgumentNullException.ThrowIfNull(parameters);
 
-        var priorLogOdds = Math.Log(parameters.MatchPrior / (1.0 - parameters.MatchPrior));
+        var priorLogOdds = PriorLogOdds(parameters);
 
         double expectedMatches = 0, expectedNonMatches = 0, falseMatches = 0, falseNonMatches = 0;
         var grayZone = 0;
         var ambiguous = 0;
         foreach (var pair in pairs)
         {
-            // The posterior the classifier's own log-likelihood ratio implies, prior included --
-            // the same quantity LinkageConfidenceAdjuster folds into a claim's confidence.
-            var posterior = 1.0 / (1.0 + Math.Exp(-(pair.LogLikelihoodRatio + priorLogOdds)));
+            var posterior = Posterior(pair.LogLikelihoodRatio, priorLogOdds);
             expectedMatches += posterior;
             expectedNonMatches += 1.0 - posterior;
 

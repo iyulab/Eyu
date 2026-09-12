@@ -6,6 +6,7 @@ using Eyu.Core.Judgment;
 using Eyu.Core.Linkage;
 using Eyu.Core.Proposals;
 using Eyu.Core.Records;
+using Eyu.Core.Tests.Quality;
 using Xunit;
 
 namespace Eyu.Core.Tests.Live.Llm;
@@ -44,6 +45,18 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// (pair classifications, EM <see cref="EstimationStatus"/>, match prior) are recorded in the
 /// report — <see cref="LinkagePipeline.Analyze"/> depends only on records and options, not the
 /// model, so it is computed once per case rather than once per attempt.
+/// <para>
+/// A fourth axis (pilot): <b>competency-question answerability</b>. Each catalog case carries a
+/// short list of questions the proposed structure is supposed to be able to answer, and the run
+/// reports how many of them the proposal's vocabulary can reach. The check is deliberately
+/// shallow — a question counts as reachable when every concept it names appears among the
+/// proposed entity types and relation names — so it is a signal of the same kind as
+/// <see cref="GroundingOverlapCheck"/>: a name being present does not mean a query would return
+/// the right answer, but a name being <em>absent</em> does mean no query can. An unreachable
+/// question points at a missing entity or relation, which is what makes it worth reporting
+/// per run. The questions live here rather than in <c>Eyu.Core</c> on purpose: they are a
+/// property of a catalog domain, not of the library, and this is the only consumer.
+/// </para>
 /// </summary>
 public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 {
@@ -51,7 +64,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
     private static readonly JsonSerializerOptions StructuredLogJsonOptions = new() { WriteIndented = true };
 
-    private sealed record QualityCase(string Name, RawRecord[] Records);
+    private sealed record QualityCase(string Name, RawRecord[] Records, CompetencyQuestion[] Questions);
 
     private static readonly QualityCase[] Catalog =
     [
@@ -76,6 +89,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 ["event_date"] = "2022-10-24",
                 ["title"] = "Unborated Water Flowpath Not Secured per Technical Specification 3.9.2 due to Inadequate Procedure Revision",
             }),
+        ],
+        [
+            new("Which reported events belong to a given plant?", ["plant|unit|site", "event|report|occurrence"]),
+
+            new("Which plant did a given event occur at?",
+                ["plant|unit|site", "event|report|occurrence", "occurred|reported|belongs|located|happened"]),
+            new("Which events are attributed to a procedural or work-process deficiency?",
+                ["procedure|process|guidance|work", "cause|deficiency|inadequate|reason"]),
         ]),
         // league/corpus/aviation/SDR-2026.csv -- real FAA Service Difficulty Reports.
         new("aviation-sdr",
@@ -104,6 +125,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 ["part_condition"] = "LEAKING",
                 ["discrepancy"] = "NUMBER 1 ENG OIL QTY SLOWLY REDUCED TO 0 OVR 90 MINS ALL OTHER ENG IND. NORM AT THIS TIME. CAPT REPORTED THE OIL PRESSURE WAS 92 PSI UPON ENG SHUTDOWN.",
             }),
+        ],
+        [
+            new("Which aircraft does a reported difficulty concern?",
+                ["aircraft|airplane|plane|fleet", "report|difficulty|discrepancy|event|finding"]),
+            new("Which part was found in what condition?",
+                ["part|component|assembly", "condition|defect|damage|failure|crack|leak"]),
+            new("Which reports describe the same part on the same aircraft model?",
+                ["part|component|assembly", "aircraft|airplane|plane|model", "report|difficulty|discrepancy|event|finding"]),
         ]),
     ];
 
@@ -116,6 +145,12 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         public readonly List<int> EntityCounts = [];
         public readonly List<int> RelationCounts = [];
         public readonly HashSet<string> EntityTypeShapes = [];
+
+        /// <summary>Question text -> how many parsed attempts produced a vocabulary that reaches it.</summary>
+        public readonly Dictionary<string, int> QuestionsReached = [];
+
+        /// <summary>Parsed attempts, the denominator the answerability counts are out of.</summary>
+        public int ScoredAttempts;
         public readonly List<string> FailureNotes = [];
         public LinkageAnalysis? Linkage;
     }
@@ -204,6 +239,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             return;
         }
 
+        stats.ScoredAttempts++;
+        ScoreCompetencyQuestions(proposal, qualityCase, stats);
+
         stats.EntityCounts.Add(proposal.Entities.Count);
         stats.RelationCounts.Add(proposal.Relations.Count);
         stats.EntityTypeShapes.Add(string.Join(",", proposal.Entities.Select(e => e.EntityType).Distinct().OrderBy(t => t, StringComparer.Ordinal)));
@@ -252,6 +290,25 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
     }
 
+    private static void ScoreCompetencyQuestions(OntologyProposal proposal, QualityCase qualityCase, CaseStats stats)
+    {
+        var vocabulary = CompetencyQuestionReach.Vocabulary(proposal);
+
+        foreach (var question in qualityCase.Questions)
+        {
+            stats.QuestionsReached.TryAdd(question.Question, 0);
+            if (CompetencyQuestionReach.Reaches(question, vocabulary))
+            {
+                stats.QuestionsReached[question.Question]++;
+            }
+            else
+            {
+                stats.FailureNotes.Add(
+                    $"unreachable question \"{question.Question}\" — vocabulary was [{string.Join(", ", vocabulary.Distinct())}]");
+            }
+        }
+    }
+
     private static string RenderReport(int runs, LinkageOptions linkageOptions, Dictionary<string, CaseStats> stats)
     {
         var report = new StringBuilder()
@@ -293,6 +350,18 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 $"| {name} | {linkage.PairLinkages.Count} | {match} | {grayZone} | {nonMatch} | {linkage.Parameters.Status}{(linkage.Parameters.LabelsSwapped ? " (relabeled)" : "")} | {linkage.Parameters.MatchPrior:F3} | {errorRates?.FalseMatchRate.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | {errorRates?.FalseNonMatchRate.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | {(errorRates is null ? "n/a" : errorRates.IsReliable ? "none" : errorRates.Caveats.ToString())} |");
         }
 
+        report.AppendLine().AppendLine("## Competency questions (vocabulary reach — heuristic, not a semantic check)")
+            .AppendLine()
+            .AppendLine("| case | question | reached |")
+            .AppendLine("|---|---|---|");
+        foreach (var (name, s) in stats)
+        {
+            foreach (var (question, reached) in s.QuestionsReached)
+            {
+                report.AppendLine(CultureInfo.InvariantCulture, $"| {name} | {question} | {reached}/{s.ScoredAttempts} |");
+            }
+        }
+
         var notes = stats.Where(kv => kv.Value.FailureNotes.Count > 0).ToList();
         if (notes.Count > 0)
         {
@@ -331,6 +400,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         double? EstimatedFalseNonMatchRate,
         string? ErrorRateCaveats);
 
+    private sealed record QuestionLogEntry(string Question, int Reached, int ScoredAttempts);
+
     private sealed record CaseLogEntry(
         string Name,
         int Attempts,
@@ -342,6 +413,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         int? RelationCountMin,
         int? RelationCountMax,
         int DistinctEntityTypeShapes,
+        IReadOnlyList<QuestionLogEntry> Questions,
         LinkageSnapshot? Linkage);
 
     private sealed record StructuredLogEntry(
@@ -381,6 +453,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 s.RelationCounts.Count == 0 ? null : s.RelationCounts.Min(),
                 s.RelationCounts.Count == 0 ? null : s.RelationCounts.Max(),
                 s.EntityTypeShapes.Count,
+                [.. s.QuestionsReached.Select(q => new QuestionLogEntry(q.Key, q.Value, s.ScoredAttempts))],
                 linkageSnapshot);
         }).ToList();
 

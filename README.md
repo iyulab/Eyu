@@ -196,7 +196,9 @@ pre-linked as one entity before the model sees it. Records of that kind still pr
 ground correctly (a chunk id is a fine source id); pass
 `LinkageOptions` with `RecordsDenoteEntities: false` and no pair is compared, every
 record stays its own singleton, and the prompt carries no pre-linked groups or gray-zone
-pairs. Keep one document per batch, and mind that every record is rendered into the
+pairs. With the pre-filter off there is no linkage prior, so nothing adjusts the model's
+self-reported confidence up or down — it is carried through as given. Keep one document
+per batch, and mind that every record is rendered into the
 prompt in full — the batch size is bounded by the model's context, not by Eyu.
 
 ## Further reading

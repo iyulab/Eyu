@@ -100,6 +100,17 @@ that contradict each other, and that is reported as reviewer disagreement (§4),
 Both intervals come back on one `ClericalReviewEstimate`, unclamped, with the assumptions that
 did not hold reported as caveats rather than as silence.
 
+A worked example, small enough to check by hand (it is pinned as a test): sixteen records, ten
+true entities, and a system that merged a namesake *j1* into a three-record cluster *a* on
+ambiguous evidence. Stratifying gives five contested records, eight clean merges, three
+singletons. A pilot of three per stratum draws *a1*, *a3*, *j1* from the contested stratum. The
+reviewer rejects *j1* for *a1* and *a3* (precision 3/4 each) and rejects all three *a* records for
+*j1* (precision 1/4); every other sampled record scores 1. The estimate is
+`5/16 · 7/12 + 8/16 · 1 + 3/16 · 1 ≈ 0.870`, beside the 0.906 a census against the full truth
+would give. The same verdicts pushed through a patched reference clustering — unreviewed records
+left where the system put them — came out at 0.568, which is the number this section exists to
+prevent.
+
 Two cautions that decide whether the interval means anything:
 
 - **The scores are bounded and skewed.** In S1 and S2 most records score exactly 1.0, so the

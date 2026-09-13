@@ -89,7 +89,12 @@ the target the architecture is built toward, not as a track record.
   Enforced after the model answers, not only asked of it: every proposal
   carries whether its type was declared (`ProposalBasis`), and a relation
   proposed under a declared name whose ends contradict the declaration is
-  dropped rather than returned.
+  dropped rather than returned. One caveat from measurement: handed a
+  *partial* declaration, the model proposed only what was declared and
+  inferred nothing beyond it, so a partial declaration reached fewer
+  competency questions than no declaration at all (the declared-completeness
+  ablation in the test project). Until the prompt says otherwise, declaring
+  is all-or-nothing in practice — an observed behaviour, not a promise.
 - **Confidence routes, it doesn't decide.** Every proposal carries a
   confidence score; a caller-defined threshold routes it to auto-apply,
   human review, or draft-only. Eyu proposes — it never applies anything.

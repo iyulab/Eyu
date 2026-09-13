@@ -103,11 +103,11 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
         using var _ = httpClient;
         var proposer = new SinglePassOntologyProposer(modelClient, LinkageOptions.Default);
 
-        // A detached background round (the only way to run this past the shell's foreground cut —
-        // cycle-167) has no console, so nothing the test framework writes to stdout survives. The
-        // report file is the one artifact a detached run can always produce, so any exception that
-        // escapes the run loop is persisted there before it fails — otherwise a crash mid-round
-        // leaves exit code 2 and no reason anywhere (observed 2026-09-13, run 20260913-141303).
+        // A round long enough to outlast an interactive shell's cut has to run detached, and a
+        // detached process has no console — so nothing the test framework writes to stdout survives.
+        // The report file is the one artifact such a run can always produce, so any exception that
+        // escapes the run loop is persisted there before it fails; otherwise a crash mid-round
+        // leaves a non-zero exit code and no reason recorded anywhere.
         var reportPath = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_REPORT");
         var stats = new Dictionary<string, List<(DeclarationLevel Level, LevelStats Stats)>>();
         var points = new List<Point>();

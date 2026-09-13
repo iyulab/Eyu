@@ -178,6 +178,16 @@ the zero-dependency contract package — and never implements `IHitlGate`: openi
 a gate, awaiting the reviewer, and applying an approved proposal are the
 consumer's, because Eyu never applies anything.
 
+The bundled [`HttpModelClient`](src/Eyu.Core/Inference/Http/HttpModelClient.cs) speaks
+the OpenAI-compatible `chat/completions` shape; the caller owns the `HttpClient`'s base
+address, auth header and timeout. A provider-specific request field the library does not
+model — a self-hosted server's thinking control (`chat_template_kwargs`, `reasoning`), a
+`temperature` — is passed through an optional `extraBody` of opaque JSON merged into every
+request (the OpenAI SDK's `extra_body` convention; `model` and `messages` stay owned by the
+client). When the provider reports token counts, `ModelResponse.Usage` carries them
+(prompt / completion / total, each optional) verbatim, so a caller can budget context or
+bill against the server's own numbers.
+
 Entity resolution is tuned through a value, not a port: `SinglePassOntologyProposer`
 accepts an optional [`LinkageOptions`](src/Eyu.Core/Linkage/LinkageOptions.cs) record
 covering the record-linkage pre-filter's classification thresholds, its EM iteration

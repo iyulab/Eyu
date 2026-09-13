@@ -10,6 +10,12 @@ every published version has a section here.
 
 ## Unreleased
 
+### Dependencies
+
+- `Eyu.Formbase` now takes `Formbase.Core` 0.10.0 (was 0.9.0). The declared-structure
+  adapter reads form types and columns only, none of which changed; the port that broke in
+  that release (`IProjectionState`) is not one this package implements.
+
 ## 0.1.0
 
 First published version. What it contains is what the README describes; the

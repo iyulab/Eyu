@@ -74,10 +74,17 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
         /// inference off, which reach alone cannot show once every named question is reached.
         /// </summary>
         public readonly List<int> BeyondDeclarationCounts = [];
+
+        /// <summary>Reach on the questions the declaration left unnamed, per attempt where any were left.</summary>
+        public readonly List<double> InferredReachRates = [];
         public readonly List<string> Notes = [];
     }
 
-    private sealed record Point(string Case, double Completeness, double ReachRate);
+    /// <summary>
+    /// One parsed attempt. <see cref="InferredReachRate"/> is <c>null</c> at a rung whose declaration
+    /// names every question — there is nothing left to infer, and a point with no y is not a point.
+    /// </summary>
+    private sealed record Point(string Case, double Completeness, double ReachRate, double? InferredReachRate);
 
     [Fact]
     public async Task Correlate_declared_completeness_with_competency_question_reach()
@@ -101,10 +108,10 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
                 for (var attempt = 0; attempt < runs; attempt++)
                 {
                     levelStats.Attempts++;
-                    var reachRate = await RunAttemptAsync(proposer, qualityCase, level, levelStats);
-                    if (reachRate is { } rate)
+                    var point = await RunAttemptAsync(proposer, qualityCase, level, levelStats);
+                    if (point is not null)
                     {
-                        points.Add(new Point(qualityCase.Name, level.Completeness, rate));
+                        points.Add(point);
                     }
                 }
             }
@@ -132,8 +139,8 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
         Assert.True(points.Count > 0, "at least one proposal must survive parsing for the ablation to mean anything");
     }
 
-    /// <summary>One attempt at one rung; the reach rate, or <c>null</c> when the response did not parse.</summary>
-    private static async Task<double?> RunAttemptAsync(SinglePassOntologyProposer proposer, QualityCase qualityCase, DeclarationLevel level, LevelStats stats)
+    /// <summary>One attempt at one rung as a point, or <c>null</c> when the response did not parse.</summary>
+    private static async Task<Point?> RunAttemptAsync(SinglePassOntologyProposer proposer, QualityCase qualityCase, DeclarationLevel level, LevelStats stats)
     {
         OntologyProposal proposal;
         try
@@ -172,22 +179,41 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
         var reachRate = (double)reached / qualityCase.Questions.Length;
         stats.ReachRates.Add(reachRate);
 
+        var inferred = DeclarationLadder.InferredReach(qualityCase.Questions, level.Structure, vocabulary);
+        double? inferredRate = inferred.Unnamed == 0 ? null : inferred.Rate;
+        if (inferredRate is { } definedInferredRate)
+        {
+            stats.InferredReachRates.Add(definedInferredRate);
+        }
+
         var proposals = proposal.Entities.Count + proposal.Relations.Count;
         var declared = proposal.Entities.Count(e => e.Basis == ProposalBasis.Declared) + proposal.Relations.Count(r => r.Basis == ProposalBasis.Declared);
         stats.DeclaredShares.Add(proposals == 0 ? 0 : (double)declared / proposals);
 
-        return reachRate;
+        return new Point(qualityCase.Name, level.Completeness, reachRate, inferredRate);
     }
 
     /// <summary>Same leniency the declared-structure merge uses: case and separators do not make two names different.</summary>
     private static string Normalize(string name) => new([.. name.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant)]);
 
+    /// <summary>
+    /// Completeness against reach, then completeness against inferred reach — pooled and per case.
+    /// The second set drops the rungs where the declaration named every question (no y), so its
+    /// n is smaller and it is the correlation the completeness claim would have to survive.
+    /// </summary>
     private static Dictionary<string, SpearmanResult?> Correlate(List<Point> points)
     {
-        var results = new Dictionary<string, SpearmanResult?> { ["pooled"] = Correlate(points.Select(p => (p.Completeness, p.ReachRate))) };
+        var results = new Dictionary<string, SpearmanResult?> { ["reach · pooled"] = Correlate(points.Select(p => (p.Completeness, p.ReachRate))) };
         foreach (var group in points.GroupBy(p => p.Case))
         {
-            results[group.Key] = Correlate(group.Select(p => (p.Completeness, p.ReachRate)));
+            results[$"reach · {group.Key}"] = Correlate(group.Select(p => (p.Completeness, p.ReachRate)));
+        }
+
+        var inferred = points.Where(p => p.InferredReachRate is not null).ToList();
+        results["inferred reach · pooled"] = Correlate(inferred.Select(p => (p.Completeness, p.InferredReachRate!.Value)));
+        foreach (var group in inferred.GroupBy(p => p.Case))
+        {
+            results[$"inferred reach · {group.Key}"] = Correlate(group.Select(p => (p.Completeness, p.InferredReachRate!.Value)));
         }
 
         return results;
@@ -228,10 +254,11 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
             .AppendLine("Reach = share of the case's competency questions the proposal's vocabulary reaches (substring over type and relation names — presence, not correctness). ")
             .AppendLine("Named by declaration = questions the declaration's own vocabulary (subject, relation names, targets) already reaches; the ceiling a compliant model would hit. ")
             .AppendLine("Declared share = proposals stamped Declared by the merge; low at high completeness means the model named things its own way or the merge dropped contradicting relations. ")
-            .AppendLine("Vocabulary = mean distinct structural terms per attempt; beyond declaration = mean of those the declaration did not name — zero above completeness 0 means declaring switched inference off.")
+            .AppendLine("Vocabulary = mean distinct structural terms per attempt; beyond declaration = mean of those the declaration did not name — zero above completeness 0 means declaring switched inference off. ")
+            .AppendLine("Inferred reach = reach on the questions the declaration did not name (n/a where it named all of them) — the part of reach a declaration cannot account for.")
             .AppendLine()
-            .AppendLine("| case | completeness | items | named by declaration | parse ok | mean reach | declared share | vocabulary | beyond declaration | per question |")
-            .AppendLine("|---|---|---|---|---|---|---|---|---|---|");
+            .AppendLine("| case | completeness | items | named by declaration | parse ok | mean reach | inferred reach | declared share | vocabulary | beyond declaration | per question |")
+            .AppendLine("|---|---|---|---|---|---|---|---|---|---|---|");
         foreach (var (name, levels) in stats)
         {
             var questions = QualityCatalog.Cases.Single(c => c.Name == name).Questions;
@@ -241,15 +268,16 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
                 var parseOk = s.Attempts - s.ParseFailures;
                 var meanReach = s.ReachRates.Count == 0 ? "n/a" : s.ReachRates.Average().ToString("F2", CultureInfo.InvariantCulture);
                 var declaredShare = s.DeclaredShares.Count == 0 ? "n/a" : s.DeclaredShares.Average().ToString("F2", CultureInfo.InvariantCulture);
+                var inferredReach = s.InferredReachRates.Count == 0 ? "n/a" : s.InferredReachRates.Average().ToString("F2", CultureInfo.InvariantCulture);
                 var vocabularySize = s.VocabularySizes.Count == 0 ? "n/a" : s.VocabularySizes.Average().ToString("F1", CultureInfo.InvariantCulture);
                 var beyond = s.BeyondDeclarationCounts.Count == 0 ? "n/a" : s.BeyondDeclarationCounts.Average().ToString("F1", CultureInfo.InvariantCulture);
                 var perQuestion = string.Join(" · ", questions.Select(q => $"{s.QuestionsReached.GetValueOrDefault(q.Question, 0)}/{parseOk}"));
                 report.AppendLine(CultureInfo.InvariantCulture,
-                    $"| {name} | {level.Completeness:F2} | {level.ItemsKept}/{level.ItemsTotal} | {named}/{questions.Length} | {parseOk}/{s.Attempts} | {meanReach} | {declaredShare} | {vocabularySize} | {beyond} | {perQuestion} |");
+                    $"| {name} | {level.Completeness:F2} | {level.ItemsKept}/{level.ItemsTotal} | {named}/{questions.Length} | {parseOk}/{s.Attempts} | {meanReach} | {inferredReach} | {declaredShare} | {vocabularySize} | {beyond} | {perQuestion} |");
             }
         }
 
-        report.AppendLine().AppendLine("## Spearman ρ, completeness vs. reach (one point per parsed attempt; permutation p, two-sided)")
+        report.AppendLine().AppendLine("## Spearman ρ, completeness vs. reach and vs. inferred reach (one point per parsed attempt; permutation p, two-sided)")
             .AppendLine()
             .AppendLine("| scope | n | ρ | p | reading |")
             .AppendLine("|---|---|---|---|---|");
@@ -261,7 +289,8 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
         }
 
         report.AppendLine()
-            .AppendLine("Reading guide: uphold / weaken / withdraw are the proposed bands for the completeness claim; a case already at full reach with nothing declared has no headroom and tests only whether declaring can harm. Read per case before pooled.");
+            .AppendLine("Reading guide: uphold / weaken / withdraw are the proposed bands for the completeness claim; a case already at full reach with nothing declared has no headroom and tests only whether declaring can harm. Read per case before pooled. ")
+            .AppendLine("Plain reach rises with completeness whenever the model complies with what was declared, so read the claim off inferred reach — the questions the declaration did not hand the model — and treat the plain-reach row as the compliance check.");
 
         var notes = stats.Where(kv => kv.Value.Any(l => l.Stats.Notes.Count > 0)).ToList();
         if (notes.Count > 0)
@@ -287,6 +316,7 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
         int Attempts,
         int ParseFailures,
         double? MeanReach,
+        double? MeanInferredReach,
         double? MeanDeclaredShare,
         double? MeanVocabularySize,
         double? MeanBeyondDeclaration,
@@ -294,7 +324,7 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
 
     private sealed record CaseLogEntry(string Name, IReadOnlyList<LevelLogEntry> Levels);
 
-    private sealed record PointLogEntry(string Case, double Completeness, double ReachRate);
+    private sealed record PointLogEntry(string Case, double Completeness, double ReachRate, double? InferredReachRate);
 
     private sealed record CorrelationLogEntry(string Scope, int? N, double? Rho, double? PValue, string Reading);
 
@@ -326,6 +356,7 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
                     l.Stats.Attempts,
                     l.Stats.ParseFailures,
                     l.Stats.ReachRates.Count == 0 ? null : l.Stats.ReachRates.Average(),
+                    l.Stats.InferredReachRates.Count == 0 ? null : l.Stats.InferredReachRates.Average(),
                     l.Stats.DeclaredShares.Count == 0 ? null : l.Stats.DeclaredShares.Average(),
                     l.Stats.VocabularySizes.Count == 0 ? null : l.Stats.VocabularySizes.Average(),
                     l.Stats.BeyondDeclarationCounts.Count == 0 ? null : l.Stats.BeyondDeclarationCounts.Average(),
@@ -338,7 +369,7 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
             runs,
             LadderSteps,
             cases,
-            [.. points.Select(p => new PointLogEntry(p.Case, p.Completeness, p.ReachRate))],
+            [.. points.Select(p => new PointLogEntry(p.Case, p.Completeness, p.ReachRate, p.InferredReachRate))],
             [.. correlations.Select(kv => new CorrelationLogEntry(
                 kv.Key,
                 kv.Value?.N,

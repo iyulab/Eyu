@@ -35,6 +35,15 @@ internal sealed record DeclarationLevel(
     DeclaredStructure? Structure);
 
 /// <summary>
+/// Questions a declaration left unnamed, and how many of them a proposal reached regardless.
+/// <see cref="Rate"/> is <see cref="double.NaN"/> when nothing was left unnamed.
+/// </summary>
+internal sealed record InferredReach(int Unnamed, int Reached)
+{
+    public double Rate => Unnamed == 0 ? double.NaN : (double)Reached / Unnamed;
+}
+
+/// <summary>
 /// The full declaration a form would make for one catalog case, and the graded ablation of it.
 /// A schema-completeness–recall correlation needs the same declaration at several completeness
 /// levels; this type produces them as prefixes of the form-ordered item list, so that level
@@ -102,6 +111,24 @@ internal sealed class DeclarationLadder
             .. structure.Relations.SelectMany(relation => new[] { relation.Name, relation.Target.Value })
                 .Select(term => term.ToLowerInvariant()),
         ];
+    }
+
+    /// <summary>
+    /// Reach on the questions the declaration did <em>not</em> name: how many of the case's
+    /// questions the declared vocabulary fails to reach, and how many of those the proposal's
+    /// vocabulary reaches anyway. Plain reach rises with completeness by construction — a rung that
+    /// names a question hands the model the words — so it measures compliance; this is the part a
+    /// declaration cannot account for, which is what the completeness claim is actually about.
+    /// <see cref="InferredReach.Unnamed"/> is 0 at full declaration, where the rate is undefined.
+    /// </summary>
+    public static InferredReach InferredReach(
+        IReadOnlyList<CompetencyQuestion> questions,
+        DeclaredStructure? structure,
+        IReadOnlyList<string> proposalVocabulary)
+    {
+        var declared = DeclaredVocabulary(structure);
+        var unnamed = questions.Where(q => !CompetencyQuestionReach.Reaches(q, declared)).ToList();
+        return new InferredReach(unnamed.Count, unnamed.Count(q => CompetencyQuestionReach.Reaches(q, proposalVocabulary)));
     }
 
     private DeclaredStructure? Prefix(int kept)

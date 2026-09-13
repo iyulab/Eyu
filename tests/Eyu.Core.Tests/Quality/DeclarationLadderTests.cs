@@ -108,6 +108,49 @@ public class DeclarationLadderTests
         Assert.False(CompetencyQuestionReach.Reaches(unnamed, vocabulary));
     }
 
+    // Two questions; the declaration names the first (event, plant, occurred_at), so only the
+    // second is left to inference. A proposal that reaches both scores 1/1 inferred; one that
+    // reaches only the named question scores 0/1 — plain reach would report 1/2 for it and hide
+    // that everything it reached was handed to it.
+    [Fact]
+    public void Inferred_reach_counts_only_the_questions_the_declaration_did_not_name()
+    {
+        var structure = new DeclaredStructure(
+            SubjectRef.Create("event"),
+            [new DeclaredField("plant_name")],
+            [new DeclaredRelation("occurred_at", SubjectRef.Create("plant"), ViaField: "plant_name")]);
+        CompetencyQuestion[] questions =
+        [
+            new("Which plant did an event occur at?", ["plant", "event", "occurred"]),
+            new("What caused it?", ["cause"]),
+        ];
+
+        var both = DeclarationLadder.InferredReach(questions, structure, ["event", "plant", "occurred_at", "root_cause"]);
+        var namedOnly = DeclarationLadder.InferredReach(questions, structure, ["event", "plant", "occurred_at"]);
+        var nothingDeclared = DeclarationLadder.InferredReach(questions, null, ["event", "plant", "occurred_at"]);
+
+        Assert.Equal(new InferredReach(1, 1), both);
+        Assert.Equal(1.0, both.Rate);
+        Assert.Equal(new InferredReach(1, 0), namedOnly);
+        Assert.Equal(new InferredReach(2, 1), nothingDeclared);
+        Assert.Equal(0.5, nothingDeclared.Rate);
+    }
+
+    [Fact]
+    public void Inferred_reach_is_undefined_when_the_declaration_names_every_question()
+    {
+        var structure = new DeclaredStructure(
+            SubjectRef.Create("event"),
+            [],
+            [new DeclaredRelation("occurred_at", SubjectRef.Create("plant"))]);
+        CompetencyQuestion[] questions = [new("Which plant did an event occur at?", ["plant", "event", "occurred"])];
+
+        var reach = DeclarationLadder.InferredReach(questions, structure, ["event", "plant", "occurred_at"]);
+
+        Assert.Equal(0, reach.Unnamed);
+        Assert.True(double.IsNaN(reach.Rate));
+    }
+
     [Fact]
     public void An_empty_declaration_and_a_ladder_without_steps_are_refused()
     {

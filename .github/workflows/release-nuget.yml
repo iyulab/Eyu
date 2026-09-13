@@ -1,0 +1,142 @@
+name: Release NuGet Packages
+
+# File-version trigger: bumping <Version> in Directory.Build.props and pushing to main
+# publishes that version. --skip-duplicate makes re-runs and no-op bumps safe.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Directory.Build.props'
+  workflow_dispatch:
+
+concurrency:
+  group: release-nuget
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_NOLOGO: true
+
+jobs:
+  publish:
+    name: Pack & Publish
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # needed to push the release tag
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from Directory.Build.props
+        id: version
+        run: |
+          VERSION=$(grep -oP '<Version>\K[^<]+' Directory.Build.props)
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read <Version> from Directory.Build.props"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected version: $VERSION"
+
+      # A release nobody wrote down is one the repository cannot answer questions about later.
+      # This gate runs *before* anything is published: a missing section fails the run while it is
+      # still free to fix. Checked after the push it could only be a warning, and a warning about
+      # an already-published version is exactly the record gap this step exists to close.
+      - name: Verify the changelog records this version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          awk -v heading="## $VERSION" '
+            $0 == heading { capture = 1; next }
+            capture && /^## / { exit }
+            capture { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+          # -s is not the test: a heading followed by a blank line leaves a file that is
+          # non-empty and says nothing, which would publish a release whose notes are one
+          # newline. The section has to carry a character worth reading.
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/release-notes.md"; then
+            echo "::error::CHANGELOG.md records no content under '## $VERSION'. Record the release before publishing it."
+            exit 1
+          fi
+          echo "Release notes: $(wc -l < "$RUNNER_TEMP/release-notes.md") lines"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      # Gate the release on a green suite — never publish an unverified package. The live
+      # model tests stay excluded here exactly as they are in CI: the release runner has no
+      # endpoint, and a package is not made better by a test that cannot run.
+      - name: Test
+        run: dotnet test --no-build --configuration Release --verbosity normal
+
+      # Packs every IsPackable project in the solution: Eyu.Core and Eyu.Formbase. The test
+      # projects opt out with IsPackable=false.
+      - name: Pack
+        run: dotnet pack --no-build --configuration Release --output ./nupkgs /p:PackageVersion=${{ steps.version.outputs.version }}
+
+      # A manual run stops publishing here: it builds, tests and packs, but pushes nothing. Every
+      # step from here on writes something that cannot be taken back, against whatever version the
+      # file happens to hold, so without this condition "try it once" and "release it" are the same
+      # act. What otherwise holds a manual run back is --skip-duplicate, and that is idempotence,
+      # not a guard: it means "do not publish the same thing twice", not "do not publish". The day
+      # a new package joins the solution, idempotence has nothing to say about it.
+      #
+      # Pushing a .nupkg also uploads the co-located .snupkg, so symbols need no separate step.
+      - name: Push to NuGet.org
+        if: github.event_name == 'push'
+        run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      # GitHub Packages rejects snupkg, so only the .nupkg glob is pushed here.
+      - name: Push to GitHub Packages
+        if: github.event_name == 'push'
+        run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/iyulab/index.json --skip-duplicate
+
+      # Without this the repository keeps no record of what was released: a reader picking a
+      # version to pin from the repository would otherwise read a tag older than the packages.
+      - name: Tag the released version
+        if: github.event_name == 'push'
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists, leaving it alone."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      # The other half of the same record: packages, tag and release notes are produced by one
+      # run, so the three cannot drift apart.
+      - name: Publish the GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, leaving it alone."
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "Eyu ${{ steps.version.outputs.version }}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"

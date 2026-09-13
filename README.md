@@ -90,11 +90,13 @@ the target the architecture is built toward, not as a track record.
   carries whether its type was declared (`ProposalBasis`), and a relation
   proposed under a declared name whose ends contradict the declaration is
   dropped rather than returned. One caveat from measurement: handed a
-  *partial* declaration, the model proposed only what was declared and
+  *partial* declaration under an earlier prompt that asked the model to
+  "infer only what nothing declares", it proposed only what was declared and
   inferred nothing beyond it, so a partial declaration reached fewer
   competency questions than no declaration at all (the declared-completeness
-  ablation in the test project). Until the prompt says otherwise, declaring
-  is all-or-nothing in practice — an observed behaviour, not a promise.
+  ablation in the test project). The prompt now says a declaration is a
+  floor, not a ceiling; whether the model treats it that way is what the
+  ablation's "inferred reach" column measures — a measurement, not a promise.
 - **Confidence routes, it doesn't decide.** Every proposal carries a
   confidence score; a caller-defined threshold routes it to auto-apply,
   human review, or draft-only. Eyu proposes — it never applies anything.

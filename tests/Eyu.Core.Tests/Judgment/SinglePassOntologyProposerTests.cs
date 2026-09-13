@@ -298,6 +298,30 @@ public class SinglePassOntologyProposerTests
     }
 
     [Fact]
+    public async Task ProposeAsync_declaration_clause_asks_for_inference_beyond_the_declaration()
+    {
+        // The declared-completeness ablation measured that, asked to "infer only what nothing
+        // declares", the model read a partial declaration as the whole answer and inferred nothing
+        // beyond it -- so declaring a third of a form reached fewer competency questions than
+        // declaring none. The clause now names the declaration a floor, not a ceiling. This test
+        // pins that wording, and pins the old clause's absence, so the behaviour the ablation
+        // measures is the behaviour the prompt actually asks for; changing the sentence is a
+        // design decision, and the failure is the reminder.
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model);
+        var structure = new DeclaredStructure(
+            SubjectRef.Create("work_order"),
+            Fields: [new DeclaredField("wo_no", Kind: DeclaredValueKind.Text, Required: true)],
+            Relations: []);
+        var records = new[] { new RawRecord("rec-1", new Dictionary<string, string?> { ["wo_no"] = "WO-1" }) };
+
+        await proposer.ProposeAsync(structure, records, TestContext.Current.CancellationToken);
+
+        Assert.Contains("A declaration is a floor, not a ceiling: still propose every entity and relation the records show beyond what is declared.", model.LastPrompt);
+        Assert.DoesNotContain("infer only what nothing declares", model.LastPrompt);
+    }
+
+    [Fact]
     public async Task ProposeAsync_tells_the_model_which_record_groups_are_already_linked()
     {
         var model = new StubModelClient("""{"entities":[],"relations":[]}""");

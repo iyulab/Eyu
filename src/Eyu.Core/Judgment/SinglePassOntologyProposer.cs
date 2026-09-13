@@ -59,7 +59,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         if (declaredStructure is not null)
         {
             text.AppendLine();
-            text.AppendLine("Declared structure is authoritative: a declared field or relation is fact, not a hypothesis. Propose a relation a declared relation describes under its declared name, never contradict declared structure, and infer only what nothing declares.");
+            text.AppendLine("Declared structure is authoritative: a declared field or relation is fact, not a hypothesis. Propose a relation a declared relation describes under its declared name, and never contradict declared structure. A declaration is a floor, not a ceiling: still propose every entity and relation the records show beyond what is declared.");
             text.AppendLine(CultureInfo.InvariantCulture, $"Declared fields for {declaredStructure.Subject}: {string.Join(", ", declaredStructure.Fields.Select(DescribeField))}");
             foreach (var relation in declaredStructure.Relations)
             {

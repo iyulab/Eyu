@@ -10,6 +10,19 @@ every published version has a section here.
 
 ## Unreleased
 
+### Added
+
+- `HttpModelClient` accepts an optional opaque `extraBody` of request fields
+  (`IReadOnlyDictionary<string, JsonElement>`) merged into every chat-completions
+  request — a self-hosted server's thinking control (`chat_template_kwargs`,
+  `reasoning`), a `temperature`, or any other provider-specific field, passed
+  through verbatim (the OpenAI SDK `extra_body` convention). `model` and
+  `messages` stay owned by the client.
+- `ModelResponse.Usage` (`TokenUsage`: prompt / completion / total tokens, each
+  optional) carries the provider's own token counts when the response reports
+  them, so a caller can budget context or bill against the same numbers; `null`
+  when the provider omits usage.
+
 ## 0.1.0
 
 First published version. What it contains is what the README describes; the

@@ -121,6 +121,92 @@ public class HttpModelClientTests
         await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task CompleteAsync_merges_opaque_extra_body_fields_into_the_request()
+    {
+        // Provider-specific knobs a consumer needs (a self-hosted server's thinking control, a
+        // temperature) ride as opaque JSON the client does not interpret — the OpenAI SDK's
+        // extra_body convention, kept provider-neutral (design: no domain field earns a named slot).
+        string? capturedBody = null;
+        var handler = new FakeHandler(async request =>
+        {
+            capturedBody = request.Content is null ? null : await request.Content.ReadAsStringAsync();
+            return CannedResponse("ok");
+        });
+        var extraBody = new Dictionary<string, JsonElement>
+        {
+            ["temperature"] = JsonSerializer.SerializeToElement(0.2),
+            ["chat_template_kwargs"] = JsonSerializer.SerializeToElement(new { enable_thinking = false }),
+        };
+        var client = new HttpModelClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", extraBody);
+
+        await client.CompleteAsync(new ModelRequest("hi"), TestContext.Current.CancellationToken);
+
+        using var payload = JsonDocument.Parse(capturedBody!);
+        Assert.Equal("test-model", payload.RootElement.GetProperty("model").GetString());
+        Assert.Equal("hi", payload.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
+        Assert.Equal(0.2, payload.RootElement.GetProperty("temperature").GetDouble());
+        Assert.False(payload.RootElement.GetProperty("chat_template_kwargs").GetProperty("enable_thinking").GetBoolean());
+    }
+
+    [Fact]
+    public async Task CompleteAsync_does_not_let_extra_body_override_model_or_messages()
+    {
+        // The client owns model and messages; an extra-body entry with either key is ignored rather
+        // than silently breaking the request it is layered onto.
+        string? capturedBody = null;
+        var handler = new FakeHandler(async request =>
+        {
+            capturedBody = request.Content is null ? null : await request.Content.ReadAsStringAsync();
+            return CannedResponse("ok");
+        });
+        var extraBody = new Dictionary<string, JsonElement>
+        {
+            ["model"] = JsonSerializer.SerializeToElement("hijacked"),
+            ["messages"] = JsonSerializer.SerializeToElement("hijacked"),
+        };
+        var client = new HttpModelClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", extraBody);
+
+        await client.CompleteAsync(new ModelRequest("hi"), TestContext.Current.CancellationToken);
+
+        using var payload = JsonDocument.Parse(capturedBody!);
+        Assert.Equal("test-model", payload.RootElement.GetProperty("model").GetString());
+        Assert.Equal(JsonValueKind.Array, payload.RootElement.GetProperty("messages").ValueKind);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_passes_through_token_usage_when_the_response_reports_it()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """{"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}""",
+                Encoding.UTF8,
+                "application/json"),
+        }));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+
+        var response = await client.CompleteAsync(new ModelRequest("hi"), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(response.Usage);
+        Assert.Equal(11, response.Usage!.PromptTokens);
+        Assert.Equal(7, response.Usage.CompletionTokens);
+        Assert.Equal(18, response.Usage.TotalTokens);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_leaves_usage_unset_when_the_response_omits_it()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(CannedResponse("ok")));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+
+        var response = await client.CompleteAsync(new ModelRequest("hi"), TestContext.Current.CancellationToken);
+
+        Assert.Null(response.Usage);
+    }
+
     private static HttpResponseMessage CannedResponse(string content) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(

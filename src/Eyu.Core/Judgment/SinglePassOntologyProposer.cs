@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Eyu.Core.Declared;
@@ -40,6 +41,31 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly LinkageOptions options = linkageOptions ?? LinkageOptions.Default;
 
+    // The prompt's fixed text — the part that is identical across every call, regardless of the
+    // declared structure or records handed in. BuildPrompt appends these verbatim; PromptFingerprint
+    // hashes them. Keeping the literals here (rather than inline in BuildPrompt) makes them the
+    // single source both use, so the fingerprint cannot silently disagree with the prompt.
+    private const string PromptInstruction = "Propose entities and relations grounded in the input below.";
+    private const string PromptSchema = "Respond with JSON only: {\"entities\":[{\"id\",\"type\",\"claim\",\"sources\",\"origin\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"origin\",\"confidence\"}]}.";
+    private const string PromptOriginRule = "\"origin\" is \"Innate\" or \"Acquired\". Every claim must cite at least one source id.";
+    private const string DeclarationClause = "Declared structure is authoritative: a declared field or relation is fact, not a hypothesis. Propose a relation a declared relation describes under its declared name, and never contradict declared structure. A declaration is a floor, not a ceiling: still propose every entity and relation the records show beyond what is declared.";
+
+    /// <summary>
+    /// First 8 hex characters of the SHA-256 of the prompt's fixed text (preamble + the declaration
+    /// clause) — a short, stable identifier that changes whenever that wording changes and stays
+    /// the same otherwise. A measurement report stamps it so two runs made across a prompt edit are
+    /// not read as comparable by accident. It covers only the fixed text, not the per-call declared
+    /// structure or records, so the same prompt version yields the same fingerprint on any input.
+    /// </summary>
+    public static string PromptFingerprint { get; } = ComputeFingerprint();
+
+    private static string ComputeFingerprint()
+    {
+        var fixedText = string.Join('\n', PromptInstruction, PromptSchema, PromptOriginRule, DeclarationClause);
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(fixedText));
+        return Convert.ToHexString(hash).ToLowerInvariant()[..8];
+    }
+
     public async Task<OntologyProposal> ProposeAsync(DeclaredStructure? declaredStructure, IReadOnlyList<RawRecord> records, CancellationToken cancellationToken = default)
     {
         var linkageAnalysis = LinkagePipeline.Analyze(records, options);
@@ -52,14 +78,14 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     private static string BuildPrompt(DeclaredStructure? declaredStructure, IReadOnlyList<RawRecord> records, LinkageAnalysis linkageAnalysis)
     {
         var text = new StringBuilder();
-        text.AppendLine("Propose entities and relations grounded in the input below.");
-        text.AppendLine("Respond with JSON only: {\"entities\":[{\"id\",\"type\",\"claim\",\"sources\",\"origin\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"origin\",\"confidence\"}]}.");
-        text.AppendLine("\"origin\" is \"Innate\" or \"Acquired\". Every claim must cite at least one source id.");
+        text.AppendLine(PromptInstruction);
+        text.AppendLine(PromptSchema);
+        text.AppendLine(PromptOriginRule);
 
         if (declaredStructure is not null)
         {
             text.AppendLine();
-            text.AppendLine("Declared structure is authoritative: a declared field or relation is fact, not a hypothesis. Propose a relation a declared relation describes under its declared name, and never contradict declared structure. A declaration is a floor, not a ceiling: still propose every entity and relation the records show beyond what is declared.");
+            text.AppendLine(DeclarationClause);
             text.AppendLine(CultureInfo.InvariantCulture, $"Declared fields for {declaredStructure.Subject}: {string.Join(", ", declaredStructure.Fields.Select(DescribeField))}");
             foreach (var relation in declaredStructure.Relations)
             {

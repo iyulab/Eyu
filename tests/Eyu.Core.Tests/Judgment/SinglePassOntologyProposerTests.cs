@@ -462,6 +462,16 @@ public class SinglePassOntologyProposerTests
     }
 
     [Fact]
+    public void PromptFingerprint_is_eight_lowercase_hex_characters()
+    {
+        // A short stable identifier for the prompt's fixed text, stamped on measurement reports so
+        // two runs made across a prompt edit are not read as comparable. The wording itself is
+        // pinned by the preamble and declaration-clause tests; this only pins the identifier's shape
+        // so a broken implementation (wrong length, uppercase, empty) is caught.
+        Assert.Matches("^[0-9a-f]{8}$", SinglePassOntologyProposer.PromptFingerprint);
+    }
+
+    [Fact]
     public async Task ProposeAsync_prompt_preamble_does_not_say_what_counts_as_an_entity()
     {
         // The preamble is deliberately silent on what an entity is and on which kinds should

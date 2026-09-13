@@ -298,6 +298,30 @@ public class SinglePassOntologyProposerTests
     }
 
     [Fact]
+    public async Task ProposeAsync_sends_no_linkage_sections_when_records_do_not_denote_entities()
+    {
+        // Six chunks of one document: with the pre-filter on, every pair is a gray-zone line the
+        // model is asked to adjudicate (fifteen of them here). With RecordsDenoteEntities off the
+        // prompt carries the records and nothing about linking them.
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model, new LinkageOptions(RecordsDenoteEntities: false));
+        var records = Enumerable.Range(1, 6)
+            .Select(i => new RawRecord($"chunk-{i}", new Dictionary<string, string?>
+            {
+                ["content"] = $"Paragraph {i} of the same document.",
+                ["title"] = "Company profile",
+                ["path"] = "/docs/profile.pptx",
+            }))
+            .ToList();
+
+        await proposer.ProposeAsync(declaredStructure: null, records, TestContext.Current.CancellationToken);
+
+        Assert.Contains("- chunk-6: content=Paragraph 6 of the same document.", model.LastPrompt);
+        Assert.DoesNotContain("Pre-linked record groups", model.LastPrompt);
+        Assert.DoesNotContain("Ambiguous record pairs", model.LastPrompt);
+    }
+
+    [Fact]
     public async Task ProposeAsync_declaration_clause_asks_for_inference_beyond_the_declaration()
     {
         // The declared-completeness ablation measured that, asked to "infer only what nothing

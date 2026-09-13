@@ -9,15 +9,28 @@ namespace Eyu.Core.Linkage;
 /// caller only needs this once observed precision/recall from a live validation cycle calls for
 /// different thresholds (design rationale §D of the base feature; decision 4 of the follow-up
 /// design), or once literal field comparison misses notation-variant duplicates (see
-/// <see cref="UseStringSimilarityComparator"/>).
+/// <see cref="UseStringSimilarityComparator"/>), or because its records are not what the
+/// pre-filter assumes they are (see <see cref="RecordsDenoteEntities"/>).
 /// </summary>
+/// <param name="RecordsDenoteEntities">
+/// The pre-filter's premise: each record is one mention of one real-world entity, so two records
+/// agreeing on their fields is evidence that they denote the same thing. That holds for a row, a
+/// form submission, a directory entry. It does not hold for a document fragment — a text chunk with
+/// a title and a path names many entities and denotes none — and there the premise inverts:
+/// measured, chunks of one document agree on their metadata, the estimator reads that agreement as
+/// identity, and the whole document is pre-linked as a single entity before the model sees it.
+/// Pass <see langword="false"/> for such records and no pair is compared: every record is its own
+/// singleton, the model receives no pre-linked groups and no gray-zone pairs, and the proposal's
+/// grounding still cites record ids as before. Defaults to <see langword="true"/>.
+/// </param>
 public sealed record LinkageOptions(
     double MatchThreshold = LinkageClassifier.DefaultMatchThreshold,
     double NonMatchThreshold = LinkageClassifier.DefaultNonMatchThreshold,
     int MaxIterations = FellegiSunterEstimator.DefaultMaxIterations,
     double ConvergenceTolerance = FellegiSunterEstimator.DefaultConvergenceTolerance,
     bool UseStringSimilarityComparator = false,
-    double StringSimilarityAgreementThreshold = FieldComparator.DefaultStringSimilarityAgreementThreshold)
+    double StringSimilarityAgreementThreshold = FieldComparator.DefaultStringSimilarityAgreementThreshold,
+    bool RecordsDenoteEntities = true)
 {
     public static readonly LinkageOptions Default = new();
 

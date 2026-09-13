@@ -40,6 +40,49 @@ public class LinkagePipelineTests
         Assert.DoesNotContain("rec-2", error.Message);
     }
 
+    private static RawRecord Chunk(string id, string title, string path, int page, string content) =>
+        Record(id, ("content", content), ("title", title), ("path", path), ("page", page.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+
+    private static RawRecord[] TwoDocumentsOfThreeChunksEach() =>
+    [
+        Chunk("a-1", "Company profile", "/docs/profile.pptx", 1, "Founded in 1998; key customers include A Electronics and B Bank."),
+        Chunk("a-2", "Company profile", "/docs/profile.pptx", 2, "Partners: C Cloud, D Soft. In-house product E-Platform launched 2021."),
+        Chunk("a-3", "Company profile", "/docs/profile.pptx", 3, "Revenue 32 billion, 180 staff. Head office in one city, branch in another."),
+        Chunk("b-1", "Product overview", "/docs/product.pdf", 1, "E-Platform combines document Q&A and log analysis."),
+        Chunk("b-2", "Product overview", "/docs/product.pdf", 2, "Awards: a ministerial prize in 2024."),
+        Chunk("b-3", "Product overview", "/docs/product.pdf", 3, "Customer list: A Electronics, B Bank, F Pharma."),
+    ];
+
+    [Fact]
+    public void Document_fragments_sharing_metadata_are_pre_linked_as_one_entity_per_document_by_default()
+    {
+        // The pre-filter's premise is that a record denotes one entity, so agreement is identity.
+        // Chunks of one document agree on title and path and disagree on content and page; with
+        // two documents in the batch the estimator has the contrast it needs and reads the
+        // metadata agreement as a match. Measured before this test existed: every same-document
+        // pair classified Match, one cluster per document. This pins that behaviour so the option
+        // below is understood as necessary, not cosmetic.
+        var analysis = LinkagePipeline.Analyze(TwoDocumentsOfThreeChunksEach());
+
+        Assert.Equal(2, analysis.Clustering.Clusters.Count);
+        Assert.Contains(analysis.Clustering.Clusters, c => c.RecordIds.Order().SequenceEqual(["a-1", "a-2", "a-3"]));
+        Assert.Contains(analysis.Clustering.Clusters, c => c.RecordIds.Order().SequenceEqual(["b-1", "b-2", "b-3"]));
+        Assert.All(analysis.PairLinkages.Where(p => p.RecordIdA[0] == p.RecordIdB[0]), p => Assert.Equal(LinkageClassification.Match, p.Classification));
+    }
+
+    [Fact]
+    public void Records_that_do_not_denote_entities_are_not_compared_at_all()
+    {
+        var analysis = LinkagePipeline.Analyze(TwoDocumentsOfThreeChunksEach(), new LinkageOptions(RecordsDenoteEntities: false));
+
+        Assert.Equal(6, analysis.Clustering.Clusters.Count);
+        Assert.All(analysis.Clustering.Clusters, c => Assert.Single(c.RecordIds));
+        Assert.Empty(analysis.Clustering.GrayZonePairs);
+        Assert.Empty(analysis.PairLinkages);
+        Assert.Null(analysis.Parameters);
+        Assert.Null(analysis.ErrorRates);
+    }
+
     [Fact]
     public void A_single_record_batch_produces_one_singleton_cluster_and_no_pair_linkages()
     {

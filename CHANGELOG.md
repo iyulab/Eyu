@@ -32,7 +32,9 @@ short form:
   per batch, with a heuristic fallback for small batches) pre-links confirmed
   matches, hands gray-zone pairs to the model, and folds the prior into each
   claim's confidence. Opt-in Jaro-Winkler field comparison for notation
-  variants.
+  variants. `LinkageOptions.RecordsDenoteEntities` turns the pre-filter off
+  for records that are document fragments rather than entity mentions, where
+  its premise does not hold.
 - Confidence routing: `RoutingPolicy` with per-origin (`Innate` / `Acquired`)
   thresholds; Eyu proposes and never applies.
 - Clerical review support for measuring entity-resolution accuracy without a

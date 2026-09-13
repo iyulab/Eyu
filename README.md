@@ -186,6 +186,19 @@ reproduces the behavior of passing nothing, so a caller reaches for it only once
 run shows the defaults classifying that caller's data badly — what each value does, and
 what is still unmeasured about them, is in Status above.
 
+One default is a premise rather than a tuning value. The pre-filter assumes **a record
+is one mention of one entity** — a row, a form submission, a directory entry — so that
+two records agreeing on their fields is evidence they denote the same thing. A document
+fragment is not that: a text chunk with a title and a path names many entities and
+denotes none, and there the premise inverts — measured, chunks of one document agree on
+their metadata, the estimator reads the agreement as identity, and the whole document is
+pre-linked as one entity before the model sees it. Records of that kind still propose and
+ground correctly (a chunk id is a fine source id); pass
+`LinkageOptions` with `RecordsDenoteEntities: false` and no pair is compared, every
+record stays its own singleton, and the prompt carries no pre-linked groups or gray-zone
+pairs. Keep one document per batch, and mind that every record is rendered into the
+prompt in full — the batch size is bounded by the model's context, not by Eyu.
+
 ## Further reading
 
 [Design rationale](docs/philosophy.md) — why judgment requires structure

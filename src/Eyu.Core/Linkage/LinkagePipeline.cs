@@ -7,7 +7,9 @@ namespace Eyu.Core.Linkage;
 /// <see cref="LinkageClassifier"/> -&gt; <see cref="EntityClusterer"/> into one
 /// <see cref="LinkageAnalysis"/> per record batch, with <see cref="LinkageErrorRateEstimator"/>
 /// reporting what the fitted model expects its own classification to have got wrong. Fewer than two records has nothing to compare,
-/// so the pipeline is skipped entirely and every record becomes its own singleton cluster.
+/// so the pipeline is skipped entirely and every record becomes its own singleton cluster — and so
+/// is a batch whose records do not denote entities (<see cref="LinkageOptions.RecordsDenoteEntities"/>),
+/// where comparing them would answer a question the records never posed.
 /// <paramref name="options"/> defaults to <see cref="LinkageOptions.Default"/> — matching every
 /// tuning value <see cref="LinkageClassifier"/> and <see cref="FellegiSunterEstimator"/> already
 /// used, so a caller that never supplies options sees no behavior change. Every pair of records
@@ -48,7 +50,7 @@ public static class LinkagePipeline
         var recordIds = records.Select(r => r.Id).ToList();
         ThrowIfDuplicateIds(recordIds);
 
-        if (records.Count < 2)
+        if (records.Count < 2 || !opts.RecordsDenoteEntities)
         {
             var singletonClusters = recordIds.Select(id => new RecordCluster([id])).ToList();
             return new LinkageAnalysis(new ClusteringResult(singletonClusters, []), [], Parameters: null);

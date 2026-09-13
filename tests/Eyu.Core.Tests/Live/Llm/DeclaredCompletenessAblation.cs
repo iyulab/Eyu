@@ -61,6 +61,13 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
     {
         public int Attempts;
         public int ParseFailures;
+
+        /// <summary>
+        /// Attempts lost to a transport/timeout/malformed-response failure rather than to the model's
+        /// output failing to parse. Tolerated per-attempt like <see cref="ParseFailures"/> so one
+        /// flaky call over a long live round does not discard the whole run's measurement.
+        /// </summary>
+        public int CallFailures;
         public readonly Dictionary<string, int> QuestionsReached = [];
         public readonly List<double> ReachRates = [];
         public readonly List<double> DeclaredShares = [];
@@ -96,44 +103,65 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
         using var _ = httpClient;
         var proposer = new SinglePassOntologyProposer(modelClient, LinkageOptions.Default);
 
+        // A detached background round (the only way to run this past the shell's foreground cut —
+        // cycle-167) has no console, so nothing the test framework writes to stdout survives. The
+        // report file is the one artifact a detached run can always produce, so any exception that
+        // escapes the run loop is persisted there before it fails — otherwise a crash mid-round
+        // leaves exit code 2 and no reason anywhere (observed 2026-09-13, run 20260913-141303).
+        var reportPath = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_REPORT");
         var stats = new Dictionary<string, List<(DeclarationLevel Level, LevelStats Stats)>>();
         var points = new List<Point>();
-        foreach (var qualityCase in QualityCatalog.Cases)
+        try
         {
-            var perLevel = stats[qualityCase.Name] = [];
-            foreach (var level in qualityCase.Declaration.Levels(LadderSteps))
+            foreach (var qualityCase in QualityCatalog.Cases)
             {
-                var levelStats = new LevelStats();
-                perLevel.Add((level, levelStats));
-                for (var attempt = 0; attempt < runs; attempt++)
+                var perLevel = stats[qualityCase.Name] = [];
+                foreach (var level in qualityCase.Declaration.Levels(LadderSteps))
                 {
-                    levelStats.Attempts++;
-                    var point = await RunAttemptAsync(proposer, qualityCase, level, levelStats);
-                    if (point is not null)
+                    var levelStats = new LevelStats();
+                    perLevel.Add((level, levelStats));
+                    for (var attempt = 0; attempt < runs; attempt++)
                     {
-                        points.Add(point);
+                        levelStats.Attempts++;
+                        var point = await RunAttemptAsync(proposer, qualityCase, level, levelStats);
+                        if (point is not null)
+                        {
+                            points.Add(point);
+                        }
                     }
                 }
             }
+
+            var correlations = Correlate(points);
+            var report = RenderReport(runs, stats, correlations);
+            output.WriteLine(report);
+
+            if (!string.IsNullOrWhiteSpace(reportPath))
+            {
+                await File.WriteAllTextAsync(reportPath, report, TestContext.Current.CancellationToken);
+            }
+
+            var structuredLogDir = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_STRUCTURED_LOG_DIR");
+            if (!string.IsNullOrWhiteSpace(structuredLogDir))
+            {
+                var timestamp = DateTimeOffset.UtcNow;
+                Directory.CreateDirectory(structuredLogDir);
+                var logPath = Path.Combine(structuredLogDir, $"ablation-{timestamp:yyyyMMdd-HHmmss}.json");
+                await File.WriteAllTextAsync(logPath, BuildStructuredLogJson(timestamp, runs, stats, points, correlations), TestContext.Current.CancellationToken);
+            }
         }
-
-        var correlations = Correlate(points);
-        var report = RenderReport(runs, stats, correlations);
-        output.WriteLine(report);
-
-        var reportPath = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_REPORT");
-        if (!string.IsNullOrWhiteSpace(reportPath))
+        catch (Exception ex)
         {
-            await File.WriteAllTextAsync(reportPath, report, TestContext.Current.CancellationToken);
-        }
-
-        var structuredLogDir = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_STRUCTURED_LOG_DIR");
-        if (!string.IsNullOrWhiteSpace(structuredLogDir))
-        {
-            var timestamp = DateTimeOffset.UtcNow;
-            Directory.CreateDirectory(structuredLogDir);
-            var logPath = Path.Combine(structuredLogDir, $"ablation-{timestamp:yyyyMMdd-HHmmss}.json");
-            await File.WriteAllTextAsync(logPath, BuildStructuredLogJson(timestamp, runs, stats, points, correlations), TestContext.Current.CancellationToken);
+            if (!string.IsNullOrWhiteSpace(reportPath))
+            {
+                // CancellationToken.None: the failure may itself be a cancellation, and the diagnostic
+                // must still be written.
+                await File.WriteAllTextAsync(
+                    reportPath,
+                    $"# Declared-completeness ablation FAILED\n\n{points.Count} point(s) collected before the failure.\n\n```\n{ex}\n```\n",
+                    System.Threading.CancellationToken.None);
+            }
+            throw;
         }
 
         Assert.True(points.Count > 0, "at least one proposal must survive parsing for the ablation to mean anything");
@@ -151,6 +179,17 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
         {
             stats.ParseFailures++;
             stats.Notes.Add($"completeness {level.Completeness:F2}: {ex.Message}");
+            return null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or TimeoutException or IOException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            // Transport, per-call timeout (HttpClient.Timeout surfaces as OperationCanceledException),
+            // or a malformed response (HttpModelClient throws InvalidOperationException) — none of
+            // which is the model's judgment failing to parse. Skip the attempt and carry on, the same
+            // way a parse failure does; a systemic outage still ends at zero points and the sanity
+            // floor. The proposer is passed no cancellation token, so this cannot swallow test cancel.
+            stats.CallFailures++;
+            stats.Notes.Add($"completeness {level.Completeness:F2}: call failed — {ex.GetType().Name}: {ex.Message}");
             return null;
         }
 
@@ -257,7 +296,7 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
             .AppendLine("Vocabulary = mean distinct structural terms per attempt; beyond declaration = mean of those the declaration did not name — zero above completeness 0 means declaring switched inference off. ")
             .AppendLine("Inferred reach = reach on the questions the declaration did not name (n/a where it named all of them) — the part of reach a declaration cannot account for.")
             .AppendLine()
-            .AppendLine("| case | completeness | items | named by declaration | parse ok | mean reach | inferred reach | declared share | vocabulary | beyond declaration | per question |")
+            .AppendLine("| case | completeness | items | named by declaration | usable | mean reach | inferred reach | declared share | vocabulary | beyond declaration | per question |")
             .AppendLine("|---|---|---|---|---|---|---|---|---|---|---|");
         foreach (var (name, levels) in stats)
         {
@@ -265,15 +304,15 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
             foreach (var (level, s) in levels)
             {
                 var named = questions.Count(q => CompetencyQuestionReach.Reaches(q, DeclarationLadder.DeclaredVocabulary(level.Structure)));
-                var parseOk = s.Attempts - s.ParseFailures;
+                var usable = s.Attempts - s.ParseFailures - s.CallFailures;
                 var meanReach = s.ReachRates.Count == 0 ? "n/a" : s.ReachRates.Average().ToString("F2", CultureInfo.InvariantCulture);
                 var declaredShare = s.DeclaredShares.Count == 0 ? "n/a" : s.DeclaredShares.Average().ToString("F2", CultureInfo.InvariantCulture);
                 var inferredReach = s.InferredReachRates.Count == 0 ? "n/a" : s.InferredReachRates.Average().ToString("F2", CultureInfo.InvariantCulture);
                 var vocabularySize = s.VocabularySizes.Count == 0 ? "n/a" : s.VocabularySizes.Average().ToString("F1", CultureInfo.InvariantCulture);
                 var beyond = s.BeyondDeclarationCounts.Count == 0 ? "n/a" : s.BeyondDeclarationCounts.Average().ToString("F1", CultureInfo.InvariantCulture);
-                var perQuestion = string.Join(" · ", questions.Select(q => $"{s.QuestionsReached.GetValueOrDefault(q.Question, 0)}/{parseOk}"));
+                var perQuestion = string.Join(" · ", questions.Select(q => $"{s.QuestionsReached.GetValueOrDefault(q.Question, 0)}/{usable}"));
                 report.AppendLine(CultureInfo.InvariantCulture,
-                    $"| {name} | {level.Completeness:F2} | {level.ItemsKept}/{level.ItemsTotal} | {named}/{questions.Length} | {parseOk}/{s.Attempts} | {meanReach} | {inferredReach} | {declaredShare} | {vocabularySize} | {beyond} | {perQuestion} |");
+                    $"| {name} | {level.Completeness:F2} | {level.ItemsKept}/{level.ItemsTotal} | {named}/{questions.Length} | {usable}/{s.Attempts} | {meanReach} | {inferredReach} | {declaredShare} | {vocabularySize} | {beyond} | {perQuestion} |");
             }
         }
 
@@ -315,6 +354,7 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
         int NamedByDeclaration,
         int Attempts,
         int ParseFailures,
+        int CallFailures,
         double? MeanReach,
         double? MeanInferredReach,
         double? MeanDeclaredShare,
@@ -355,6 +395,7 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
                     questions.Count(q => CompetencyQuestionReach.Reaches(q, DeclarationLadder.DeclaredVocabulary(l.Level.Structure))),
                     l.Stats.Attempts,
                     l.Stats.ParseFailures,
+                    l.Stats.CallFailures,
                     l.Stats.ReachRates.Count == 0 ? null : l.Stats.ReachRates.Average(),
                     l.Stats.InferredReachRates.Count == 0 ? null : l.Stats.InferredReachRates.Average(),
                     l.Stats.DeclaredShares.Count == 0 ? null : l.Stats.DeclaredShares.Average(),

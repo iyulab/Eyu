@@ -5,6 +5,7 @@ using Eyu.Core.Grounding;
 using Eyu.Core.Judgment;
 using Eyu.Core.Linkage;
 using Eyu.Core.Proposals;
+using Eyu.Core.Records;
 using Eyu.Core.Tests.Quality;
 using Xunit;
 
@@ -56,6 +57,14 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// per run. The questions live here rather than in <c>Eyu.Core</c> on purpose: they are a
 /// property of a catalog domain, not of the library, and this is the only consumer.
 /// </para>
+/// <para>
+/// Both record regimes are measured. The catalog's record cases run with the options above; its
+/// document cases (<see cref="QualityCatalog.DocumentCases"/> — chunks of one document, which
+/// name many entities and denote none) run with the same options but
+/// <see cref="LinkageOptions.RecordsDenoteEntities"/> off, which is how a caller holding text
+/// would call the proposer. Their pre-filter row says the chunks were not compared, since no pair
+/// is, and the report's case table names the regime each row was measured in.
+/// </para>
 /// </summary>
 public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 {
@@ -83,6 +92,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         public int ScoredAttempts;
         public readonly List<string> FailureNotes = [];
         public LinkageAnalysis? Linkage;
+
+        /// <summary>The regime the case was measured in: records that each denote an entity, or chunks of a document.</summary>
+        public bool RecordsDenoteEntities = true;
     }
 
     private static LinkageOptions BuildLinkageOptionsFromEnvironment()
@@ -126,7 +138,23 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             for (var attempt = 0; attempt < runs; attempt++)
             {
                 caseStats.Attempts++;
-                await RunAttemptAsync(proposer, qualityCase, caseStats);
+                await RunAttemptAsync(proposer, qualityCase.Records, qualityCase.Questions, caseStats);
+            }
+        }
+
+        var documentOptions = linkageOptions with { RecordsDenoteEntities = false };
+        var documentProposer = new SinglePassOntologyProposer(modelClient, documentOptions);
+        foreach (var documentCase in QualityCatalog.DocumentCases)
+        {
+            var caseStats = stats[documentCase.Name] = new CaseStats
+            {
+                Linkage = LinkagePipeline.Analyze(documentCase.Chunks, documentOptions),
+                RecordsDenoteEntities = false,
+            };
+            for (var attempt = 0; attempt < runs; attempt++)
+            {
+                caseStats.Attempts++;
+                await RunAttemptAsync(documentProposer, documentCase.Chunks, documentCase.Questions, caseStats);
             }
         }
 
@@ -153,14 +181,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             "at least one proposal must survive parsing for the measurement to mean anything");
     }
 
-    private static async Task RunAttemptAsync(SinglePassOntologyProposer proposer, QualityCase qualityCase, CaseStats stats)
+    private static async Task RunAttemptAsync(SinglePassOntologyProposer proposer, RawRecord[] records, CompetencyQuestion[] questions, CaseStats stats)
     {
-        var recordIds = qualityCase.Records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        var recordIds = records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
 
         OntologyProposal proposal;
         try
         {
-            proposal = await proposer.ProposeAsync(declaredStructure: null, qualityCase.Records);
+            proposal = await proposer.ProposeAsync(declaredStructure: null, records);
         }
         catch (FormatException ex)
         {
@@ -176,7 +204,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
 
         stats.ScoredAttempts++;
-        ScoreCompetencyQuestions(proposal, qualityCase, stats);
+        ScoreCompetencyQuestions(proposal, questions, stats);
 
         stats.EntityCounts.Add(proposal.Entities.Count);
         stats.RelationCounts.Add(proposal.Relations.Count);
@@ -196,7 +224,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 // Ratio + claim text recorded so a human reviewing the report
                 // can tell a genuine mismatch apart from framing language diluting the ratio
                 // (heuristic, not semantic — see GroundingOverlapCheck's doc comment).
-                var overlap = GroundingOverlapCheck.Evaluate(entity.Claim, qualityCase.Records);
+                var overlap = GroundingOverlapCheck.Evaluate(entity.Claim, records);
                 if (!overlap.IsSupported)
                 {
                     stats.OverlapViolations++;
@@ -215,7 +243,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             }
             else
             {
-                var overlap = GroundingOverlapCheck.Evaluate(relation.Claim, qualityCase.Records);
+                var overlap = GroundingOverlapCheck.Evaluate(relation.Claim, records);
                 if (!overlap.IsSupported)
                 {
                     stats.OverlapViolations++;
@@ -226,11 +254,11 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
     }
 
-    private static void ScoreCompetencyQuestions(OntologyProposal proposal, QualityCase qualityCase, CaseStats stats)
+    private static void ScoreCompetencyQuestions(OntologyProposal proposal, CompetencyQuestion[] questions, CaseStats stats)
     {
         var vocabulary = CompetencyQuestionReach.Vocabulary(proposal);
 
-        foreach (var question in qualityCase.Questions)
+        foreach (var question in questions)
         {
             stats.QuestionsReached.TryAdd(question.Question, 0);
             if (CompetencyQuestionReach.Reaches(question, vocabulary))
@@ -284,15 +312,15 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 $"LinkageOptions: MatchThreshold={linkageOptions.MatchThreshold}, NonMatchThreshold={linkageOptions.NonMatchThreshold}, " +
                 $"MaxIterations={linkageOptions.MaxIterations}, ConvergenceTolerance={linkageOptions.ConvergenceTolerance}")
             .AppendLine()
-            .AppendLine("| case | parse ok | rejected elements (by reason) | grounding violations | overlap violations | entities (min-max) | relations (min-max) | distinct type-shapes |")
-            .AppendLine("|---|---|---|---|---|---|---|---|");
+            .AppendLine("| case | records | parse ok | rejected elements (by reason) | grounding violations | overlap violations | entities (min-max) | relations (min-max) | distinct type-shapes |")
+            .AppendLine("|---|---|---|---|---|---|---|---|---|");
         foreach (var (name, s) in stats)
         {
             var parseOk = s.Attempts - s.ParseFailures;
             var entityRange = s.EntityCounts.Count == 0 ? "n/a" : $"{s.EntityCounts.Min()}-{s.EntityCounts.Max()}";
             var relationRange = s.RelationCounts.Count == 0 ? "n/a" : $"{s.RelationCounts.Min()}-{s.RelationCounts.Max()}";
             report.AppendLine(CultureInfo.InvariantCulture,
-                $"| {name} | {parseOk}/{s.Attempts} | {RenderRejections(s.Rejections)} | {s.GroundingViolations} | {s.OverlapViolations} | {entityRange} | {relationRange} | {s.EntityTypeShapes.Count} |");
+                $"| {name} | {Regime(s)} | {parseOk}/{s.Attempts} | {RenderRejections(s.Rejections)} | {s.GroundingViolations} | {s.OverlapViolations} | {entityRange} | {relationRange} | {s.EntityTypeShapes.Count} |");
         }
 
         report.AppendLine().AppendLine("## Fellegi-Sunter pre-filter (per case, independent of model attempts)")
@@ -304,7 +332,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             var linkage = s.Linkage;
             if (linkage is null || linkage.Parameters is null)
             {
-                report.AppendLine(CultureInfo.InvariantCulture, $"| {name} | 0 | - | - | - | n/a (fewer than 2 records) | n/a | n/a | n/a | n/a |");
+                var reason = s.RecordsDenoteEntities ? "fewer than 2 records" : "document chunks are not compared";
+                report.AppendLine(CultureInfo.InvariantCulture, $"| {name} | 0 | - | - | - | n/a ({reason}) | n/a | n/a | n/a | n/a |");
                 continue;
             }
 
@@ -344,6 +373,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         return report.ToString();
     }
 
+    private static string Regime(CaseStats stats) => stats.RecordsDenoteEntities ? "entities" : "document chunks";
+
     private static string RenderRejections(SortedDictionary<RejectionReason, int> rejections) =>
         rejections.Count == 0 ? "0" : string.Join(", ", rejections.Select(kv => $"{kv.Key} {kv.Value}"));
 
@@ -373,6 +404,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
     private sealed record CaseLogEntry(
         string Name,
+        bool RecordsDenoteEntities,
         int Attempts,
         int ParseFailures,
         IReadOnlyDictionary<string, int> RejectionsByReason,
@@ -414,6 +446,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
             return new CaseLogEntry(
                 name,
+                s.RecordsDenoteEntities,
                 s.Attempts,
                 s.ParseFailures,
                 s.Rejections.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value),

@@ -18,9 +18,24 @@ internal sealed record QualityCase(
     DeclarationLadder Declaration);
 
 /// <summary>
+/// One document the live quality measurement runs over in the other regime a caller can pick:
+/// the records are chunks of one document, which name many entities and denote none
+/// (<see cref="Eyu.Core.Linkage.LinkageOptions.RecordsDenoteEntities"/> <c>false</c>). A document
+/// has no form behind it, so there is no declaration ladder, and no record pair is compared, so
+/// the record-linkage pre-filter has nothing to report — which is why these cases are kept apart
+/// from <see cref="QualityCase"/> rather than mixed into the same tables.
+/// </summary>
+internal sealed record DocumentCase(
+    string Name,
+    RawRecord[] Chunks,
+    CompetencyQuestion[] Questions);
+
+/// <summary>
 /// The fixed catalog every live measurement shares, so that two instruments run over the same
 /// records and questions and their numbers are comparable. The baseline quality measurement
 /// passes no declaration at all; the completeness ablation walks each case's ladder.
+/// <see cref="DocumentCases"/> is measured by the baseline only, in the document regime; adding
+/// it left <see cref="Cases"/> as it was, so runs before and after still compare on those.
 /// </summary>
 internal static class QualityCatalog
 {
@@ -116,4 +131,46 @@ internal static class QualityCatalog
             new DeclarationItem.Field(new DeclaredField("discrepancy", "free-text description of the difficulty", DeclaredValueKind.Text)),
         ])),
     ];
+    // Company-profile documents about fictional Korean companies, written for this catalog: a
+    // consumer's documents cannot be published, and the shape — a profile split into a handful of
+    // sections naming partners, customers, products, places and dates — is what matters. The
+    // questions are written from what such a profile is read for, not from any model's output.
+    public static readonly DocumentCase[] DocumentCases =
+    [
+        new("company-profile-single-chunk",
+        [
+            Chunk("a-c1", "한빛테크는 2015년에 설립된 산업용 센서 데이터 분석 기업이다. 대표이사는 이서준이다. 주요 파트너사로는 누리전자와 세온시스템이 있으며, 세온시스템과는 예지보전 플랫폼을 공동 개발했다. 주요 고객사는 동해발전과 청운제철이다. 자체 개발 솔루션의 이름은 '센티넬 인사이트'이며 동해발전이 이 솔루션을 발전설비 감시에 사용하고 있다."),
+        ],
+        [
+            PartnersAndCustomers,
+            new("Which customer uses which of the company's products?",
+                ["customer|client|buyer", "product|solution|software|platform|service|system", "uses|usage|using|adopt|deploy|operat"]),
+            new("Which people belong to which organization?",
+                ["person|people|individual|employee|executive|staff|member", "organization|organisation|company|firm|enterprise|business|corporation"]),
+        ]),
+        new("company-profile-document-chunks",
+        [
+            Chunk("b-c1", "1. 회사 개요\n가람솔루션은 2012년 대전에서 설립되었다. 본사는 대전 유성구에 있으며 연구소는 판교에 있다. 대표이사는 박도윤이다."),
+            Chunk("b-c2", "2. 사업 분야\n가람솔루션은 스마트팩토리용 공정 모니터링 소프트웨어와 설비 이상 탐지 서비스를 제공한다. 2018년부터 클라우드 기반 서비스로 전환했다."),
+            Chunk("b-c3", "3. 파트너십\n가람솔루션의 주요 파트너사는 한결네트웍스와 미리내클라우드이다. 미리내클라우드와는 2020년 전략적 제휴를 맺고 호스팅 인프라를 공동 운영한다."),
+            Chunk("b-c4", "4. 주요 고객\n주요 고객사는 서진화학, 태성모터스, 부강식품이다. 서진화학은 울산 공장에 가람솔루션의 공정 모니터링 소프트웨어를 도입했다."),
+            Chunk("b-c5", "5. 자체 솔루션\n자체 개발 솔루션은 '가람 옵저버'와 '가람 프레딕트'이다. 가람 프레딕트는 가람 옵저버의 데이터를 이용해 설비 고장을 예측한다."),
+            Chunk("b-c6", "6. 연혁\n2012년 대전에서 창업, 2016년 판교 연구소 개소, 2020년 미리내클라우드와 제휴, 2023년 태성모터스와 3년 공급 계약 체결."),
+            Chunk("b-c7", "7. 조직\n기술총괄은 최하린이며 이전에 한결네트웍스에서 근무했다. 영업본부장 정우진은 서진화학 프로젝트를 책임지고 있다."),
+        ],
+        [
+            PartnersAndCustomers,
+            new("Where are the company's headquarters and research lab located?",
+                ["office|headquarter|laborator|research|facility|branch|campus", "location|place|city|region|address|located"]),
+            new("What happened in which year of the company's history?",
+                ["event|milestone|history|founding|founded|contract|agreement|alliance|opening", "year|date|time|when|period"]),
+        ]),
+    ];
+
+    private static CompetencyQuestion PartnersAndCustomers => new(
+        "Which organizations are the company's partners, and which are its customers?",
+        ["organization|organisation|company|firm|enterprise|business|corporation", "partner|alliance|collaborat", "customer|client|buyer"]);
+
+    // A document chunk as a caller holding text would pass it: the text under one field.
+    private static RawRecord Chunk(string id, string text) => new(id, new Dictionary<string, string?> { ["content"] = text });
 }

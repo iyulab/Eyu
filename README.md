@@ -12,11 +12,13 @@ package consumer on a Korean-language document corpus, whose first measurement i
 entity `Name`, per-element `Rejections` and stamped `VocabularyOrigin` answer.** All five ports exist as C# types (`Eyu.Core`), plus a first source
 adapter (`Eyu.Formbase`). `IOntologyProposer`'s judgment logic (`SinglePassOntologyProposer` +
 `HttpModelClient`) is implemented and has been measured against a real model (GPUStack
-`qwen3.8-27b`) across two domains — every cited source id existed among the records given, 0
-violations both times. That check alone does not prove a citation actually backs its claim, so
+`qwen3.8-27b`) across two record domains, and over two Korean company-profile documents passed as
+chunks — every cited source id existed among the records given, 0 violations every time. That check alone does not prove a citation actually backs its claim, so
 the same measurement now also runs a mechanical content-overlap check
 ([`GroundingOverlapCheck`](src/Eyu.Core/Grounding/GroundingOverlapCheck.cs)) between each claim
-and the record content it cites — a heuristic signal to spot-check per run, not a confirmed
+and the record content it cites — text in any script, with Chinese, Japanese and Korean
+compared as overlapping character pairs so a Korean claim still matches the record it restates
+when the particles differ — a heuristic signal to spot-check per run, not a confirmed
 defect count (see the type's doc comment for why token overlap is not a semantic verifier; a
 run's own counts are in its report, not restated here since the pre-filter below changes them
 run to run). `SinglePassOntologyProposer` also takes an optional `LinkageOptions`
@@ -50,10 +52,10 @@ UseStringSimilarityComparator` opts into a Jaro-Winkler threshold instead, so tw
 denoting the same entity but differing only in notation (punctuation, spacing) still register as
 agreeing on that field — still no ground truth to say which mode classifies better on any given
 dataset, so the option exists but the default is unchanged.
-`Eyu.Core` is not yet published, so today the wiring is proven by in-repo mock-backed tests
-rather than by a consumer referencing the package the way the
+`Eyu.Core` and `Eyu.Formbase` are published on NuGet, and the package is referenced by the
+external consumer named above; inside this repository the
 [coupling smoke test](tests/Eyu.IntegrationSmoke.Tests/SchemaProposerCouplingSmokeTests.cs)
-already does for `Formbase.Core`.
+references `Formbase.Core` the same way, as a package.
 
 ---
 

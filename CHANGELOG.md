@@ -48,6 +48,14 @@ Every entry in this section is a breaking change.
 - README: why structured output uses the `json_schema` form (not every server honors
   `json_object`), and overriding or turning it off through `extraBody`.
 
+### Fixed
+
+- `GroundingOverlapCheck` counted only ASCII letters and digits, so a claim written outside
+  ASCII had no tokens and was reported unsupported whatever its source said. Words in any
+  script now count, and Chinese, Japanese and Korean text is compared as overlapping
+  two-character tokens, so a Korean claim matches the record it restates even where the
+  particles differ. Results for ASCII-only text are unchanged.
+
 ### Dependencies
 
 - `Eyu.Formbase` now takes `Formbase.Core` 0.10.0 (was 0.9.0). The declared-structure

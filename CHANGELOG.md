@@ -8,7 +8,7 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.2.0
 
 ### Changed
 

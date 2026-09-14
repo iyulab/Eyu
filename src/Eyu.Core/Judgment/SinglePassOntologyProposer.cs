@@ -30,6 +30,9 @@ namespace Eyu.Core.Judgment;
 /// always wins": declared types are stamped as such and a relation that misuses a declared name is
 /// dropped, so the prompt's authority sentence is a request to the model and the merge is the
 /// guarantee to the caller.
+/// The call carries the response's JSON Schema in <see cref="ModelRequest.ResponseSchema"/> as well
+/// as describing it in the prompt, so a client with structured output can hold the answer to bare
+/// JSON; the parse above does not depend on it.
 /// The prompt's preamble deliberately does not say what counts as an entity or which kinds should
 /// become types rather than instances: that is the innate grammar's question (design rationale, §C
 /// and §E), not this class's, so the model's type-versus-instance choices are measured rather than
@@ -52,20 +55,70 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     private const string PromptInstruction = "Propose entities and relations grounded in the input below.";
     private const string PromptSchema = "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.";
     private const string PromptReferenceRule = "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id.";
+
+    // The same response shape as PromptSchema, as a JSON Schema handed to the model client for
+    // structured output. The prompt sentence stays: a client that ignores the schema has only the
+    // sentence to go on. A test holds the two to the same field names and holds the parser to
+    // accepting a response that fills every one of them, so the three copies cannot drift apart.
+    // The schema is strict (every field required, nothing extra); the parser stays tolerant, so a
+    // provider that does not enforce it still gets per-element rejections rather than a failure.
+    private static readonly JsonElement ResponseSchema = JsonElement.Parse("""
+        {
+          "type": "object",
+          "properties": {
+            "entities": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "type": { "type": "string" },
+                  "claim": { "type": "string" },
+                  "sources": { "type": "array", "items": { "type": "string" } },
+                  "confidence": { "type": "number" }
+                },
+                "required": ["id", "name", "type", "claim", "sources", "confidence"],
+                "additionalProperties": false
+              }
+            },
+            "relations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "from": { "type": "string" },
+                  "to": { "type": "string" },
+                  "claim": { "type": "string" },
+                  "sources": { "type": "array", "items": { "type": "string" } },
+                  "confidence": { "type": "number" }
+                },
+                "required": ["name", "from", "to", "claim", "sources", "confidence"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["entities", "relations"],
+          "additionalProperties": false
+        }
+        """);
+
     private const string DeclarationClause = "Declared structure is authoritative: a declared field or relation is fact, not a hypothesis. Propose a relation a declared relation describes under its declared name, and never contradict declared structure. A declaration is a floor, not a ceiling: still propose every entity and relation the records show beyond what is declared.";
 
     /// <summary>
-    /// First 8 hex characters of the SHA-256 of the prompt's fixed text (preamble + the declaration
-    /// clause) — a short, stable identifier that changes whenever that wording changes and stays
-    /// the same otherwise. A measurement report stamps it so two runs made across a prompt edit are
-    /// not read as comparable by accident. It covers only the fixed text, not the per-call declared
-    /// structure or records, so the same prompt version yields the same fingerprint on any input.
+    /// First 8 hex characters of the SHA-256 of the request's fixed part (preamble + the declaration
+    /// clause + the response schema) — a short, stable identifier that changes whenever that wording
+    /// or schema changes and stays the same otherwise. A measurement report stamps it so two runs
+    /// made across a prompt edit are not read as comparable by accident. It covers only the fixed
+    /// part, not the per-call declared structure or records, so the same prompt version yields the
+    /// same fingerprint on any input.
     /// </summary>
     public static string PromptFingerprint { get; } = ComputeFingerprint();
 
     private static string ComputeFingerprint()
     {
-        var fixedText = string.Join('\n', PromptInstruction, PromptSchema, PromptReferenceRule, DeclarationClause);
+        var fixedText = string.Join('\n', PromptInstruction, PromptSchema, PromptReferenceRule, DeclarationClause, ResponseSchema.GetRawText());
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(fixedText));
         return Convert.ToHexString(hash).ToLowerInvariant()[..8];
     }
@@ -74,7 +127,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     {
         var linkageAnalysis = LinkagePipeline.Analyze(records, options);
         var prompt = BuildPrompt(declaredStructure, records, linkageAnalysis);
-        var response = await modelClient.CompleteAsync(new ModelRequest(prompt), cancellationToken).ConfigureAwait(false);
+        var response = await modelClient.CompleteAsync(new ModelRequest(prompt, ResponseSchema), cancellationToken).ConfigureAwait(false);
         var parsed = ParseResponse(response.Text, records, linkageAnalysis);
         return DeclaredStructureMerge.Apply(declaredStructure, parsed.Entities, parsed.Relations, parsed.Rejections);
     }

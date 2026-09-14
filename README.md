@@ -197,30 +197,33 @@ client). When the provider reports token counts, `ModelResponse.Usage` carries t
 (prompt / completion / total, each optional) verbatim, so a caller can budget context or
 bill against the server's own numbers.
 
-The proposer asks for JSON, but a sentence in a prompt does not stop every model from
-wrapping its answer in a markdown code fence — some self-hosted instruction models do so
-routinely — and a fenced answer is refused as invalid JSON (the exception carries the text,
-so the cause is visible). The parser does not strip fences: a formatting violation it
-absorbed would stop showing up in measurement. Ask the provider for structured output
-instead, through the same `extraBody`, and prefer the `json_schema` form:
+The proposer describes the JSON it expects in the prompt, but a sentence in a prompt does not
+stop every model from wrapping its answer in a markdown code fence — some self-hosted
+instruction models do so routinely — and a fenced answer is refused as invalid JSON (the
+exception carries the text, so the cause is visible). The parser does not strip fences: a
+formatting violation it absorbed would stop showing up in measurement. So the proposer also
+hands the model client the response's JSON Schema (`ModelRequest.ResponseSchema`, strict:
+every field required, nothing extra), and `HttpModelClient` sends it as OpenAI structured
+output — `response_format: {"type": "json_schema", ...}` — with no configuration. Its
+`json_schema` form is used rather than the older `{"type": "json_object"}` because servers do
+not all honor the latter: measured against one self-hosted OpenAI-compatible server and
+instruction model, `json_object` was accepted and ignored (three of three answers still
+fenced), while `json_schema` produced parseable JSON three of three times on the same input.
+
+A server that rejects `json_schema`, or handles it badly, is the caller's to override: a
+`response_format` in `extraBody` replaces the mapped one, and `{"type": "text"}` turns
+structured output off.
 
 ```csharp
 var extraBody = new Dictionary<string, JsonElement>
 {
-    ["response_format"] = JsonSerializer.SerializeToElement(new
-    {
-        type = "json_schema",
-        json_schema = new { name = "proposal", schema = new { type = "object" } },
-    }),
+    ["response_format"] = JsonSerializer.SerializeToElement(new { type = "text" }),
 };
 var client = new HttpModelClient(httpClient, model, extraBody);
 ```
 
-Servers do not all honor the older `{"type": "json_object"}` form. Measured against one
-self-hosted OpenAI-compatible server and instruction model, `json_object` was accepted and
-ignored — three of three answers still arrived fenced, the same as with no `response_format`
-at all — while the `json_schema` form above produced parseable JSON three of three times on
-the same input. Check what your server actually does with one call before relying on either.
+A caller with its own `IModelClient` maps `ResponseSchema` to its provider's structured
+output the same way, or ignores it and relies on the prompt.
 
 Entity resolution is tuned through a value, not a port: `SinglePassOntologyProposer`
 accepts an optional [`LinkageOptions`](src/Eyu.Core/Linkage/LinkageOptions.cs) record

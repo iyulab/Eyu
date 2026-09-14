@@ -21,12 +21,22 @@ namespace Eyu.Core.Inference.Http;
 /// provider's contract, not Eyu's, so they pass through verbatim rather than earning named slots.
 /// The client owns <c>model</c> and <c>messages</c>; extra-body entries with either key are ignored.
 ///
+/// A request carrying <see cref="ModelRequest.ResponseSchema"/> is sent with the OpenAI structured
+/// output field, <c>response_format: {"type": "json_schema", "json_schema": {"name", "strict": true,
+/// "schema"}}</c>; a request without one sends no <c>response_format</c>. Servers differ in what they
+/// honour, so an extra-body <c>response_format</c> replaces the mapped one — the caller knows its
+/// server, and <c>{"type": "text"}</c> turns structured output off for one that rejects it.
+///
 /// The response never carries a confidence score, and this type never invents one — see design
 /// rationale §D: an absent confidence is honest, a fabricated one is not.
 /// </summary>
 public sealed class HttpModelClient(HttpClient httpClient, string model, IReadOnlyDictionary<string, JsonElement>? extraBody = null) : IModelClient
 {
     private const int DiagnosticExcerptLength = 500;
+
+    // The structured-output field requires a name; the request carries only the schema, so the one
+    // name every request shares is enough.
+    private const string ResponseSchemaName = "response";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -37,11 +47,26 @@ public sealed class HttpModelClient(HttpClient httpClient, string model, IReadOn
             ["model"] = model,
             ["messages"] = JsonSerializer.SerializeToNode(new[] { new ChatMessage("user", request.Prompt) }, JsonOptions),
         };
+        if (request.ResponseSchema is { } schema)
+        {
+            body["response_format"] = new JsonObject
+            {
+                ["type"] = "json_schema",
+                ["json_schema"] = new JsonObject
+                {
+                    ["name"] = ResponseSchemaName,
+                    ["strict"] = true,
+                    ["schema"] = JsonSerializer.SerializeToNode(schema, JsonOptions),
+                },
+            };
+        }
+
         if (extraBody is not null)
         {
             foreach (var (key, value) in extraBody)
             {
-                // The client owns model and messages; opaque extras only add sibling fields.
+                // The client owns model and messages; opaque extras add sibling fields, and replace
+                // the mapped response_format when they carry one.
                 if (key is "model" or "messages")
                 {
                     continue;

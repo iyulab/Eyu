@@ -35,13 +35,18 @@ Every entry in this section is a breaking change.
   synonyms) instead of being read from the model, which is no longer asked for it.
 - The prompt's response schema adds `name` to entities and drops `origin`, so
   `PromptFingerprint` changes; measurement runs made before and after are not comparable.
+- `ModelRequest` takes an optional second member, `ResponseSchema`: a JSON Schema the
+  response is expected to satisfy. `SinglePassOntologyProposer` sends its response schema
+  with every call, and `HttpModelClient` maps it to `response_format` `json_schema`
+  structured output (strict) unless `extraBody` carries its own `response_format`. A request
+  without a schema sends no `response_format`, as before. `PromptFingerprint` now also covers
+  the response schema.
 
 ### Added
 
 - `InnateVocabulary`, `ProposalRejection`, `ProposalElement` and `RejectionReason`.
-- README: requesting provider structured output through `HttpModelClient`'s `extraBody`
-  for models that wrap JSON answers in a code fence — the `json_schema` form of
-  `response_format`, since not every server honors `json_object`.
+- README: why structured output uses the `json_schema` form (not every server honors
+  `json_object`), and overriding or turning it off through `extraBody`.
 
 ### Dependencies
 

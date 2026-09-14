@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Eyu.Core.Declared;
 using Eyu.Core.Inference;
 using Eyu.Core.Judgment;
@@ -621,13 +624,104 @@ public class SinglePassOntologyProposerTests
         Assert.StartsWith(expectedPreamble, model.LastPrompt);
     }
 
+    [Fact]
+    public async Task ProposeAsync_hands_the_model_client_a_strict_response_schema()
+    {
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model);
+
+        await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
+
+        var schema = Assert.NotNull(model.LastRequest?.ResponseSchema);
+        foreach (var level in new[] { schema, ItemSchema(schema, "entities"), ItemSchema(schema, "relations") })
+        {
+            Assert.Equal("object", level.GetProperty("type").GetString());
+            Assert.False(level.GetProperty("additionalProperties").GetBoolean());
+            Assert.Equal(PropertyNames(level).Order(), level.GetProperty("required").EnumerateArray().Select(n => n.GetString()!).Order());
+        }
+    }
+
+    [Fact]
+    public async Task ProposeAsync_response_schema_names_the_same_fields_as_the_prompt()
+    {
+        // The response shape lives in three places: the prompt sentence (all a client that ignores
+        // the schema has), the schema, and the parser. This holds the sentence and the schema to the
+        // same field names; the next test holds the parser to reading every one of them.
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model);
+
+        await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
+
+        var schema = model.LastRequest!.ResponseSchema!.Value;
+        var sentence = model.LastPrompt!.Split(Environment.NewLine).Single(line => line.StartsWith("Respond with JSON only:", StringComparison.Ordinal));
+        var match = Regex.Match(sentence, """\{"entities":\[\{(?<entity>[^}]*)\}\],"relations":\[\{(?<relation>[^}]*)\}\]\}""");
+        Assert.True(match.Success, sentence);
+        Assert.Equal(["entities", "relations"], PropertyNames(schema));
+        Assert.Equal(QuotedNames(match.Groups["entity"].Value), PropertyNames(ItemSchema(schema, "entities")));
+        Assert.Equal(QuotedNames(match.Groups["relation"].Value), PropertyNames(ItemSchema(schema, "relations")));
+    }
+
+    [Fact]
+    public async Task ProposeAsync_parses_a_response_that_fills_every_schema_field_without_rejections()
+    {
+        // Built from the schema itself rather than written by hand, so a field the schema demands but
+        // the parser does not read (a renamed property) shows up as a MissingField rejection here.
+        var capture = new StubModelClient("""{"entities":[],"relations":[]}""");
+        await new SinglePassOntologyProposer(capture).ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
+        var schema = capture.LastRequest!.ResponseSchema!.Value;
+
+        var response = new JsonObject
+        {
+            ["entities"] = new JsonArray(Fill(ItemSchema(schema, "entities"), text: "e1")),
+            ["relations"] = new JsonArray(Fill(ItemSchema(schema, "relations"), text: "e1")),
+        };
+        var proposer = new SinglePassOntologyProposer(new StubModelClient(response.ToJsonString()));
+
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
+
+        Assert.Empty(proposal.Rejections);
+        Assert.Single(proposal.Entities);
+        Assert.Single(proposal.Relations);
+    }
+
+    private static JsonElement ItemSchema(JsonElement schema, string arrayProperty) =>
+        schema.GetProperty("properties").GetProperty(arrayProperty).GetProperty("items");
+
+    private static List<string> PropertyNames(JsonElement objectSchema) =>
+        objectSchema.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToList();
+
+    private static List<string> QuotedNames(string text) =>
+        Regex.Matches(text, "\"(?<name>[^\"]+)\"").Select(m => m.Groups["name"].Value).ToList();
+
+    // A value of each property's declared type: every string is the given text (so ids, relation
+    // ends and sources line up on one entity and one record), arrays hold one such string.
+    private static JsonObject Fill(JsonElement objectSchema, string text)
+    {
+        var filled = new JsonObject();
+        foreach (var property in objectSchema.GetProperty("properties").EnumerateObject())
+        {
+            filled[property.Name] = property.Value.GetProperty("type").GetString() switch
+            {
+                "string" => text,
+                "number" => 0.5,
+                "array" => new JsonArray("rec-1"),
+                var other => throw new InvalidOperationException($"no filler for schema type {other}"),
+            };
+        }
+
+        return filled;
+    }
+
     private sealed class StubModelClient(string responseText) : IModelClient
     {
         public string? LastPrompt { get; private set; }
 
+        public ModelRequest? LastRequest { get; private set; }
+
         public Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default)
         {
             LastPrompt = request.Prompt;
+            LastRequest = request;
             return Task.FromResult(new ModelResponse(responseText));
         }
     }

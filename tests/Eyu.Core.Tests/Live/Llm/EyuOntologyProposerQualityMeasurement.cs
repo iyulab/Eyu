@@ -278,7 +278,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
     {
         var report = new StringBuilder()
             .AppendLine(CultureInfo.InvariantCulture, $"# SinglePassOntologyProposer quality measurement — {runs} runs/case")
-            .AppendLine(CultureInfo.InvariantCulture, $"Prompt {SinglePassOntologyProposer.PromptFingerprint} (fixed preamble + declaration clause; changes when that wording changes — runs under different fingerprints are not comparable).")
+            .AppendLine(CultureInfo.InvariantCulture, $"Prompt {SinglePassOntologyProposer.PromptFingerprint} (fixed preamble + declaration clause + response schema; changes when that wording or schema changes — runs under different fingerprints are not comparable).")
             .AppendLine()
             .AppendLine(CultureInfo.InvariantCulture,
                 $"LinkageOptions: MatchThreshold={linkageOptions.MatchThreshold}, NonMatchThreshold={linkageOptions.NonMatchThreshold}, " +

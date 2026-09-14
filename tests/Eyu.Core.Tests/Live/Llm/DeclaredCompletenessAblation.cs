@@ -296,7 +296,7 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
     {
         var report = new StringBuilder()
             .AppendLine(CultureInfo.InvariantCulture, $"# Declared-completeness ablation — {runs} runs/rung, {LadderSteps + 1} rungs/case")
-            .AppendLine(CultureInfo.InvariantCulture, $"Prompt {SinglePassOntologyProposer.PromptFingerprint} (fixed preamble + declaration clause; changes when that wording changes — runs under different fingerprints are not comparable).")
+            .AppendLine(CultureInfo.InvariantCulture, $"Prompt {SinglePassOntologyProposer.PromptFingerprint} (fixed preamble + declaration clause + response schema; changes when that wording or schema changes — runs under different fingerprints are not comparable).")
             .AppendLine()
             .AppendLine("Completeness = share of the case's full form declaration passed as declared structure (0 = nothing declared, the baseline). ")
             .AppendLine("Reach = share of the case's competency questions the proposal's vocabulary reaches (substring over type and relation names — presence, not correctness). ")

@@ -177,6 +177,76 @@ public class HttpModelClientTests
     }
 
     [Fact]
+    public async Task CompleteAsync_maps_a_response_schema_to_structured_output()
+    {
+        // A model given only a prose description of the JSON it should return can still wrap it in
+        // a markdown fence; the request's schema goes out as OpenAI structured output so a server
+        // that supports it holds the answer to bare JSON.
+        string? capturedBody = null;
+        var handler = new FakeHandler(async request =>
+        {
+            capturedBody = request.Content is null ? null : await request.Content.ReadAsStringAsync();
+            return CannedResponse("{}");
+        });
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+        var schema = JsonElement.Parse("""{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"],"additionalProperties":false}""");
+
+        await client.CompleteAsync(new ModelRequest("hi", schema), TestContext.Current.CancellationToken);
+
+        using var payload = JsonDocument.Parse(capturedBody!);
+        var responseFormat = payload.RootElement.GetProperty("response_format");
+        Assert.Equal("json_schema", responseFormat.GetProperty("type").GetString());
+        var jsonSchema = responseFormat.GetProperty("json_schema");
+        Assert.False(string.IsNullOrEmpty(jsonSchema.GetProperty("name").GetString()));
+        Assert.True(jsonSchema.GetProperty("strict").GetBoolean());
+        Assert.True(JsonElement.DeepEquals(schema, jsonSchema.GetProperty("schema")));
+    }
+
+    [Fact]
+    public async Task CompleteAsync_sends_no_response_format_for_a_request_without_a_schema()
+    {
+        string? capturedBody = null;
+        var handler = new FakeHandler(async request =>
+        {
+            capturedBody = request.Content is null ? null : await request.Content.ReadAsStringAsync();
+            return CannedResponse("ok");
+        });
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+
+        await client.CompleteAsync(new ModelRequest("hi"), TestContext.Current.CancellationToken);
+
+        using var payload = JsonDocument.Parse(capturedBody!);
+        Assert.False(payload.RootElement.TryGetProperty("response_format", out _));
+    }
+
+    [Fact]
+    public async Task CompleteAsync_lets_an_extra_body_response_format_replace_the_mapped_one()
+    {
+        // Servers differ in which structured-output forms they honour or reject; the caller knows its
+        // server, so its own response_format (here, turning structured output off) wins.
+        string? capturedBody = null;
+        var handler = new FakeHandler(async request =>
+        {
+            capturedBody = request.Content is null ? null : await request.Content.ReadAsStringAsync();
+            return CannedResponse("{}");
+        });
+        var extraBody = new Dictionary<string, JsonElement>
+        {
+            ["response_format"] = JsonSerializer.SerializeToElement(new { type = "text" }),
+        };
+        var client = new HttpModelClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", extraBody);
+        var schema = JsonElement.Parse("""{"type":"object"}""");
+
+        await client.CompleteAsync(new ModelRequest("hi", schema), TestContext.Current.CancellationToken);
+
+        using var payload = JsonDocument.Parse(capturedBody!);
+        var responseFormat = payload.RootElement.GetProperty("response_format");
+        Assert.Equal("text", responseFormat.GetProperty("type").GetString());
+        Assert.False(responseFormat.TryGetProperty("json_schema", out _));
+    }
+
+    [Fact]
     public async Task CompleteAsync_passes_through_token_usage_when_the_response_reports_it()
     {
         var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)

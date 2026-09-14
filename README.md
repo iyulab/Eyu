@@ -208,7 +208,9 @@ output — `response_format: {"type": "json_schema", ...}` — with no configura
 `json_schema` form is used rather than the older `{"type": "json_object"}` because servers do
 not all honor the latter: measured against one self-hosted OpenAI-compatible server and
 instruction model, `json_object` was accepted and ignored (three of three answers still
-fenced), while `json_schema` produced parseable JSON three of three times on the same input.
+fenced), while the proposer's schema sent this way produced parseable JSON on five of five
+calls across a one-chunk and a seven-chunk document — and the same calls with structured
+output turned off came back fenced again.
 
 A server that rejects `json_schema`, or handles it badly, is the caller's to override: a
 `response_format` in `extraBody` replaces the mapped one, and `{"type": "text"}` turns

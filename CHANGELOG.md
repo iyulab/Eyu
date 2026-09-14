@@ -8,6 +8,14 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Internal
+
+- The CI and release workflows run the Node.js 24 majors of the actions they use (`actions/checkout`
+  v7, `actions/setup-dotnet` v6, `actions/cache` v6). The Node.js 20 majors ran only because the
+  runner forced them onto Node.js 24; no input any step passes changed meaning.
+
 ## 0.2.0
 
 ### Changed

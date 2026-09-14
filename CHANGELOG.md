@@ -10,7 +10,9 @@ every published version has a section here.
 
 ## Unreleased
 
-### Breaking
+### Changed
+
+Every entry in this section is a breaking change.
 
 - `EntityProposal` carries a `Name` — the entity as the records write it — and
   `EntityProposal.Create` takes it as its second argument (required, non-blank).

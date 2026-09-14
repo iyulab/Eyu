@@ -7,8 +7,9 @@
 > a piece of data is shaped the way it is, made explicit and citable.
 
 **Status: contract implemented; grounding-integrity and response-parsing reliability validated
-against a real model — entity-resolution accuracy is not measured, not yet exercised by an
-external package consumer.** All five ports exist as C# types (`Eyu.Core`), plus a first source
+against a real model — entity-resolution accuracy is not measured; exercised by one external
+package consumer on a Korean-language document corpus, whose first measurement is what the
+entity `Name`, per-element `Rejections` and stamped `VocabularyOrigin` answer.** All five ports exist as C# types (`Eyu.Core`), plus a first source
 adapter (`Eyu.Formbase`). `IOntologyProposer`'s judgment logic (`SinglePassOntologyProposer` +
 `HttpModelClient`) is implemented and has been measured against a real model (GPUStack
 `qwen3.8-27b`) across two domains — every cited source id existed among the records given, 0

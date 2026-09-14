@@ -202,15 +202,25 @@ wrapping its answer in a markdown code fence — some self-hosted instruction mo
 routinely — and a fenced answer is refused as invalid JSON (the exception carries the text,
 so the cause is visible). The parser does not strip fences: a formatting violation it
 absorbed would stop showing up in measurement. Ask the provider for structured output
-instead, through the same `extraBody`:
+instead, through the same `extraBody`, and prefer the `json_schema` form:
 
 ```csharp
 var extraBody = new Dictionary<string, JsonElement>
 {
-    ["response_format"] = JsonSerializer.SerializeToElement(new { type = "json_object" }),
+    ["response_format"] = JsonSerializer.SerializeToElement(new
+    {
+        type = "json_schema",
+        json_schema = new { name = "proposal", schema = new { type = "object" } },
+    }),
 };
 var client = new HttpModelClient(httpClient, model, extraBody);
 ```
+
+Servers do not all honor the older `{"type": "json_object"}` form. Measured against one
+self-hosted OpenAI-compatible server and instruction model, `json_object` was accepted and
+ignored — three of three answers still arrived fenced, the same as with no `response_format`
+at all — while the `json_schema` form above produced parseable JSON three of three times on
+the same input. Check what your server actually does with one call before relying on either.
 
 Entity resolution is tuned through a value, not a port: `SinglePassOntologyProposer`
 accepts an optional [`LinkageOptions`](src/Eyu.Core/Linkage/LinkageOptions.cs) record

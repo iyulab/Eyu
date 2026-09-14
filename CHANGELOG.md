@@ -40,7 +40,8 @@ Every entry in this section is a breaking change.
 
 - `InnateVocabulary`, `ProposalRejection`, `ProposalElement` and `RejectionReason`.
 - README: requesting provider structured output through `HttpModelClient`'s `extraBody`
-  (`response_format`) for models that wrap JSON answers in a code fence.
+  for models that wrap JSON answers in a code fence — the `json_schema` form of
+  `response_format`, since not every server honors `json_object`.
 
 ### Dependencies
 

@@ -10,6 +10,36 @@ every published version has a section here.
 
 ## Unreleased
 
+### Breaking
+
+- `EntityProposal` carries a `Name` — the entity as the records write it — and
+  `EntityProposal.Create` takes it as its second argument (required, non-blank).
+  `EntityId` still identifies an entity only within one proposal; `Name` is what a caller
+  links and stores by, which matters most with `RecordsDenoteEntities: false`, where the
+  cited sources no longer identify an entity.
+- `OntologyProposal` takes a third member, `Rejections`: every element of the model's
+  answer that the proposal does not carry, with a `RejectionReason` and a readable detail.
+- `SinglePassOntologyProposer` no longer refuses a whole response for a defect in one
+  element. An entity or relation with a missing field or an out-of-range confidence, every
+  entity under a duplicated id, a relation whose end names no entity of the response or an
+  entity that was itself rejected, and a relation that contradicts declared structure are
+  left out and reported in `Rejections`. Invalid JSON and a citation of a record the call
+  was not given still refuse the whole response with a `FormatException`. Previously the
+  element-level defects surfaced as `FormatException`, `ArgumentException` or
+  `ArgumentNullException` depending on the field.
+- `VocabularyOrigin` is stamped by the proposer from the new closed `InnateVocabulary`
+  (entity types Person, Organization, Event, Action, Location, Time; relation names PartOf,
+  ParticipatesIn, LocatedIn, OccursAt; compared ignoring case and separators, with no
+  synonyms) instead of being read from the model, which is no longer asked for it.
+- The prompt's response schema adds `name` to entities and drops `origin`, so
+  `PromptFingerprint` changes; measurement runs made before and after are not comparable.
+
+### Added
+
+- `InnateVocabulary`, `ProposalRejection`, `ProposalElement` and `RejectionReason`.
+- README: requesting provider structured output through `HttpModelClient`'s `extraBody`
+  (`response_format`) for models that wrap JSON answers in a code fence.
+
 ### Dependencies
 
 - `Eyu.Formbase` now takes `Formbase.Core` 0.10.0 (was 0.9.0). The declared-structure

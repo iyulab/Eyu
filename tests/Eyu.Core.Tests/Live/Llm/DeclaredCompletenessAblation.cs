@@ -175,7 +175,7 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
         {
             proposal = await proposer.ProposeAsync(level.Structure, qualityCase.Records);
         }
-        catch (Exception ex) when (ex is FormatException or ArgumentOutOfRangeException or ArgumentException)
+        catch (FormatException ex)
         {
             stats.ParseFailures++;
             stats.Notes.Add($"completeness {level.Completeness:F2}: {ex.Message}");
@@ -191,6 +191,14 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
             stats.CallFailures++;
             stats.Notes.Add($"completeness {level.Completeness:F2}: call failed — {ex.GetType().Name}: {ex.Message}");
             return null;
+        }
+
+        // Left-out elements are part of the result, not a log line — including the relations the
+        // declared-structure merge refuses for contradicting a declaration, which this ablation
+        // varies directly.
+        foreach (var rejection in proposal.Rejections)
+        {
+            stats.Notes.Add($"completeness {level.Completeness:F2}: rejected {rejection.Reason}: {rejection.Detail}");
         }
 
         var vocabulary = CompetencyQuestionReach.Vocabulary(proposal);

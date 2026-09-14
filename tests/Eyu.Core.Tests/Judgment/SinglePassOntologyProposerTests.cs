@@ -30,10 +30,10 @@ public class SinglePassOntologyProposerTests
         var model = new StubModelClient("""
             {
               "entities": [
-                {"id": "e1", "type": "Person", "claim": "rec-1 denotes a person", "sources": ["rec-1"], "origin": "Innate", "confidence": 0.8}
+                {"id": "e1", "name": "e1-name", "type": "Person", "claim": "rec-1 denotes a person", "sources": ["rec-1"], "confidence": 0.8}
               ],
               "relations": [
-                {"name": "works_for", "from": "e1", "to": "e1", "claim": "rec-1 says so", "sources": ["rec-1"], "origin": "Acquired", "confidence": 0.4}
+                {"name": "works_for", "from": "e1", "to": "e1", "claim": "rec-1 says so", "sources": ["rec-1"], "confidence": 0.4}
               ]
             }
             """);
@@ -43,6 +43,7 @@ public class SinglePassOntologyProposerTests
 
         var entity = Assert.Single(proposal.Entities);
         Assert.Equal("e1", entity.EntityId);
+        Assert.Equal("e1-name", entity.Name);
         Assert.Equal("Person", entity.EntityType);
         Assert.Equal(VocabularyOrigin.Innate, entity.Origin);
         Assert.Equal(0.8, entity.Confidence);
@@ -53,6 +54,7 @@ public class SinglePassOntologyProposerTests
         Assert.Equal("works_for", relation.RelationName);
         Assert.Equal("e1", relation.FromEntityId);
         Assert.Equal(VocabularyOrigin.Acquired, relation.Origin);
+        Assert.Empty(proposal.Rejections);
     }
 
     [Fact]
@@ -107,15 +109,20 @@ public class SinglePassOntologyProposerTests
     [Fact]
     public async Task ProposeAsync_does_not_swallow_an_out_of_range_confidence()
     {
-        // The parser reuses EntityProposal.Create's own validation rather than re-implementing
-        // it -- an invalid confidence from the model surfaces as the same error a hand-built
-        // proposal would raise, not as silently-clamped or silently-dropped data.
+        // An invalid confidence is neither clamped nor silently dropped: the entity is left out and
+        // the rejection says why, so a caller measuring the model still sees it.
         var model = new StubModelClient("""
-            {"entities":[{"id":"e1","type":"Person","claim":"x","sources":["rec-1"],"origin":"Innate","confidence":1.5}],"relations":[]}
+            {"entities":[{"id":"e1","name":"e1-name","type":"Person","claim":"x","sources":["rec-1"],"confidence":1.5}],"relations":[]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken));
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
+
+        Assert.Empty(proposal.Entities);
+        var rejection = Assert.Single(proposal.Rejections);
+        Assert.Equal(RejectionReason.ConfidenceOutOfRange, rejection.Reason);
+        Assert.Equal("e1", rejection.Id);
+        Assert.Contains("1.5", rejection.Detail);
     }
 
     [Fact]
@@ -126,7 +133,7 @@ public class SinglePassOntologyProposerTests
         // substance, and "a claim that can't cite its sources cannot be expressed" has to mean
         // sources the call actually supplied.
         var model = new StubModelClient("""
-            {"entities":[{"id":"e1","type":"Asset","claim":"x","sources":["ghost-record"],"origin":"Acquired","confidence":0.9}],"relations":[]}
+            {"entities":[{"id":"e1","name":"e1-name","type":"Asset","claim":"x","sources":["ghost-record"],"confidence":0.9}],"relations":[]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
 
@@ -142,8 +149,8 @@ public class SinglePassOntologyProposerTests
     {
         var model = new StubModelClient("""
             {"entities":[
-              {"id":"e1","type":"Asset","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9},
-              {"id":"e2","type":"Asset","claim":"y","sources":["rec-1","made-up"],"origin":"Acquired","confidence":0.9}
+              {"id":"e1","name":"e1-name","type":"Asset","claim":"x","sources":["rec-1"],"confidence":0.9},
+              {"id":"e2","name":"e2-name","type":"Asset","claim":"y","sources":["rec-1","made-up"],"confidence":0.9}
             ],"relations":[]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
@@ -159,8 +166,8 @@ public class SinglePassOntologyProposerTests
     public async Task ProposeAsync_checks_relation_citations_too()
     {
         var model = new StubModelClient("""
-            {"entities":[{"id":"e1","type":"Asset","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9}],
-             "relations":[{"name":"r","from":"e1","to":"e1","claim":"z","sources":["nowhere"],"origin":"Acquired","confidence":0.5}]}
+            {"entities":[{"id":"e1","name":"e1-name","type":"Asset","claim":"x","sources":["rec-1"],"confidence":0.9}],
+             "relations":[{"name":"r","from":"e1","to":"e1","claim":"z","sources":["nowhere"],"confidence":0.5}]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
 
@@ -171,42 +178,46 @@ public class SinglePassOntologyProposerTests
     }
 
     [Fact]
-    public async Task ProposeAsync_rejects_a_relation_whose_end_names_an_entity_the_response_never_proposed()
+    public async Task ProposeAsync_leaves_out_a_relation_whose_end_names_an_entity_the_response_never_proposed()
     {
         // The ids are all in the one document, so a relation to an entity that is not there is a
-        // deterministic defect, not a judgment: nobody downstream could resolve that end.
+        // deterministic defect, not a judgment: nobody downstream could resolve that end. It costs
+        // that relation only -- the entity and every other relation are grounded independently.
         var model = new StubModelClient("""
-            {"entities":[{"id":"e1","type":"Asset","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9}],
+            {"entities":[{"id":"e1","name":"e1-name","type":"Asset","claim":"x","sources":["rec-1"],"confidence":0.9}],
              "relations":[
-               {"name":"r","from":"e1","to":"e9","claim":"z","sources":["rec-1"],"origin":"Acquired","confidence":0.5},
-               {"name":"s","from":"e7","to":"e1","claim":"w","sources":["rec-1"],"origin":"Acquired","confidence":0.5}]}
+               {"name":"r","from":"e1","to":"e9","claim":"z","sources":["rec-1"],"confidence":0.5},
+               {"name":"s","from":"e7","to":"e1","claim":"w","sources":["rec-1"],"confidence":0.5}]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
 
-        var error = await Assert.ThrowsAsync<FormatException>(
-            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken));
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
 
-        Assert.StartsWith("The model related entity id(s) it never proposed: e7, e9", error.Message);
+        Assert.Single(proposal.Entities);
+        Assert.Empty(proposal.Relations);
+        Assert.Collection(proposal.Rejections,
+            r => { Assert.Equal(RejectionReason.DanglingRelationEnd, r.Reason); Assert.Equal("r", r.Id); Assert.Contains("e9", r.Detail); },
+            r => { Assert.Equal(RejectionReason.DanglingRelationEnd, r.Reason); Assert.Equal("s", r.Id); Assert.Contains("e7", r.Detail); });
     }
 
     [Fact]
-    public async Task ProposeAsync_rejects_a_response_that_proposes_two_entities_under_one_id()
+    public async Task ProposeAsync_leaves_out_every_entity_under_a_duplicated_id()
     {
-        // Before this check the collision surfaced as an ArgumentException from a dictionary deep
-        // in the merge -- true, but unreadable. Now it is refused where the other malformed
-        // responses are, with the offending ids in the message.
+        // Two entities under one id make every relation to that id ambiguous, and nothing says which
+        // of the two the model meant -- picking one would be a guess, so both are left out.
         var model = new StubModelClient("""
             {"entities":[
-               {"id":"e1","type":"Asset","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9},
-               {"id":"e1","type":"Site","claim":"y","sources":["rec-1"],"origin":"Acquired","confidence":0.9}],
+               {"id":"e1","name":"e1-name","type":"Asset","claim":"x","sources":["rec-1"],"confidence":0.9},
+               {"id":"e1","name":"e1-name","type":"Site","claim":"y","sources":["rec-1"],"confidence":0.9}],
              "relations":[]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
 
-        var error = await Assert.ThrowsAsync<FormatException>(
-            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken));
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
 
-        Assert.StartsWith("The model proposed more than one entity under the same id: e1", error.Message);
+        Assert.Empty(proposal.Entities);
+        Assert.Equal(2, proposal.Rejections.Count);
+        Assert.All(proposal.Rejections, r => Assert.Equal((ProposalElement.Entity, "e1", RejectionReason.DuplicateEntityId), (r.Element, r.Id, r.Reason)));
     }
 
     [Fact]
@@ -214,9 +225,9 @@ public class SinglePassOntologyProposerTests
     {
         var model = new StubModelClient("""
             {"entities":[
-               {"id":"e1","type":"Asset","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9},
-               {"id":"e2","type":"Site","claim":"y","sources":["rec-1"],"origin":"Acquired","confidence":0.9}],
-             "relations":[{"name":"located_at","from":"e1","to":"e2","claim":"z","sources":["rec-1"],"origin":"Acquired","confidence":0.5}]}
+               {"id":"e1","name":"e1-name","type":"Asset","claim":"x","sources":["rec-1"],"confidence":0.9},
+               {"id":"e2","name":"e2-name","type":"Site","claim":"y","sources":["rec-1"],"confidence":0.9}],
+             "relations":[{"name":"located_at","from":"e1","to":"e2","claim":"z","sources":["rec-1"],"confidence":0.5}]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
 
@@ -234,7 +245,7 @@ public class SinglePassOntologyProposerTests
         // with a message that says why, so a consumer hitting this learns the rule rather than a
         // stray id.
         var model = new StubModelClient("""
-            {"entities":[{"id":"e1","type":"Invoice","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9}],"relations":[]}
+            {"entities":[{"id":"e1","name":"e1-name","type":"Invoice","claim":"x","sources":["rec-1"],"confidence":0.9}],"relations":[]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
         var structure = new DeclaredStructure(SubjectRef.Create("invoice"), Fields: [new DeclaredField("total")], Relations: []);
@@ -243,6 +254,119 @@ public class SinglePassOntologyProposerTests
             () => proposer.ProposeAsync(structure, records: [], TestContext.Current.CancellationToken));
 
         Assert.Contains("no records were supplied to this call", error.Message);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_stamps_origin_from_the_innate_vocabulary_whatever_the_model_says()
+    {
+        // A model told only that origin is "Innate" or "Acquired" cannot know which is which -- a
+        // dogfooding run returned Acquired for Person and Organization alike. The model's own
+        // "origin" field is ignored; the type or relation name decides.
+        var model = new StubModelClient("""
+            {"entities":[
+               {"id":"e1","name":"Kim","type":"person","claim":"x","sources":["rec-1"],"origin":"Acquired","confidence":0.9},
+               {"id":"e2","name":"Acme","type":"Company","claim":"y","sources":["rec-1"],"origin":"Innate","confidence":0.9}],
+             "relations":[
+               {"name":"part_of","from":"e1","to":"e2","claim":"z","sources":["rec-1"],"origin":"Acquired","confidence":0.5},
+               {"name":"employs","from":"e2","to":"e1","claim":"w","sources":["rec-1"],"origin":"Innate","confidence":0.5}]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
+
+        Assert.Equal([VocabularyOrigin.Innate, VocabularyOrigin.Acquired], proposal.Entities.Select(e => e.Origin));
+        Assert.Equal([VocabularyOrigin.Innate, VocabularyOrigin.Acquired], proposal.Relations.Select(r => r.Origin));
+    }
+
+    [Fact]
+    public async Task ProposeAsync_leaves_out_an_entity_without_a_name_and_every_relation_that_depends_on_it()
+    {
+        // Where records do not each denote one entity, the name is the only thing that identifies
+        // the entity outside this call; an entity without one cannot be carried. A relation to it
+        // is reported as depending on a rejected entity, which is a different finding from an end
+        // the model never proposed at all.
+        var model = new StubModelClient("""
+            {"entities":[
+               {"id":"E1","name":"한빛테크","type":"Organization","claim":"x","sources":["rec-1"],"confidence":1.0},
+               {"id":"E2","name":"  ","type":"Person","claim":"y","sources":["rec-1"],"confidence":1.0}],
+             "relations":[{"name":"CEO","from":"E2","to":"E1","claim":"z","sources":["rec-1"],"confidence":1.0}]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
+
+        Assert.Equal("한빛테크", Assert.Single(proposal.Entities).Name);
+        Assert.Empty(proposal.Relations);
+        Assert.Collection(proposal.Rejections,
+            r => Assert.Equal((ProposalElement.Entity, "E2", RejectionReason.MissingField), (r.Element, r.Id, r.Reason)),
+            r => Assert.Equal((ProposalElement.Relation, "CEO", RejectionReason.EndpointRejected), (r.Element, r.Id, r.Reason)));
+        Assert.Contains("\"name\"", proposal.Rejections[0].Detail);
+    }
+
+    [Theory]
+    [InlineData("""{"id":"e1","name":"n","type":"T","claim":"x","confidence":0.5}""", "cites no source")]
+    [InlineData("""{"id":"e1","name":"n","type":"T","claim":"x","sources":[],"confidence":0.5}""", "cites no source")]
+    [InlineData("""{"id":"e1","name":"n","claim":"x","sources":["rec-1"],"confidence":0.5}""", "\"type\"")]
+    [InlineData("""{"name":"n","type":"T","claim":"x","sources":["rec-1"],"confidence":0.5}""", "\"id\"")]
+    [InlineData("""{"id":"e1","name":"n","type":"T","sources":["rec-1"],"confidence":0.5}""", "\"claim\"")]
+    [InlineData("""{"id":"e1","name":"n","type":"T","claim":"x","sources":["rec-1"]}""", "\"confidence\"")]
+    public async Task ProposeAsync_reports_an_incomplete_entity_as_a_missing_field_rather_than_throwing(string entity, string expectedDetail)
+    {
+        // Each of these used to escape as a different exception type (ArgumentException,
+        // ArgumentNullException from inside LINQ), none of which a caller could classify.
+        var model = new StubModelClient($$"""{"entities":[{{entity}}],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
+
+        Assert.Empty(proposal.Entities);
+        var rejection = Assert.Single(proposal.Rejections);
+        Assert.Equal(RejectionReason.MissingField, rejection.Reason);
+        Assert.Contains(expectedDetail, rejection.Detail);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_keeps_the_rest_of_a_batch_when_one_relation_points_at_a_value_literal()
+    {
+        // The shape a multi-chunk batch produced in practice: one relation whose ends are a year and
+        // a place the model never stood up as entities. Before, that one line cost the whole batch.
+        var model = new StubModelClient("""
+            {"entities":[
+               {"id":"E1","name":"Acme","type":"Organization","claim":"x","sources":["c1"],"confidence":1.0},
+               {"id":"E2","name":"Kim","type":"Person","claim":"y","sources":["c2"],"confidence":1.0}],
+             "relations":[
+               {"name":"CEO","from":"E2","to":"E1","claim":"z","sources":["c2"],"confidence":1.0},
+               {"name":"FoundedIn","from":"2012","to":"대전","claim":"w","sources":["c1"],"confidence":1.0}]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model, new LinkageOptions(RecordsDenoteEntities: false));
+
+        var proposal = await proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("c1"), OneRecord("c2")], TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, proposal.Entities.Count);
+        Assert.Equal("CEO", Assert.Single(proposal.Relations).RelationName);
+        var rejection = Assert.Single(proposal.Rejections);
+        Assert.Equal(RejectionReason.DanglingRelationEnd, rejection.Reason);
+        Assert.Contains("2012, 대전", rejection.Detail);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_still_refuses_the_whole_response_when_an_element_cites_an_invented_source()
+    {
+        // Every other defect costs only its element. An invented citation does not: the check can
+        // see that an id exists, never that the record says what the claim says, so a response
+        // that fabricated evidence once gives no ground for trusting its other citations.
+        var model = new StubModelClient("""
+            {"entities":[
+               {"id":"e1","name":"a","type":"T","claim":"x","sources":["rec-1"],"confidence":0.9},
+               {"id":"e2","type":"T","claim":"y","sources":["made-up"],"confidence":0.9}],
+             "relations":[]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var error = await Assert.ThrowsAsync<FormatException>(
+            () => proposer.ProposeAsync(declaredStructure: null, records: [OneRecord("rec-1")], TestContext.Current.CancellationToken));
+
+        Assert.StartsWith("The model cited source id(s) it was never given: made-up", error.Message);
     }
 
     private static RawRecord OneRecord(string id) => new(id, new Dictionary<string, string?> { ["name"] = "x" });
@@ -384,7 +508,7 @@ public class SinglePassOntologyProposerTests
     public async Task ProposeAsync_overrides_confidence_with_FS_derived_probability_for_a_clear_match()
     {
         var model = new StubModelClient("""
-            {"entities":[{"id":"e1","type":"Organization","claim":"rec-1 and rec-2 are the same org","sources":["rec-1","rec-2"],"origin":"Innate","confidence":0.5}],"relations":[]}
+            {"entities":[{"id":"e1","name":"e1-name","type":"Organization","claim":"rec-1 and rec-2 are the same org","sources":["rec-1","rec-2"],"confidence":0.5}],"relations":[]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
         var records = new[]
@@ -409,7 +533,7 @@ public class SinglePassOntologyProposerTests
     public async Task ProposeAsync_combines_FS_prior_with_LLM_confidence_for_a_gray_zone_pair()
     {
         var model = new StubModelClient("""
-            {"entities":[{"id":"e1","type":"Organization","claim":"rec-1 and rec-2 are the same org","sources":["rec-1","rec-2"],"origin":"Innate","confidence":0.9}],"relations":[]}
+            {"entities":[{"id":"e1","name":"e1-name","type":"Organization","claim":"rec-1 and rec-2 are the same org","sources":["rec-1","rec-2"],"confidence":0.9}],"relations":[]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
         var records = new[]
@@ -430,7 +554,7 @@ public class SinglePassOntologyProposerTests
     public async Task ProposeAsync_skips_linkage_for_a_single_record_batch()
     {
         var model = new StubModelClient("""
-            {"entities":[{"id":"e1","type":"Person","claim":"rec-1 denotes a person","sources":["rec-1"],"origin":"Innate","confidence":0.7}],"relations":[]}
+            {"entities":[{"id":"e1","name":"e1-name","type":"Person","claim":"rec-1 denotes a person","sources":["rec-1"],"confidence":0.7}],"relations":[]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
         var records = new[] { new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Jane Doe" }) };
@@ -476,10 +600,10 @@ public class SinglePassOntologyProposerTests
     {
         // The preamble is deliberately silent on what an entity is and on which kinds should
         // become types rather than instances. That question belongs to the innate grammar
-        // (docs/philosophy.md, §C and §E), which is not adopted; a sentence steering it here would
-        // be that decision made in the wrong place, and it would turn the competency-question
-        // harness from a measurement of the model's modelling choices into a target the prompt is
-        // tuned against. This test pins the preamble so the sentence cannot arrive by accident --
+        // (docs/philosophy.md, §C and §E), whose closed vocabulary classifies output after the
+        // fact and is never shown to the model; a sentence steering it here would be that decision
+        // made in the wrong place, and it would turn the competency-question harness from a
+        // measurement of the model's modelling choices into a target the prompt is tuned against. This test pins the preamble so the sentence cannot arrive by accident --
         // changing it is a design decision, and the failure is the reminder.
         var model = new StubModelClient("""{"entities":[],"relations":[]}""");
         var proposer = new SinglePassOntologyProposer(model);
@@ -489,8 +613,8 @@ public class SinglePassOntologyProposerTests
         var expectedPreamble = string.Join(Environment.NewLine,
         [
             "Propose entities and relations grounded in the input below.",
-            "Respond with JSON only: {\"entities\":[{\"id\",\"type\",\"claim\",\"sources\",\"origin\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"origin\",\"confidence\"}]}.",
-            "\"origin\" is \"Innate\" or \"Acquired\". Every claim must cite at least one source id.",
+            "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.",
+            "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id.",
             "",
             "Records:",
         ]) + Environment.NewLine;

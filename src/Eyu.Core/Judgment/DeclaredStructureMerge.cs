@@ -12,9 +12,10 @@ namespace Eyu.Core.Judgment;
 /// relation, are stamped <see cref="ProposalBasis.Declared"/> — whatever the model said about
 /// itself. Everything else is <see cref="ProposalBasis.Inferred"/>.</item>
 /// <item>A relation proposed under a declared name whose ends contradict the declaration — it does
-/// not leave the declared subject, or does not reach the declared target — is dropped. The name is
-/// declared fact; a proposal that uses the name for something else is inference dressed as
-/// declaration, and inference does not win.</item>
+/// not leave the declared subject, or does not reach the declared target — is left out and reported
+/// as <see cref="RejectionReason.ContradictsDeclaration"/>. The name is declared fact; a proposal that
+/// uses the name for something else is inference dressed as declaration, and inference does not
+/// win. It is reported rather than silently dropped so a caller measuring the model sees it.</item>
 /// </list>
 /// Type names are compared leniently (case and separators ignored: <c>WorkOrder</c>,
 /// <c>work_order</c> and <c>work-order</c> are one name) because the model writes them and the
@@ -25,11 +26,11 @@ namespace Eyu.Core.Judgment;
 /// </summary>
 internal static class DeclaredStructureMerge
 {
-    public static OntologyProposal Apply(DeclaredStructure? declared, IReadOnlyList<EntityProposal> entities, IReadOnlyList<RelationProposal> relations)
+    public static OntologyProposal Apply(DeclaredStructure? declared, IReadOnlyList<EntityProposal> entities, IReadOnlyList<RelationProposal> relations, IReadOnlyList<ProposalRejection> rejections)
     {
         if (declared is null)
         {
-            return new OntologyProposal(entities, relations);
+            return new OntologyProposal(entities, relations, rejections);
         }
 
         var subject = Normalize(declared.Subject.Value);
@@ -38,6 +39,7 @@ internal static class DeclaredStructureMerge
             .ToList();
         var entityTypeById = mergedEntities.ToDictionary(e => e.EntityId, e => Normalize(e.EntityType), StringComparer.Ordinal);
 
+        var mergedRejections = new List<ProposalRejection>(rejections);
         var declaredRelations = declared.Relations.ToDictionary(r => Normalize(r.Name), r => r);
         var mergedRelations = new List<RelationProposal>(relations.Count);
         foreach (var relation in relations)
@@ -50,25 +52,29 @@ internal static class DeclaredStructureMerge
 
             if (Contradicts(relation, declaredRelation, subject, entityTypeById))
             {
+                mergedRejections.Add(new ProposalRejection(
+                    ProposalElement.Relation,
+                    relation.RelationName,
+                    RejectionReason.ContradictsDeclaration,
+                    $"relation \"{relation.RelationName}\" ({relation.FromEntityId} -> {relation.ToEntityId}) uses the declared name for ends the declaration ({declared.Subject.Value} -> {declaredRelation.Target.Value}) does not describe"));
                 continue;
             }
 
             mergedRelations.Add(relation.WithBasis(ProposalBasis.Declared));
         }
 
-        return new OntologyProposal(mergedEntities, mergedRelations);
+        return new OntologyProposal(mergedEntities, mergedRelations, mergedRejections);
     }
 
     /// <summary>
     /// A declared relation runs from the declared subject to its declared target; an end that
     /// resolves to a differently typed entity is a contradiction. Both ends always resolve — the
-    /// proposer refuses a response whose relations name an entity it never proposed before anything
+    /// proposer leaves out every relation whose end is not a surviving entity before anything
     /// reaches this merge — so there is no unresolvable case to be lenient about here.
     /// </summary>
     private static bool Contradicts(RelationProposal relation, DeclaredRelation declaredRelation, string subject, Dictionary<string, string> entityTypeById)
         => entityTypeById[relation.FromEntityId] != subject
            || entityTypeById[relation.ToEntityId] != Normalize(declaredRelation.Target.Value);
 
-    private static string Normalize(string name)
-        => new(name.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+    private static string Normalize(string name) => VocabularyName.Normalize(name);
 }

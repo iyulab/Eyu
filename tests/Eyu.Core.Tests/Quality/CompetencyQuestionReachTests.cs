@@ -13,13 +13,13 @@ public class CompetencyQuestionReachTests
     {
         var entities = entityTypes
             .Select((type, index) => EntityProposal.Create(
-                $"e{index}", type, Claim($"a {type} appears in the records"), VocabularyOrigin.Innate, 0.9))
+                $"e{index}", $"{type}-{index}", type, Claim($"a {type} appears in the records"), VocabularyOrigin.Innate, 0.9))
             .ToList();
         var relations = relationNames
             .Select(name => RelationProposal.Create(
                 name, "e0", "e0", Claim($"{name} holds"), VocabularyOrigin.Innate, 0.9))
             .ToList();
-        return new OntologyProposal(entities, relations);
+        return new OntologyProposal(entities, relations, []);
     }
 
     [Fact]
@@ -55,11 +55,22 @@ public class CompetencyQuestionReachTests
     // Claims quote the records, so scoring against them would report that the data contains the
     // question's words — true before any ontology is proposed at all.
     [Fact]
+    public void An_entity_name_is_not_part_of_the_vocabulary()
+    {
+        // A name is how the records write one entity -- an instance, not a type or relation a
+        // query would go through -- and like claim text it quotes the data.
+        var entity = EntityProposal.Create(
+            "e0", "Reactor Event 7", "Thing", Claim("rec-1 names it"), VocabularyOrigin.Acquired, 0.9);
+
+        Assert.Equal(["thing"], CompetencyQuestionReach.Vocabulary(new OntologyProposal([entity], [], [])));
+    }
+
+    [Fact]
     public void Claim_text_is_not_part_of_the_vocabulary()
     {
         var entity = EntityProposal.Create(
-            "e0", "Thing", Claim("this plant reported an event"), VocabularyOrigin.Innate, 0.9);
-        var proposal = new OntologyProposal([entity], []);
+            "e0", "the plant", "Thing", Claim("this plant reported an event"), VocabularyOrigin.Innate, 0.9);
+        var proposal = new OntologyProposal([entity], [], []);
 
         Assert.Equal(["thing"], CompetencyQuestionReach.Vocabulary(proposal));
         Assert.False(CompetencyQuestionReach.Reaches(

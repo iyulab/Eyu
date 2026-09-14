@@ -11,7 +11,8 @@ namespace Eyu.Core.Ports;
 /// supplied — see design rationale §A on why judgment always requires some prior structure.
 /// Only the records given to a call can be cited as a claim's sources, so a call with no records
 /// can return only an empty proposal, and a response that cites anything else is rejected rather
-/// than passed through.
+/// than passed through. An implementation that leaves individual elements of an answer out reports
+/// each one in <see cref="OntologyProposal.Rejections"/> rather than dropping it silently.
 ///
 /// This interface declaration does not commit to an internal implementation strategy; how the
 /// judgment itself is organized (e.g. a single pass vs. multiple internal roles) is a separate,

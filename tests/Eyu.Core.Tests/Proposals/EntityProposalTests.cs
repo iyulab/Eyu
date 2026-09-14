@@ -16,7 +16,7 @@ public class EntityProposalTests
     public void Create_rejects_a_blank_entity_id(string? entityId)
     {
         Assert.Throws<ArgumentException>(() =>
-            EntityProposal.Create(entityId!, "Person", SampleClaim(), VocabularyOrigin.Innate, confidence: 0.8));
+            EntityProposal.Create(entityId!, "Kim", "Person", SampleClaim(), VocabularyOrigin.Innate, confidence: 0.8));
     }
 
     [Theory]
@@ -26,7 +26,17 @@ public class EntityProposalTests
     public void Create_rejects_a_blank_entity_type(string? entityType)
     {
         Assert.Throws<ArgumentException>(() =>
-            EntityProposal.Create("e1", entityType!, SampleClaim(), VocabularyOrigin.Innate, confidence: 0.8));
+            EntityProposal.Create("e1", "Kim", entityType!, SampleClaim(), VocabularyOrigin.Innate, confidence: 0.8));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Create_rejects_a_blank_name(string? name)
+    {
+        Assert.Throws<ArgumentException>(() =>
+            EntityProposal.Create("e1", name!, "Person", SampleClaim(), VocabularyOrigin.Innate, confidence: 0.8));
     }
 
     [Theory]
@@ -35,7 +45,7 @@ public class EntityProposalTests
     public void Create_rejects_confidence_outside_the_zero_to_one_range(double confidence)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            EntityProposal.Create("e1", "Person", SampleClaim(), VocabularyOrigin.Innate, confidence));
+            EntityProposal.Create("e1", "Kim", "Person", SampleClaim(), VocabularyOrigin.Innate, confidence));
     }
 
     [Fact]
@@ -43,9 +53,10 @@ public class EntityProposalTests
     {
         var claim = SampleClaim();
 
-        var proposal = EntityProposal.Create("e1", "Person", claim, VocabularyOrigin.Acquired, confidence: 0.42);
+        var proposal = EntityProposal.Create("e1", "Kim", "Person", claim, VocabularyOrigin.Acquired, confidence: 0.42);
 
         Assert.Equal("e1", proposal.EntityId);
+        Assert.Equal("Kim", proposal.Name);
         Assert.Equal("Person", proposal.EntityType);
         Assert.Equal(claim, proposal.Claim);
         Assert.Equal(VocabularyOrigin.Acquired, proposal.Origin);

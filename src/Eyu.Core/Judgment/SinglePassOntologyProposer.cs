@@ -22,6 +22,10 @@ namespace Eyu.Core.Judgment;
 /// confirmed match, a confirmed non-match, or a gray-zone case needing the model's judgment.
 /// Confirmed matches never use the model's self-reported confidence; gray-zone cases combine the
 /// Fellegi-Sunter prior with it via a Bayesian update (<see cref="LinkageConfidenceAdjuster"/>).
+/// The parse refuses the whole response only for invalid JSON or an invented source; any other
+/// defective element is left out and reported in <see cref="OntologyProposal.Rejections"/>, and
+/// every surviving element's <see cref="VocabularyOrigin"/> is stamped from
+/// <see cref="InnateVocabulary"/> rather than taken from the model.
 /// After the parse, <see cref="DeclaredStructureMerge"/> applies the deterministic half of "Declared
 /// always wins": declared types are stamped as such and a relation that misuses a declared name is
 /// dropped, so the prompt's authority sentence is a request to the model and the merge is the
@@ -46,8 +50,8 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     // hashes them. Keeping the literals here (rather than inline in BuildPrompt) makes them the
     // single source both use, so the fingerprint cannot silently disagree with the prompt.
     private const string PromptInstruction = "Propose entities and relations grounded in the input below.";
-    private const string PromptSchema = "Respond with JSON only: {\"entities\":[{\"id\",\"type\",\"claim\",\"sources\",\"origin\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"origin\",\"confidence\"}]}.";
-    private const string PromptOriginRule = "\"origin\" is \"Innate\" or \"Acquired\". Every claim must cite at least one source id.";
+    private const string PromptSchema = "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.";
+    private const string PromptReferenceRule = "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id.";
     private const string DeclarationClause = "Declared structure is authoritative: a declared field or relation is fact, not a hypothesis. Propose a relation a declared relation describes under its declared name, and never contradict declared structure. A declaration is a floor, not a ceiling: still propose every entity and relation the records show beyond what is declared.";
 
     /// <summary>
@@ -61,7 +65,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
 
     private static string ComputeFingerprint()
     {
-        var fixedText = string.Join('\n', PromptInstruction, PromptSchema, PromptOriginRule, DeclarationClause);
+        var fixedText = string.Join('\n', PromptInstruction, PromptSchema, PromptReferenceRule, DeclarationClause);
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(fixedText));
         return Convert.ToHexString(hash).ToLowerInvariant()[..8];
     }
@@ -72,7 +76,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         var prompt = BuildPrompt(declaredStructure, records, linkageAnalysis);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt), cancellationToken).ConfigureAwait(false);
         var parsed = ParseResponse(response.Text, records, linkageAnalysis);
-        return DeclaredStructureMerge.Apply(declaredStructure, parsed.Entities, parsed.Relations);
+        return DeclaredStructureMerge.Apply(declaredStructure, parsed.Entities, parsed.Relations, parsed.Rejections);
     }
 
     private static string BuildPrompt(DeclaredStructure? declaredStructure, IReadOnlyList<RawRecord> records, LinkageAnalysis linkageAnalysis)
@@ -80,7 +84,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         var text = new StringBuilder();
         text.AppendLine(PromptInstruction);
         text.AppendLine(PromptSchema);
-        text.AppendLine(PromptOriginRule);
+        text.AppendLine(PromptReferenceRule);
 
         if (declaredStructure is not null)
         {
@@ -181,6 +185,13 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         return facts.Count == 0 ? head : $"{head} ({string.Join(" ", facts)})";
     }
 
+    /// <summary>
+    /// Turns the model's answer into a proposal in a fixed order, so each later step can rely on what
+    /// the earlier ones removed: invalid JSON and invented sources refuse the whole response; then
+    /// each entity is checked on its own, then entity ids for duplicates, then each relation on its
+    /// own and against the entities that survived. Origin is stamped from
+    /// <see cref="InnateVocabulary"/>, not read from the model.
+    /// </summary>
     private static OntologyProposal ParseResponse(string responseText, IReadOnlyList<RawRecord> records, LinkageAnalysis linkageAnalysis)
     {
         ProposalResponse parsed;
@@ -196,40 +207,125 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
                 ex);
         }
 
-        RejectUnknownSources(parsed, records, responseText);
-        RejectDuplicateEntityIds(parsed, responseText);
-        RejectDanglingRelations(parsed, responseText);
+        var entityResponses = parsed.Entities ?? [];
+        var relationResponses = parsed.Relations ?? [];
+        RejectUnknownSources(entityResponses, relationResponses, records, responseText);
 
-        var entities = (parsed.Entities ?? [])
-            .Select(e =>
+        var rejections = new List<ProposalRejection>();
+        var duplicatedIds = entityResponses
+            .Where(e => !string.IsNullOrWhiteSpace(e.Id))
+            .GroupBy(e => e.Id!, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var entities = new List<EntityProposal>();
+        foreach (var e in entityResponses)
+        {
+            var defect = EntityDefect(e) ?? (duplicatedIds.Contains(e.Id!)
+                ? new Defect(RejectionReason.DuplicateEntityId, "more than one entity was proposed under this id — an entity id must name one entity")
+                : null);
+            if (defect is not null)
             {
-                var claim = ToClaim(e.Claim, e.Sources);
-                var citedRecordIds = claim.Sources.Select(s => s.RecordId).Distinct().ToList();
-                var confidence = LinkageConfidenceAdjuster.AdjustConfidence(citedRecordIds, e.Confidence, linkageAnalysis);
-                return EntityProposal.Create(e.Id, e.Type, claim, Enum.Parse<VocabularyOrigin>(e.Origin), confidence);
-            })
-            .ToList();
+                rejections.Add(new ProposalRejection(ProposalElement.Entity, BlankToNull(e.Id), defect.Reason, $"entity {Describe(e.Id)}: {defect.Detail}"));
+                continue;
+            }
 
-        var relations = (parsed.Relations ?? [])
-            .Select(r => RelationProposal.Create(r.Name, r.From, r.To, ToClaim(r.Claim, r.Sources), Enum.Parse<VocabularyOrigin>(r.Origin), r.Confidence))
-            .ToList();
+            var claim = ToClaim(e.Claim!, e.Sources!);
+            var citedRecordIds = claim.Sources.Select(s => s.RecordId).Distinct().ToList();
+            var confidence = LinkageConfidenceAdjuster.AdjustConfidence(citedRecordIds, e.Confidence!.Value, linkageAnalysis);
+            entities.Add(EntityProposal.Create(e.Id!, e.Name!.Trim(), e.Type!, claim, InnateVocabulary.OfEntityType(e.Type!), confidence));
+        }
 
-        return new OntologyProposal(entities, relations);
+        var proposedIds = entityResponses.Where(e => !string.IsNullOrWhiteSpace(e.Id)).Select(e => e.Id!).ToHashSet(StringComparer.Ordinal);
+        var survivingIds = entities.Select(e => e.EntityId).ToHashSet(StringComparer.Ordinal);
+
+        var relations = new List<RelationProposal>();
+        foreach (var r in relationResponses)
+        {
+            var defect = RelationDefect(r) ?? EndpointDefect(r, proposedIds, survivingIds);
+            if (defect is not null)
+            {
+                rejections.Add(new ProposalRejection(ProposalElement.Relation, BlankToNull(r.Name), defect.Reason, $"relation {Describe(r.Name)} ({Describe(r.From)} -> {Describe(r.To)}): {defect.Detail}"));
+                continue;
+            }
+
+            relations.Add(RelationProposal.Create(r.Name!, r.From!, r.To!, ToClaim(r.Claim!, r.Sources!), InnateVocabulary.OfRelationName(r.Name!), r.Confidence!.Value));
+        }
+
+        return new OntologyProposal(entities, relations, rejections);
     }
+
+    private sealed record Defect(RejectionReason Reason, string Detail);
+
+    private static Defect? EntityDefect(EntityResponse e) =>
+        MissingFields(("id", e.Id), ("name", e.Name), ("type", e.Type), ("claim", e.Claim)) is { } missing ? new Defect(RejectionReason.MissingField, missing)
+        : !CitesSources(e.Sources) ? new Defect(RejectionReason.MissingField, "cites no source")
+        : ConfidenceDefect(e.Confidence);
+
+    private static Defect? RelationDefect(RelationResponse r) =>
+        MissingFields(("name", r.Name), ("from", r.From), ("to", r.To), ("claim", r.Claim)) is { } missing ? new Defect(RejectionReason.MissingField, missing)
+        : !CitesSources(r.Sources) ? new Defect(RejectionReason.MissingField, "cites no source")
+        : ConfidenceDefect(r.Confidence);
+
+    private static bool CitesSources(IReadOnlyList<string?>? sources) =>
+        sources is { Count: > 0 } && sources.All(id => !string.IsNullOrWhiteSpace(id));
+
+    private static string? MissingFields(params (string Field, string? Value)[] fields)
+    {
+        var missing = fields.Where(f => string.IsNullOrWhiteSpace(f.Value)).Select(f => $"\"{f.Field}\"").ToList();
+        return missing.Count == 0 ? null : $"missing {string.Join(", ", missing)}";
+    }
+
+    private static Defect? ConfidenceDefect(double? confidence) => confidence switch
+    {
+        null => new Defect(RejectionReason.MissingField, "missing \"confidence\""),
+        < 0.0 or > 1.0 => new Defect(RejectionReason.ConfidenceOutOfRange, $"confidence {confidence.Value.ToString(CultureInfo.InvariantCulture)} is outside [0, 1]"),
+        _ => null,
+    };
+
+    /// <summary>
+    /// A relation's two ends are entities of the same response — that is what makes it a relation
+    /// rather than a name with two strings attached. An end that is not a surviving entity cannot be
+    /// resolved by anyone downstream, so the relation is left out. The two ways that happens are kept
+    /// apart because they are different findings: an id the response never proposed (often a value
+    /// the model referred to without standing it up as an entity), and an entity that was proposed
+    /// but itself rejected.
+    /// </summary>
+    private static Defect? EndpointDefect(RelationResponse r, HashSet<string> proposedIds, HashSet<string> survivingIds)
+    {
+        var unresolved = new[] { r.From!, r.To! }.Distinct(StringComparer.Ordinal).Where(id => !survivingIds.Contains(id)).ToList();
+        if (unresolved.Count == 0)
+        {
+            return null;
+        }
+
+        var dangling = unresolved.Where(id => !proposedIds.Contains(id)).ToList();
+        return dangling.Count > 0
+            ? new Defect(RejectionReason.DanglingRelationEnd, $"{string.Join(", ", dangling)} names no entity the response proposed")
+            : new Defect(RejectionReason.EndpointRejected, $"{string.Join(", ", unresolved)} was proposed but rejected");
+    }
+
+    private static string Describe(string? value) => string.IsNullOrWhiteSpace(value) ? "(unnamed)" : value;
+
+    private static string? BlankToNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     /// <summary>
     /// The only sources a claim can cite are the records this call was given. A model that cites an
     /// id it was never shown has produced the <em>shape</em> of grounding with none of the substance,
     /// and the set of ids is already in hand — so this is a deterministic check, not a judgment.
-    /// The whole response is refused rather than the offending claim dropped: a dropped entity would
-    /// leave relations pointing at it, and a response that invents evidence once is not one to
-    /// salvage piecemeal.
+    /// Unlike every other defect, this one refuses the whole response rather than the offending
+    /// element: the check can see that a cited id exists, never that the record says what the claim
+    /// says, so a response that invented evidence once gives no ground for trusting its other
+    /// citations.
     /// </summary>
-    private static void RejectUnknownSources(ProposalResponse parsed, IReadOnlyList<RawRecord> records, string responseText)
+    private static void RejectUnknownSources(IReadOnlyList<EntityResponse> entities, IReadOnlyList<RelationResponse> relations, IReadOnlyList<RawRecord> records, string responseText)
     {
         var known = records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
-        var cited = (parsed.Entities ?? []).SelectMany(e => e.Sources ?? [])
-            .Concat((parsed.Relations ?? []).SelectMany(r => r.Sources ?? []));
+        var cited = entities.SelectMany(e => e.Sources ?? [])
+            .Concat(relations.SelectMany(r => r.Sources ?? []))
+            .OfType<string>()
+            .Where(id => !string.IsNullOrWhiteSpace(id));
         var unknown = cited.Where(id => !known.Contains(id)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         if (unknown.Count == 0)
         {
@@ -243,56 +339,8 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             $"The model cited source id(s) it was never given: {string.Join(", ", unknown)} — {reason}. Response text: {Excerpt(responseText)}");
     }
 
-    /// <summary>
-    /// An entity id names one entity. A response that proposes two entities under one id has
-    /// made every relation to that id ambiguous, so it is refused like the other malformed
-    /// responses — with the ids named — rather than failing later, inside the merge, as a
-    /// dictionary collision no consumer could read.
-    /// </summary>
-    private static void RejectDuplicateEntityIds(ProposalResponse parsed, string responseText)
-    {
-        var duplicated = (parsed.Entities ?? [])
-            .GroupBy(e => e.Id, StringComparer.Ordinal)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .Order(StringComparer.Ordinal)
-            .ToList();
-        if (duplicated.Count == 0)
-        {
-            return;
-        }
-
-        throw new FormatException(
-            $"The model proposed more than one entity under the same id: {string.Join(", ", duplicated)} — an entity id must name one entity. Response text: {Excerpt(responseText)}");
-    }
-
-    /// <summary>
-    /// A relation's two ends are entities of the same response — that is what makes it a relation
-    /// rather than a name with two strings attached. An end naming an id the response never
-    /// proposed cannot be resolved by anyone downstream, and the ids are all in the same document,
-    /// so this too is a deterministic check. As with an invented source, the whole response is
-    /// refused: a response that is incoherent about its own ids is not one to salvage piecemeal.
-    /// </summary>
-    private static void RejectDanglingRelations(ProposalResponse parsed, string responseText)
-    {
-        var proposed = (parsed.Entities ?? []).Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
-        var dangling = (parsed.Relations ?? [])
-            .SelectMany(r => new[] { r.From, r.To })
-            .Where(id => !proposed.Contains(id))
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
-            .ToList();
-        if (dangling.Count == 0)
-        {
-            return;
-        }
-
-        throw new FormatException(
-            $"The model related entity id(s) it never proposed: {string.Join(", ", dangling)} — every end of a relation must be an entity of the same response. Response text: {Excerpt(responseText)}");
-    }
-
-    private static GroundedClaim ToClaim(string claim, IReadOnlyList<string> sources) =>
-        GroundedClaim.Create(claim, sources.Select(id => new SourceRef(id)).ToList());
+    private static GroundedClaim ToClaim(string claim, IReadOnlyList<string?> sources) =>
+        GroundedClaim.Create(claim, sources.Select(id => new SourceRef(id!)).ToList());
 
     /// <summary>
     /// Bounded excerpt of what the model actually returned. A model that wraps its JSON in prose
@@ -309,7 +357,9 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
 
     private sealed record ProposalResponse(IReadOnlyList<EntityResponse>? Entities, IReadOnlyList<RelationResponse>? Relations);
 
-    private sealed record EntityResponse(string Id, string Type, string Claim, IReadOnlyList<string> Sources, string Origin, double Confidence);
+    // Every field is nullable: a model can omit any of them, and an omission is a per-element
+    // rejection, not a deserialization failure of the whole answer.
+    private sealed record EntityResponse(string? Id, string? Name, string? Type, string? Claim, IReadOnlyList<string?>? Sources, double? Confidence);
 
-    private sealed record RelationResponse(string Name, string From, string To, string Claim, IReadOnlyList<string> Sources, string Origin, double Confidence);
+    private sealed record RelationResponse(string? Name, string? From, string? To, string? Claim, IReadOnlyList<string?>? Sources, double? Confidence);
 }

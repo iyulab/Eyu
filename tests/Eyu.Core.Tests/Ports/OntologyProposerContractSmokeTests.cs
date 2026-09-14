@@ -51,10 +51,10 @@ public class OntologyProposerContractSmokeTests
         public Task<OntologyProposal> ProposeAsync(DeclaredStructure? declaredStructure, IReadOnlyList<RawRecord> records, CancellationToken cancellationToken = default)
         {
             var claim = GroundedClaim.Create("rec-1 denotes an Invoice", sources: [new SourceRef("rec-1")]);
-            var entity = EntityProposal.Create("e1", "Invoice", claim, VocabularyOrigin.Innate, confidence: 0.9);
+            var entity = EntityProposal.Create("e1", "INV-1", "Invoice", claim, VocabularyOrigin.Innate, confidence: 0.9);
             var relation = RelationProposal.Create("self", "e1", "e1", claim, VocabularyOrigin.Innate, confidence: 0.9);
 
-            return Task.FromResult(new OntologyProposal(Entities: [entity], Relations: [relation]));
+            return Task.FromResult(new OntologyProposal(Entities: [entity], Relations: [relation], Rejections: []));
         }
     }
 }

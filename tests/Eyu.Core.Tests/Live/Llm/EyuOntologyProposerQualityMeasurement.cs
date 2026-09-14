@@ -67,6 +67,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
     {
         public int Attempts;
         public int ParseFailures;
+
+        /// <summary>Elements the proposer left out of parsed attempts, by reason — the per-element failures a whole-response parse count no longer sees.</summary>
+        public readonly SortedDictionary<RejectionReason, int> Rejections = [];
         public int GroundingViolations;
         public int OverlapViolations;
         public readonly List<int> EntityCounts = [];
@@ -159,11 +162,17 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         {
             proposal = await proposer.ProposeAsync(declaredStructure: null, qualityCase.Records);
         }
-        catch (Exception ex) when (ex is FormatException or ArgumentOutOfRangeException or ArgumentException)
+        catch (FormatException ex)
         {
             stats.ParseFailures++;
             stats.FailureNotes.Add(ex.Message);
             return;
+        }
+
+        foreach (var rejection in proposal.Rejections)
+        {
+            stats.Rejections[rejection.Reason] = stats.Rejections.GetValueOrDefault(rejection.Reason) + 1;
+            stats.FailureNotes.Add($"rejected {rejection.Reason}: {rejection.Detail}");
         }
 
         stats.ScoredAttempts++;
@@ -275,15 +284,15 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 $"LinkageOptions: MatchThreshold={linkageOptions.MatchThreshold}, NonMatchThreshold={linkageOptions.NonMatchThreshold}, " +
                 $"MaxIterations={linkageOptions.MaxIterations}, ConvergenceTolerance={linkageOptions.ConvergenceTolerance}")
             .AppendLine()
-            .AppendLine("| case | parse ok | grounding violations | overlap violations | entities (min-max) | relations (min-max) | distinct type-shapes |")
-            .AppendLine("|---|---|---|---|---|---|---|");
+            .AppendLine("| case | parse ok | rejected elements (by reason) | grounding violations | overlap violations | entities (min-max) | relations (min-max) | distinct type-shapes |")
+            .AppendLine("|---|---|---|---|---|---|---|---|");
         foreach (var (name, s) in stats)
         {
             var parseOk = s.Attempts - s.ParseFailures;
             var entityRange = s.EntityCounts.Count == 0 ? "n/a" : $"{s.EntityCounts.Min()}-{s.EntityCounts.Max()}";
             var relationRange = s.RelationCounts.Count == 0 ? "n/a" : $"{s.RelationCounts.Min()}-{s.RelationCounts.Max()}";
             report.AppendLine(CultureInfo.InvariantCulture,
-                $"| {name} | {parseOk}/{s.Attempts} | {s.GroundingViolations} | {s.OverlapViolations} | {entityRange} | {relationRange} | {s.EntityTypeShapes.Count} |");
+                $"| {name} | {parseOk}/{s.Attempts} | {RenderRejections(s.Rejections)} | {s.GroundingViolations} | {s.OverlapViolations} | {entityRange} | {relationRange} | {s.EntityTypeShapes.Count} |");
         }
 
         report.AppendLine().AppendLine("## Fellegi-Sunter pre-filter (per case, independent of model attempts)")
@@ -335,6 +344,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         return report.ToString();
     }
 
+    private static string RenderRejections(SortedDictionary<RejectionReason, int> rejections) =>
+        rejections.Count == 0 ? "0" : string.Join(", ", rejections.Select(kv => $"{kv.Key} {kv.Value}"));
+
     // One JSON file per run, named by timestamp -- a git-friendly run-history directory that can
     // be listed, diffed and scripted over, instead of re-reading prose reports to compare runs.
     // Field set mirrors RenderReport's two tables so both stay in sync by construction.
@@ -363,6 +375,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         string Name,
         int Attempts,
         int ParseFailures,
+        IReadOnlyDictionary<string, int> RejectionsByReason,
         int GroundingViolations,
         int OverlapViolations,
         int? EntityCountMin,
@@ -403,6 +416,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 name,
                 s.Attempts,
                 s.ParseFailures,
+                s.Rejections.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value),
                 s.GroundingViolations,
                 s.OverlapViolations,
                 s.EntityCounts.Count == 0 ? null : s.EntityCounts.Min(),

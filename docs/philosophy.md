@@ -171,6 +171,29 @@ seventh/sixth port (`ICommonOntologyPack`-shaped) for this — pure
 surface growth with no consumer need distinct from what a one-field tag
 already answers.
 
+**Decided next: the tag is stamped, not self-reported, from a closed list.**
+The first form of the tag asked the model to report it — the prompt said
+only that origin is "Innate" or "Acquired". Measured on a real corpus, a model
+answered `Acquired` for every entity, `Person` and `Organization` included: a
+model told the two words but not what they mean has nothing to go on, and a
+tag it guesses cannot carry the calibration distinction above. So the list
+that "and similar" left open is closed, in code, as `InnateVocabulary`:
+entity types Person, Organization, Event, Action, Location, Time, and relation
+names PartOf, ParticipatesIn, LocatedIn, OccursAt — DOLCE's agentive and
+social endurants, perdurants and spatial and temporal regions, and its
+primitive relations of parthood, participation and location. After parsing,
+the proposer stamps `Innate` on a type or relation name that equals one of
+these under lexical comparison (case and separators ignored) and `Acquired`
+on anything else; the model is no longer asked. Two things are deliberately
+not done. There is no synonym table — a model that writes `Company` used a
+domain word, and folding it into `Organization` would be the term
+normalization §B rules out; the tag reports the vocabulary actually used.
+And the prompt still does not enumerate the list — naming `Person` or
+`Organization` there would pull the model's type choices toward them, which
+is the steering §E keeps out of the prompt. The list classifies output; it
+does not shape it. Revisiting a member of the list is a design decision
+recorded here, not a tuning value.
+
 ## D. Confidence: routes, but only if calibrated 🟡
 
 The core promise — "confidence routes, it doesn't decide" — is a form of
@@ -221,8 +244,8 @@ project's structure through a translator who must first master ontology
 vocabulary. It's fair to ask whether Eyu's innate layer (§C) reintroduces
 exactly that: doesn't *someone* still have to design the categories?
 
-The answer is no, and the reason is scope, not effort: the innate layer (if
-adopted) is a fixed, minimal, domain-independent grammar — decided once,
+The answer is no, and the reason is scope, not effort: the innate layer is a
+fixed, minimal, domain-independent grammar — decided once,
 shared across every domain, never touched by a project team. It answers
 "what kind of thing counts as an entity or event at all," not "what does
 *this* domain's data mean." Domain-specific structure — the part that
@@ -245,8 +268,10 @@ unreached when the model chose the latter. That is a measurement of the
 model's modelling choice, not a defect in the prompt — and a prompt sentence
 steering the choice would be an innate-grammar decision made in the wrong
 place, one that also turns the harness from an instrument into a target.
-Until the innate layer is adopted, the preamble stays silent, and a test
-pins it so that silence cannot end by accident.
+Closing the innate vocabulary (§C) did not change this: that list classifies
+what the model proposed, after the fact, and is never shown to it. The
+preamble stays silent, and a test pins it so that silence cannot end by
+accident.
 
 ## What this document deliberately does not claim 🔴
 

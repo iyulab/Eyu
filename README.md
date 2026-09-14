@@ -89,7 +89,8 @@ the target the architecture is built toward, not as a track record.
   Enforced after the model answers, not only asked of it: every proposal
   carries whether its type was declared (`ProposalBasis`), and a relation
   proposed under a declared name whose ends contradict the declaration is
-  dropped rather than returned. One caveat from measurement: handed a
+  left out and reported (`RejectionReason.ContradictsDeclaration`) rather than
+  returned. One caveat from measurement: handed a
   *partial* declaration under an earlier prompt that asked the model to
   "infer only what nothing declares", it proposed only what was declared and
   inferred nothing beyond it, so a partial declaration reached fewer
@@ -111,9 +112,16 @@ the target the architecture is built toward, not as a track record.
   `{claim, sources[], path[]}`. A claim that can't cite its sources cannot be
   expressed — this is enforced by the output shape, not by a prompt — and a
   source must be a record the call was actually given: a response that cites
-  an id it was never shown is rejected, not passed through. The same holds
-  for a relation's ends — both must be entities the same response proposed,
-  or the response is refused. ("Grounding" throughout means this citation
+  an id it was never shown is refused whole, not passed through — the check
+  can see that an id exists, never that the record says what the claim says,
+  so one invented citation leaves no ground for trusting the others. Every
+  other defect costs only its own element: an entity or relation with a
+  missing field or an out-of-range confidence, every entity under a duplicated
+  id, and a relation whose end is not a surviving entity of the same response
+  are left out, and each appears in `OntologyProposal.Rejections` with a
+  `RejectionReason`. Nothing is dropped silently — a caller that wants
+  all-or-nothing checks `Rejections.Count`, and a caller measuring the model
+  counts the reasons. ("Grounding" throughout means this citation
   back to records — not the normalization of a mention to an ontology term
   id that biomedical extraction tools call ontology grounding; Eyu does no
   such lookup. See [design rationale, §B](docs/philosophy.md).)
@@ -150,7 +158,7 @@ the target the architecture is built toward, not as a track record.
 | -------------------- | ---------------------------------------------------------------------- |
 | `IStructureSource`   | What the caller has already declared — field hints, relations, version |
 | `IRecordSample`      | Raw records to infer from, when declaration alone is insufficient      |
-| `IOntologyProposer`  | The core judgment: entities, relations, confidence, and entity resolution (merging records that denote the same entity) — all from the above. Each proposal also carries a `VocabularyOrigin` (`Innate` \| `Acquired`) — see [design rationale, §C](docs/philosophy.md) |
+| `IOntologyProposer`  | The core judgment: entities, relations, confidence, and entity resolution (merging records that denote the same entity) — all from the above. Each entity carries its `Name` as the records write it, and each proposal a `VocabularyOrigin` (`Innate` \| `Acquired`) — see [design rationale, §C](docs/philosophy.md) |
 | `IGroundingContract` | `{claim, sources[], path[]}` — the shape every answer is expressed in  |
 | `IModelClient`       | Provider-neutral inference access (local or hosted)                    |
 
@@ -188,6 +196,21 @@ client). When the provider reports token counts, `ModelResponse.Usage` carries t
 (prompt / completion / total, each optional) verbatim, so a caller can budget context or
 bill against the server's own numbers.
 
+The proposer asks for JSON, but a sentence in a prompt does not stop every model from
+wrapping its answer in a markdown code fence — some self-hosted instruction models do so
+routinely — and a fenced answer is refused as invalid JSON (the exception carries the text,
+so the cause is visible). The parser does not strip fences: a formatting violation it
+absorbed would stop showing up in measurement. Ask the provider for structured output
+instead, through the same `extraBody`:
+
+```csharp
+var extraBody = new Dictionary<string, JsonElement>
+{
+    ["response_format"] = JsonSerializer.SerializeToElement(new { type = "json_object" }),
+};
+var client = new HttpModelClient(httpClient, model, extraBody);
+```
+
 Entity resolution is tuned through a value, not a port: `SinglePassOntologyProposer`
 accepts an optional [`LinkageOptions`](src/Eyu.Core/Linkage/LinkageOptions.cs) record
 covering the record-linkage pre-filter's classification thresholds, its EM iteration
@@ -207,7 +230,10 @@ ground correctly (a chunk id is a fine source id); pass
 `LinkageOptions` with `RecordsDenoteEntities: false` and no pair is compared, every
 record stays its own singleton, and the prompt carries no pre-linked groups or gray-zone
 pairs. With the pre-filter off there is no linkage prior, so nothing adjusts the model's
-self-reported confidence up or down — it is carried through as given. Keep one document
+self-reported confidence up or down — it is carried through as given. The cited sources then
+no longer identify an entity either (a chunk cites many), so `EntityProposal.Name` — the
+entity as the records write it — is what a caller links and stores by; `EntityId` only ties
+relations to entities inside one proposal and must never be persisted as an identity. Keep one document
 per batch, and mind that every record is rendered into the
 prompt in full — the batch size is bounded by the model's context, not by Eyu.
 

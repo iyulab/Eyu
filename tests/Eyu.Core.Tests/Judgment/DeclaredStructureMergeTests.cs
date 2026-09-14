@@ -29,13 +29,13 @@ public class DeclaredStructureMergeTests
     private const string ModelAnswer = """
         {
           "entities": [
-            {"id": "e1", "type": "WorkOrder", "claim": "d1 is a work order", "sources": ["d1"], "origin": "Acquired", "confidence": 0.9},
-            {"id": "e2", "type": "Technician", "claim": "kim is a technician", "sources": ["d1"], "origin": "Innate", "confidence": 0.8},
-            {"id": "e3", "type": "Asset", "claim": "P-77 is an asset", "sources": ["d1"], "origin": "Acquired", "confidence": 0.9}
+            {"id": "e1", "name": "e1-name", "type": "WorkOrder", "claim": "d1 is a work order", "sources": ["d1"], "confidence": 0.9},
+            {"id": "e2", "name": "e2-name", "type": "Technician", "claim": "kim is a technician", "sources": ["d1"], "confidence": 0.8},
+            {"id": "e3", "name": "e3-name", "type": "Asset", "claim": "P-77 is an asset", "sources": ["d1"], "confidence": 0.9}
           ],
           "relations": [
-            {"name": "asset", "from": "e1", "to": "e3", "claim": "d1 references P-77", "sources": ["d1"], "origin": "Innate", "confidence": 0.7},
-            {"name": "assigned_to", "from": "e1", "to": "e2", "claim": "kim is assigned", "sources": ["d1"], "origin": "Acquired", "confidence": 0.6}
+            {"name": "asset", "from": "e1", "to": "e3", "claim": "d1 references P-77", "sources": ["d1"], "confidence": 0.7},
+            {"name": "assigned_to", "from": "e1", "to": "e2", "claim": "kim is assigned", "sources": ["d1"], "confidence": 0.6}
           ]
         }
         """;
@@ -48,7 +48,7 @@ public class DeclaredStructureMergeTests
         Assert.Equal(ProposalBasis.Declared, proposal.Entities.Single(e => e.EntityId == "e1").Basis);
         var asset = proposal.Relations.Single(r => r.RelationName == "asset");
         Assert.Equal(ProposalBasis.Declared, asset.Basis);
-        Assert.Equal(VocabularyOrigin.Innate, asset.Origin);
+        Assert.Equal(VocabularyOrigin.Acquired, asset.Origin); // origin is the innate vocabulary's call, not the declaration's
         Assert.Equal(0.7, asset.Confidence);
     }
 
@@ -70,11 +70,11 @@ public class DeclaredStructureMergeTests
         const string answer = """
             {
               "entities": [
-                {"id": "e1", "type": "work_order", "claim": "d1", "sources": ["d1"], "origin": "Acquired", "confidence": 0.9},
-                {"id": "e2", "type": "Technician", "claim": "kim", "sources": ["d1"], "origin": "Innate", "confidence": 0.8}
+                {"id": "e1", "name": "e1-name", "type": "work_order", "claim": "d1", "sources": ["d1"], "confidence": 0.9},
+                {"id": "e2", "name": "e2-name", "type": "Technician", "claim": "kim", "sources": ["d1"], "confidence": 0.8}
               ],
               "relations": [
-                {"name": "asset", "from": "e1", "to": "e2", "claim": "misused", "sources": ["d1"], "origin": "Acquired", "confidence": 0.7}
+                {"name": "asset", "from": "e1", "to": "e2", "claim": "misused", "sources": ["d1"], "confidence": 0.7}
               ]
             }
             """;
@@ -83,6 +83,10 @@ public class DeclaredStructureMergeTests
 
         Assert.Empty(proposal.Relations);
         Assert.Equal(2, proposal.Entities.Count);
+        var rejection = Assert.Single(proposal.Rejections);
+        Assert.Equal(ProposalElement.Relation, rejection.Element);
+        Assert.Equal("asset", rejection.Id);
+        Assert.Equal(RejectionReason.ContradictsDeclaration, rejection.Reason);
     }
 
     [Fact]
@@ -91,11 +95,11 @@ public class DeclaredStructureMergeTests
         const string answer = """
             {
               "entities": [
-                {"id": "e2", "type": "Technician", "claim": "kim", "sources": ["d1"], "origin": "Innate", "confidence": 0.8},
-                {"id": "e3", "type": "Asset", "claim": "P-77", "sources": ["d1"], "origin": "Acquired", "confidence": 0.9}
+                {"id": "e2", "name": "e2-name", "type": "Technician", "claim": "kim", "sources": ["d1"], "confidence": 0.8},
+                {"id": "e3", "name": "e3-name", "type": "Asset", "claim": "P-77", "sources": ["d1"], "confidence": 0.9}
               ],
               "relations": [
-                {"name": "asset", "from": "e2", "to": "e3", "claim": "technician has asset", "sources": ["d1"], "origin": "Acquired", "confidence": 0.7}
+                {"name": "asset", "from": "e2", "to": "e3", "claim": "technician has asset", "sources": ["d1"], "confidence": 0.7}
               ]
             }
             """;
@@ -103,28 +107,33 @@ public class DeclaredStructureMergeTests
         var proposal = await Propose(answer, WorkOrder);
 
         Assert.Empty(proposal.Relations);
+        Assert.Equal(RejectionReason.ContradictsDeclaration, Assert.Single(proposal.Rejections).Reason);
     }
 
     [Fact]
-    public async Task An_end_that_names_no_proposed_entity_is_refused_before_the_merge_has_to_judge_it()
+    public async Task An_end_that_names_no_proposed_entity_is_left_out_before_the_merge_has_to_judge_it()
     {
         // The merge used to let such an end through as "cannot be checked". It never reaches the
-        // merge now: a relation to an entity the response did not propose is refused at parse time,
-        // the same way a citation of a record the call never supplied is.
+        // merge now: a relation to an entity the response did not propose is left out at parse time
+        // and reported as dangling, not as a contradiction the merge found.
         const string answer = """
             {
               "entities": [
-                {"id": "e1", "type": "work_order", "claim": "d1", "sources": ["d1"], "origin": "Acquired", "confidence": 0.9}
+                {"id": "e1", "name": "e1-name", "type": "work_order", "claim": "d1", "sources": ["d1"], "confidence": 0.9}
               ],
               "relations": [
-                {"name": "asset", "from": "e1", "to": "missing", "claim": "d1 references something", "sources": ["d1"], "origin": "Acquired", "confidence": 0.5}
+                {"name": "asset", "from": "e1", "to": "missing", "claim": "d1 references something", "sources": ["d1"], "confidence": 0.5}
               ]
             }
             """;
 
-        var error = await Assert.ThrowsAsync<FormatException>(() => Propose(answer, WorkOrder));
+        var proposal = await Propose(answer, WorkOrder);
 
-        Assert.Contains("missing", error.Message);
+        Assert.Empty(proposal.Relations);
+        Assert.Single(proposal.Entities);
+        var rejection = Assert.Single(proposal.Rejections);
+        Assert.Equal(RejectionReason.DanglingRelationEnd, rejection.Reason);
+        Assert.Contains("missing", rejection.Detail);
     }
 
     [Fact]
@@ -137,11 +146,11 @@ public class DeclaredStructureMergeTests
         const string answer = """
             {
               "entities": [
-                {"id": "e1", "type": "WorkOrder", "claim": "d1", "sources": ["d1"], "origin": "Acquired", "confidence": 0.9},
-                {"id": "e2", "type": "technician", "claim": "kim", "sources": ["d1"], "origin": "Innate", "confidence": 0.8}
+                {"id": "e1", "name": "e1-name", "type": "WorkOrder", "claim": "d1", "sources": ["d1"], "confidence": 0.9},
+                {"id": "e2", "name": "e2-name", "type": "technician", "claim": "kim", "sources": ["d1"], "confidence": 0.8}
               ],
               "relations": [
-                {"name": "assigned_to", "from": "e1", "to": "e2", "claim": "kim is assigned", "sources": ["d1"], "origin": "Acquired", "confidence": 0.6}
+                {"name": "assigned_to", "from": "e1", "to": "e2", "claim": "kim is assigned", "sources": ["d1"], "confidence": 0.6}
               ]
             }
             """;
@@ -160,6 +169,7 @@ public class DeclaredStructureMergeTests
         Assert.All(proposal.Entities, e => Assert.Equal(ProposalBasis.Inferred, e.Basis));
         Assert.All(proposal.Relations, r => Assert.Equal(ProposalBasis.Inferred, r.Basis));
         Assert.Equal(2, proposal.Relations.Count);
+        Assert.Empty(proposal.Rejections);
     }
 
     private static Task<OntologyProposal> Propose(string modelAnswer, DeclaredStructure? declared)

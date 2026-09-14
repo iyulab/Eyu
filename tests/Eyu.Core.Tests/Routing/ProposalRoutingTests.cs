@@ -22,7 +22,7 @@ public class ProposalRoutingTests
         GroundedClaim.Create("rec-1 and rec-2 denote the same person", sources: [new SourceRef("rec-1"), new SourceRef("rec-2")]);
 
     private static EntityProposal Entity(double confidence, VocabularyOrigin origin = VocabularyOrigin.Innate, ProposalBasis basis = ProposalBasis.Inferred) =>
-        EntityProposal.Create("e1", "Person", Claim(), origin, confidence, basis);
+        EntityProposal.Create("e1", "Kim", "Person", Claim(), origin, confidence, basis);
 
     private static RelationProposal Relation(double confidence, VocabularyOrigin origin = VocabularyOrigin.Innate) =>
         RelationProposal.Create("employs", "e1", "e2", Claim(), origin, confidence);
@@ -98,7 +98,7 @@ public class ProposalRoutingTests
     {
         string[] ids = ["rec,1", "rec\"2", "rec 3"];
         var claim = GroundedClaim.Create("these denote the same person", sources: [.. ids.Select(id => new SourceRef(id))]);
-        var traced = EntityProposal.Create("e1", "Person", claim, VocabularyOrigin.Innate, 0.9, ProposalBasis.Inferred).Trace(Policy);
+        var traced = EntityProposal.Create("e1", "Kim", "Person", claim, VocabularyOrigin.Innate, 0.9, ProposalBasis.Inferred).Trace(Policy);
 
         var roundTripped = JsonSerializer.Deserialize<string[]>(traced.Provenance.Annotations![ProvenanceAnnotations.Sources]);
 
@@ -117,7 +117,7 @@ public class ProposalRoutingTests
     {
         var entities = new[] { Entity(0.9), Entity(0.6), Entity(0.2) };
         var relations = new[] { Relation(0.9), Relation(0.3) };
-        var proposal = new OntologyProposal(entities, relations);
+        var proposal = new OntologyProposal(entities, relations, []);
 
         var traced = proposal.Trace(Policy);
 
@@ -133,6 +133,6 @@ public class ProposalRoutingTests
     public void A_null_policy_is_refused_before_anything_is_routed()
     {
         Assert.Throws<ArgumentNullException>(() => Entity(0.9).Route(null!));
-        Assert.Throws<ArgumentNullException>(() => new OntologyProposal([], []).Trace(null!));
+        Assert.Throws<ArgumentNullException>(() => new OntologyProposal([], [], []).Trace(null!));
     }
 }

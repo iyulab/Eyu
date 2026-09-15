@@ -23,19 +23,24 @@ internal sealed record QualityCase(
 /// (<see cref="Eyu.Core.Linkage.LinkageOptions.RecordsDenoteEntities"/> <c>false</c>). A document
 /// has no form behind it, so there is no declaration ladder, and no record pair is compared, so
 /// the record-linkage pre-filter has nothing to report — which is why these cases are kept apart
-/// from <see cref="QualityCase"/> rather than mixed into the same tables.
+/// from <see cref="QualityCase"/> rather than mixed into the same tables. What a caller holding
+/// such documents can declare is the vocabulary it expects them to use —
+/// <paramref name="Vocabulary"/>, the entity types and typed relations, by name alone — and the
+/// measurement runs each document both without it and with it.
 /// </summary>
 internal sealed record DocumentCase(
     string Name,
     RawRecord[] Chunks,
-    CompetencyQuestion[] Questions);
+    CompetencyQuestion[] Questions,
+    DeclaredStructure[] Vocabulary);
 
 /// <summary>
 /// The fixed catalog every live measurement shares, so that two instruments run over the same
 /// records and questions and their numbers are comparable. The baseline quality measurement
 /// passes no declaration at all; the completeness ablation walks each case's ladder.
-/// <see cref="DocumentCases"/> is measured by the baseline only, in the document regime; adding
-/// it left <see cref="Cases"/> as it was, so runs before and after still compare on those.
+/// <see cref="DocumentCases"/> is measured by the baseline only, in the document regime, once with
+/// no declaration and once with the case's declared vocabulary; adding it left <see cref="Cases"/>
+/// as it was, so runs before and after still compare on those.
 /// </summary>
 internal static class QualityCatalog
 {
@@ -147,7 +152,8 @@ internal static class QualityCatalog
                 ["customer|client|buyer", "product|solution|software|platform|service|system", "uses|usage|using|adopt|deploy|operat"]),
             new("Which people belong to which organization?",
                 ["person|people|individual|employee|executive|staff|member", "organization|organisation|company|firm|enterprise|business|corporation"]),
-        ]),
+        ],
+        CompanyProfileVocabulary),
         new("company-profile-document-chunks",
         [
             Chunk("b-c1", "1. 회사 개요\n가람솔루션은 2012년 대전에서 설립되었다. 본사는 대전 유성구에 있으며 연구소는 판교에 있다. 대표이사는 박도윤이다."),
@@ -164,7 +170,24 @@ internal static class QualityCatalog
                 ["office|headquarter|laborator|research|facility|branch|campus", "location|place|city|region|address|located"]),
             new("What happened in which year of the company's history?",
                 ["event|milestone|history|founding|founded|contract|agreement|alliance|opening", "year|date|time|when|period"]),
+        ],
+        CompanyProfileVocabulary),
+    ];
+
+    // What a caller holding company profiles would declare: the kinds of thing it expects them to
+    // name and the roles it needs told apart -- a partner is not a customer, and an employee is
+    // neither -- by name alone, since a document has no form to declare fields from. Deliberately
+    // silent on places and dates, which stay the model's to find.
+    private static DeclaredStructure[] CompanyProfileVocabulary =>
+    [
+        new(SubjectRef.Create("Organization"), [],
+        [
+            new DeclaredRelation("PartnerOf", SubjectRef.Create("Organization")),
+            new DeclaredRelation("CustomerOf", SubjectRef.Create("Organization")),
+            new DeclaredRelation("Uses", SubjectRef.Create("Product")),
         ]),
+        new(SubjectRef.Create("Person"), [], [new DeclaredRelation("EmployedBy", SubjectRef.Create("Organization"))]),
+        new(SubjectRef.Create("Product"), [], []),
     ];
 
     private static CompetencyQuestion PartnersAndCustomers => new(

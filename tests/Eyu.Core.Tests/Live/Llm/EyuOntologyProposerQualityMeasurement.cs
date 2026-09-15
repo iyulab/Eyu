@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Eyu.Core.Declared;
 using Eyu.Core.Grounding;
 using Eyu.Core.Judgment;
 using Eyu.Core.Linkage;
@@ -63,7 +64,11 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// name many entities and denote none) run with the same options but
 /// <see cref="LinkageOptions.RecordsDenoteEntities"/> off, which is how a caller holding text
 /// would call the proposer. Their pre-filter row says the chunks were not compared, since no pair
-/// is, and the report's case table names the regime each row was measured in.
+/// is, and the report's case table names the regime each row was measured in. Each document case
+/// is measured twice — once with nothing declared and once with its declared vocabulary
+/// (<see cref="DocumentCase.Vocabulary"/>) — and a table of entity types reports, for both rows,
+/// how many entities were stamped declared, how many entity names came back under more than one
+/// type across attempts, and how many types were written in Hangul.
 /// </para>
 /// </summary>
 public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
@@ -95,6 +100,22 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         /// <summary>The regime the case was measured in: records that each denote an entity, or chunks of a document.</summary>
         public bool RecordsDenoteEntities = true;
+
+        /// <summary>Whether the case's vocabulary was declared for this row — a document case is measured both ways.</summary>
+        public bool VocabularyDeclared;
+
+        /// <summary>Entities across parsed attempts, and how many of them the declared-structure merge stamped <see cref="ProposalBasis.Declared"/>.</summary>
+        public int EntitiesProposed;
+        public int EntitiesDeclared;
+
+        /// <summary>Entity name (as written) -> every entity type it was proposed under, compared leniently — one name under several types is the drift a declared vocabulary is meant to stop.</summary>
+        public readonly Dictionary<string, HashSet<string>> TypesByEntityName = new(StringComparer.Ordinal);
+
+        /// <summary>Entity type (as the model wrote it) -> how many entities carried it.</summary>
+        public readonly SortedDictionary<string, int> EntityTypeCounts = new(StringComparer.Ordinal);
+
+        /// <summary>Entities whose type name is written in Hangul — a type name the English innate vocabulary and English declarations can never match.</summary>
+        public int HangulTypedEntities;
     }
 
     private static LinkageOptions BuildLinkageOptionsFromEnvironment()
@@ -138,7 +159,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             for (var attempt = 0; attempt < runs; attempt++)
             {
                 caseStats.Attempts++;
-                await RunAttemptAsync(proposer, qualityCase.Records, qualityCase.Questions, caseStats);
+                await RunAttemptAsync(proposer, [], qualityCase.Records, qualityCase.Questions, caseStats);
             }
         }
 
@@ -146,15 +167,21 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var documentProposer = new SinglePassOntologyProposer(modelClient, documentOptions);
         foreach (var documentCase in QualityCatalog.DocumentCases)
         {
-            var caseStats = stats[documentCase.Name] = new CaseStats
+            // The undeclared row keeps the case's own name, so it still compares with runs made
+            // before the declared row existed.
+            foreach (var declared in new[] { false, true })
             {
-                Linkage = LinkagePipeline.Analyze(documentCase.Chunks, documentOptions),
-                RecordsDenoteEntities = false,
-            };
-            for (var attempt = 0; attempt < runs; attempt++)
-            {
-                caseStats.Attempts++;
-                await RunAttemptAsync(documentProposer, documentCase.Chunks, documentCase.Questions, caseStats);
+                var caseStats = stats[declared ? $"{documentCase.Name} + declared vocabulary" : documentCase.Name] = new CaseStats
+                {
+                    Linkage = LinkagePipeline.Analyze(documentCase.Chunks, documentOptions),
+                    RecordsDenoteEntities = false,
+                    VocabularyDeclared = declared,
+                };
+                for (var attempt = 0; attempt < runs; attempt++)
+                {
+                    caseStats.Attempts++;
+                    await RunAttemptAsync(documentProposer, declared ? documentCase.Vocabulary : [], documentCase.Chunks, documentCase.Questions, caseStats);
+                }
             }
         }
 
@@ -181,14 +208,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             "at least one proposal must survive parsing for the measurement to mean anything");
     }
 
-    private static async Task RunAttemptAsync(SinglePassOntologyProposer proposer, RawRecord[] records, CompetencyQuestion[] questions, CaseStats stats)
+    private static async Task RunAttemptAsync(SinglePassOntologyProposer proposer, IReadOnlyList<DeclaredStructure> declared, RawRecord[] records, CompetencyQuestion[] questions, CaseStats stats)
     {
         var recordIds = records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
 
         OntologyProposal proposal;
         try
         {
-            proposal = await proposer.ProposeAsync(declaredStructures: [], records);
+            proposal = await proposer.ProposeAsync(declared, records);
         }
         catch (FormatException ex)
         {
@@ -209,6 +236,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         stats.EntityCounts.Add(proposal.Entities.Count);
         stats.RelationCounts.Add(proposal.Relations.Count);
         stats.EntityTypeShapes.Add(string.Join(",", proposal.Entities.Select(e => e.EntityType).Distinct().OrderBy(t => t, StringComparer.Ordinal)));
+        ScoreTypeVocabulary(proposal, stats);
 
         foreach (var entity in proposal.Entities)
         {
@@ -273,6 +301,43 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             }
         }
     }
+
+    private static void ScoreTypeVocabulary(OntologyProposal proposal, CaseStats stats)
+    {
+        foreach (var entity in proposal.Entities)
+        {
+            stats.EntitiesProposed++;
+            if (entity.Basis == ProposalBasis.Declared)
+            {
+                stats.EntitiesDeclared++;
+            }
+
+            if (entity.EntityType.Any(IsHangul))
+            {
+                stats.HangulTypedEntities++;
+            }
+
+            stats.EntityTypeCounts[entity.EntityType] = stats.EntityTypeCounts.GetValueOrDefault(entity.EntityType) + 1;
+            var name = entity.Name.Trim();
+            if (!stats.TypesByEntityName.TryGetValue(name, out var types))
+            {
+                stats.TypesByEntityName[name] = types = new HashSet<string>(StringComparer.Ordinal);
+            }
+
+            types.Add(LenientTypeName(entity.EntityType));
+        }
+    }
+
+    /// <summary>
+    /// The same leniency the declared-structure merge applies to type names — case and separators
+    /// ignored — so <c>WorkOrder</c> and <c>work_order</c> do not count as drift here either.
+    /// </summary>
+    private static string LenientTypeName(string type)
+        => new(type.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+
+    private static bool IsHangul(char c) => c is >= '가' and <= '힣' or >= 'ᄀ' and <= 'ᇿ' or >= '㄰' and <= '㆏';
+
+    private static int NamesUnderSeveralTypes(CaseStats stats) => stats.TypesByEntityName.Count(kv => kv.Value.Count > 1);
 
     /// <summary>How many stand-in entities one concept is worth printing before the note stops being read.</summary>
     private const int StandInsPerConcept = 2;
@@ -343,6 +408,32 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             var errorRates = linkage.ErrorRates;
             report.AppendLine(CultureInfo.InvariantCulture,
                 $"| {name} | {linkage.PairLinkages.Count} | {match} | {grayZone} | {nonMatch} | {linkage.Parameters.Status}{(linkage.Parameters.LabelsSwapped ? " (relabeled)" : "")} | {linkage.Parameters.MatchPrior:F3} | {errorRates?.FalseMatchRate.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | {errorRates?.FalseNonMatchRate.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | {(errorRates is null ? "n/a" : errorRates.IsReliable ? "none" : errorRates.Caveats.ToString())} |");
+        }
+
+        var documentRows = stats.Where(kv => !kv.Value.RecordsDenoteEntities).ToList();
+        if (documentRows.Count > 0)
+        {
+            report.AppendLine().AppendLine("## Entity type vocabulary (document cases, across parsed attempts)")
+                .AppendLine()
+                .AppendLine("One entity name proposed under more than one type (compared ignoring case and separators) is the drift a declared vocabulary is meant to stop; a Hangul type name can match neither the innate vocabulary nor an English declaration.")
+                .AppendLine()
+                .AppendLine("| case | vocabulary declared | entities | stamped Declared | names under several types | distinct types | Hangul-typed entities |")
+                .AppendLine("|---|---|---|---|---|---|---|");
+            foreach (var (name, s) in documentRows)
+            {
+                report.AppendLine(CultureInfo.InvariantCulture,
+                    $"| {name} | {(s.VocabularyDeclared ? "yes" : "no")} | {s.EntitiesProposed} | {s.EntitiesDeclared} | {NamesUnderSeveralTypes(s)}/{s.TypesByEntityName.Count} | {s.EntityTypeCounts.Count} | {s.HangulTypedEntities} |");
+            }
+
+            report.AppendLine();
+            foreach (var (name, s) in documentRows)
+            {
+                report.AppendLine(CultureInfo.InvariantCulture, $"- {name} types: {string.Join(", ", s.EntityTypeCounts.Select(kv => $"{kv.Key} {kv.Value}"))}");
+                foreach (var (entityName, types) in s.TypesByEntityName.Where(kv => kv.Value.Count > 1).OrderBy(kv => kv.Key, StringComparer.Ordinal))
+                {
+                    report.AppendLine(CultureInfo.InvariantCulture, $"  - \"{entityName}\" under {string.Join(" / ", types.Order(StringComparer.Ordinal))}");
+                }
+            }
         }
 
         report.AppendLine().AppendLine("## Competency questions (vocabulary reach — heuristic, not a semantic check)")
@@ -416,7 +507,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         int? RelationCountMax,
         int DistinctEntityTypeShapes,
         IReadOnlyList<QuestionLogEntry> Questions,
-        LinkageSnapshot? Linkage);
+        LinkageSnapshot? Linkage,
+        bool VocabularyDeclared,
+        int EntitiesProposed,
+        int EntitiesDeclared,
+        int NamesUnderSeveralTypes,
+        int DistinctEntityNames,
+        IReadOnlyDictionary<string, int> EntityTypeCounts,
+        int HangulTypedEntities);
 
     private sealed record StructuredLogEntry(
         string Timestamp,
@@ -458,7 +556,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 s.RelationCounts.Count == 0 ? null : s.RelationCounts.Max(),
                 s.EntityTypeShapes.Count,
                 [.. s.QuestionsReached.Select(q => new QuestionLogEntry(q.Key, q.Value, s.ScoredAttempts))],
-                linkageSnapshot);
+                linkageSnapshot,
+                s.VocabularyDeclared,
+                s.EntitiesProposed,
+                s.EntitiesDeclared,
+                NamesUnderSeveralTypes(s),
+                s.TypesByEntityName.Count,
+                s.EntityTypeCounts,
+                s.HangulTypedEntities);
         }).ToList();
 
         var entry = new StructuredLogEntry(

@@ -99,11 +99,14 @@ system" as the target the architecture is built toward, not as a track record.
   name the model used. Measured on two Korean company-profile documents, three
   attempts each, declaring `Organization`, `Person` and `Product` with four
   typed relations took the entity names proposed under more than one type
-  (`company` in one attempt, `organization` in the next) from 7 of 9 and 7 of
-  20 to 0 of 8 and 1 of 20, while kinds nothing declared — locations,
-  services — kept coming. A first wording of the declaration sentence held the
-  model to exactly the declared types instead, which is why the prompt now says
-  the declared types are not the only ones: a measurement, not a promise.
+  (`company` in one attempt, `organization` in the next) from 7 of 9 to 0 of 9
+  in a one-chunk document, and to 0 of 19 in a seven-chunk one that drifted
+  little without it (1 of 18), while kinds nothing declared — locations,
+  services, dates — kept coming. Two earlier wordings of the declaration
+  sentence failed that measurement in opposite regimes: one held document
+  chunks to exactly the declared types, the other, allowing the model its own
+  types only where nothing declared describes an entity, left nothing to
+  propose beyond a form declaration. A measurement, not a promise.
   Enforced after the model answers, not only asked of it: every proposal
   carries whether its type was declared (`ProposalBasis`), and a relation
   proposed under a declared name whose ends contradict the declaration is

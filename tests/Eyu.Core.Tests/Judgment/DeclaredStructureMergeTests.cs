@@ -164,7 +164,7 @@ public class DeclaredStructureMergeTests
     [Fact]
     public async Task Without_declared_structure_nothing_is_stamped_and_nothing_is_dropped()
     {
-        var proposal = await Propose(ModelAnswer, declared: null);
+        var proposal = await Propose(ModelAnswer);
 
         Assert.All(proposal.Entities, e => Assert.Equal(ProposalBasis.Inferred, e.Basis));
         Assert.All(proposal.Relations, r => Assert.Equal(ProposalBasis.Inferred, r.Basis));
@@ -172,12 +172,119 @@ public class DeclaredStructureMergeTests
         Assert.Empty(proposal.Rejections);
     }
 
-    private static Task<OntologyProposal> Propose(string modelAnswer, DeclaredStructure? declared)
+    // A document names many kinds of thing at once, so a caller that knows its vocabulary declares
+    // each type as its own subject -- by name alone when it knows nothing more.
+    private static readonly DeclaredStructure Organization = new(
+        SubjectRef.Create("Organization"),
+        Fields: [],
+        Relations: [new DeclaredRelation("PartnerOf", SubjectRef.Create("Organization"))]);
+
+    private static readonly DeclaredStructure Person = new(
+        SubjectRef.Create("Person"),
+        Fields: [],
+        Relations: [new DeclaredRelation("EmployedBy", SubjectRef.Create("Organization"))]);
+
+    private const string DocumentAnswer = """
+        {
+          "entities": [
+            {"id": "e1", "name": "Hanbit Tech", "type": "Organization", "claim": "d1 names Hanbit Tech", "sources": ["d1"], "confidence": 0.9},
+            {"id": "e2", "name": "Nuri Systems", "type": "Company", "claim": "d1 names Nuri Systems", "sources": ["d1"], "confidence": 0.8},
+            {"id": "e3", "name": "Kim", "type": "person", "claim": "d1 names Kim", "sources": ["d1"], "confidence": 0.9},
+            {"id": "e4", "name": "Aurora", "type": "Product", "claim": "d1 names Aurora", "sources": ["d1"], "confidence": 0.7}
+          ],
+          "relations": [
+            {"name": "employed_by", "from": "e3", "to": "e1", "claim": "Kim works at Hanbit Tech", "sources": ["d1"], "confidence": 0.8},
+            {"name": "Sells", "from": "e1", "to": "e4", "claim": "Hanbit Tech sells Aurora", "sources": ["d1"], "confidence": 0.7}
+          ]
+        }
+        """;
+
+    [Fact]
+    public async Task Every_declared_type_is_stamped_Declared_and_undeclared_types_are_neither_filtered_nor_renamed()
+    {
+        var proposal = await Propose(DocumentAnswer, Organization, Person);
+
+        Assert.Equal(ProposalBasis.Declared, proposal.Entities.Single(e => e.EntityId == "e1").Basis);
+        Assert.Equal(ProposalBasis.Declared, proposal.Entities.Single(e => e.EntityId == "e3").Basis);
+
+        // A declaration is a floor, not a ceiling: what it does not name comes back as inferred,
+        // and "Company" is not folded into the declared "Organization" (no term normalization).
+        var company = proposal.Entities.Single(e => e.EntityId == "e2");
+        Assert.Equal(ProposalBasis.Inferred, company.Basis);
+        Assert.Equal("Company", company.EntityType);
+        Assert.Equal(ProposalBasis.Inferred, proposal.Entities.Single(e => e.EntityId == "e4").Basis);
+        Assert.Equal(ProposalBasis.Inferred, proposal.Relations.Single(r => r.RelationName == "Sells").Basis);
+        Assert.Equal(4, proposal.Entities.Count);
+        Assert.Empty(proposal.Rejections);
+    }
+
+    [Fact]
+    public async Task A_relation_declared_on_another_subject_is_checked_against_that_subjects_ends()
+    {
+        var proposal = await Propose(DocumentAnswer, Organization, Person);
+
+        Assert.Equal(ProposalBasis.Declared, proposal.Relations.Single(r => r.RelationName == "employed_by").Basis);
+    }
+
+    [Fact]
+    public async Task A_relation_name_several_subjects_declare_fits_when_it_matches_any_one_of_them()
+    {
+        var component = new DeclaredStructure(SubjectRef.Create("Component"), [], [new DeclaredRelation("PartOf", SubjectRef.Create("Assembly"))]);
+        var department = new DeclaredStructure(SubjectRef.Create("Department"), [], [new DeclaredRelation("PartOf", SubjectRef.Create("Organization"))]);
+        const string answer = """
+            {
+              "entities": [
+                {"id": "e1", "name": "Sales", "type": "Department", "claim": "d1", "sources": ["d1"], "confidence": 0.9},
+                {"id": "e2", "name": "Hanbit Tech", "type": "Organization", "claim": "d1", "sources": ["d1"], "confidence": 0.9},
+                {"id": "e3", "name": "Pump", "type": "Component", "claim": "d1", "sources": ["d1"], "confidence": 0.9}
+              ],
+              "relations": [
+                {"name": "PartOf", "from": "e1", "to": "e2", "claim": "Sales is part of Hanbit Tech", "sources": ["d1"], "confidence": 0.8},
+                {"name": "PartOf", "from": "e3", "to": "e2", "claim": "the pump is part of Hanbit Tech", "sources": ["d1"], "confidence": 0.6}
+              ]
+            }
+            """;
+
+        var proposal = await Propose(answer, component, department);
+
+        var kept = Assert.Single(proposal.Relations);
+        Assert.Equal("e1", kept.FromEntityId);
+        Assert.Equal(ProposalBasis.Declared, kept.Basis);
+        var rejection = Assert.Single(proposal.Rejections);
+        Assert.Equal(RejectionReason.ContradictsDeclaration, rejection.Reason);
+        Assert.Contains("Component -> Assembly, Department -> Organization", rejection.Detail);
+    }
+
+    [Fact]
+    public async Task The_same_subject_declared_twice_is_refused_before_the_model_is_called()
+    {
+        var model = new CountingModelClient();
+        var again = new DeclaredStructure(SubjectRef.Create("work-order"), [], []);
+
+        var error = await Assert.ThrowsAsync<ArgumentException>(
+            () => new SinglePassOntologyProposer(model).ProposeAsync([WorkOrder, again], Records, TestContext.Current.CancellationToken));
+
+        Assert.Contains("\"work_order\", \"work-order\"", error.Message);
+        Assert.Equal(0, model.Calls);
+    }
+
+    private static Task<OntologyProposal> Propose(string modelAnswer, params DeclaredStructure[] declared)
         => new SinglePassOntologyProposer(new StubModelClient(modelAnswer)).ProposeAsync(declared, Records);
 
     private sealed class StubModelClient(string responseText) : IModelClient
     {
         public Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default)
             => Task.FromResult(new ModelResponse(responseText));
+    }
+
+    private sealed class CountingModelClient : IModelClient
+    {
+        public int Calls { get; private set; }
+
+        public Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(new ModelResponse("""{"entities":[],"relations":[]}"""));
+        }
     }
 }

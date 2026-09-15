@@ -104,7 +104,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         }
         """);
 
-    private const string DeclarationClause = "Declared structure is authoritative: a declared field or relation is fact, not a hypothesis. Propose a relation a declared relation describes under its declared name, and never contradict declared structure. A declaration is a floor, not a ceiling: still propose every entity and relation the records show beyond what is declared.";
+    private const string DeclarationClause = "Declared structure is authoritative: a declared type, field or relation is fact, not a hypothesis. Propose an entity a declared type describes under that declared type, and a relation a declared relation describes under its declared name, and never contradict declared structure. A declaration is a floor, not a ceiling: still propose every entity and relation the records show beyond what is declared.";
 
     /// <summary>
     /// First 8 hex characters of the SHA-256 of the request's fixed part (preamble + the declaration
@@ -123,30 +123,38 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         return Convert.ToHexString(hash).ToLowerInvariant()[..8];
     }
 
-    public async Task<OntologyProposal> ProposeAsync(DeclaredStructure? declaredStructure, IReadOnlyList<RawRecord> records, CancellationToken cancellationToken = default)
+    public async Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, CancellationToken cancellationToken = default)
     {
+        DeclaredStructureMerge.EnsureDistinctSubjects(declaredStructures);
         var linkageAnalysis = LinkagePipeline.Analyze(records, options);
-        var prompt = BuildPrompt(declaredStructure, records, linkageAnalysis);
+        var prompt = BuildPrompt(declaredStructures, records, linkageAnalysis);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt, ResponseSchema), cancellationToken).ConfigureAwait(false);
         var parsed = ParseResponse(response.Text, records, linkageAnalysis);
-        return DeclaredStructureMerge.Apply(declaredStructure, parsed.Entities, parsed.Relations, parsed.Rejections);
+        return DeclaredStructureMerge.Apply(declaredStructures, parsed.Entities, parsed.Relations, parsed.Rejections);
     }
 
-    private static string BuildPrompt(DeclaredStructure? declaredStructure, IReadOnlyList<RawRecord> records, LinkageAnalysis linkageAnalysis)
+    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, LinkageAnalysis linkageAnalysis)
     {
         var text = new StringBuilder();
         text.AppendLine(PromptInstruction);
         text.AppendLine(PromptSchema);
         text.AppendLine(PromptReferenceRule);
 
-        if (declaredStructure is not null)
+        if (declaredStructures.Count > 0)
         {
             text.AppendLine();
             text.AppendLine(DeclarationClause);
-            text.AppendLine(CultureInfo.InvariantCulture, $"Declared fields for {declaredStructure.Subject}: {string.Join(", ", declaredStructure.Fields.Select(DescribeField))}");
-            foreach (var relation in declaredStructure.Relations)
+            foreach (var declared in declaredStructures)
             {
-                text.AppendLine(CultureInfo.InvariantCulture, $"Declared relation: {DescribeRelation(relation)}");
+                text.AppendLine(DescribeType(declared));
+            }
+
+            foreach (var declared in declaredStructures)
+            {
+                foreach (var relation in declared.Relations)
+                {
+                    text.AppendLine(CultureInfo.InvariantCulture, $"Declared relation: {DescribeRelation(declared, relation)}");
+                }
             }
         }
 
@@ -181,6 +189,16 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
 
         return text.ToString();
     }
+
+    /// <summary>
+    /// "Declared type: work_order (fields: wo_no (text, required), qty (integer))", or just
+    /// "Declared type: Organization" when the caller declared the name alone — a type known only by
+    /// name is still declared vocabulary the model is to use.
+    /// </summary>
+    private static string DescribeType(DeclaredStructure declared)
+        => declared.Fields.Count == 0
+            ? $"Declared type: {declared.Subject}"
+            : $"Declared type: {declared.Subject} (fields: {string.Join(", ", declared.Fields.Select(DescribeField))})";
 
     /// <summary>
     /// "qty (integer, required; monetary amount)" — every declared fact the caller supplied, so the
@@ -220,8 +238,12 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         _ => kind.ToString().ToLowerInvariant(),
     };
 
-    /// <summary>"asset -> asset (reference via asset_tag)" — which field carries the relation, and on which side.</summary>
-    private static string DescribeRelation(DeclaredRelation relation)
+    /// <summary>
+    /// "asset: work_order -> asset (reference via asset_tag)" — both ends, since with several
+    /// declared subjects the relation's name alone no longer says which type it leaves; and which
+    /// field carries it, and on which side.
+    /// </summary>
+    private static string DescribeRelation(DeclaredStructure declared, DeclaredRelation relation)
     {
         var facts = new List<string>();
         if (relation.Kind is { } kind)
@@ -234,7 +256,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             facts.Add($"via {relation.ViaField}");
         }
 
-        var head = $"{relation.Name} -> {relation.Target}";
+        var head = $"{relation.Name}: {declared.Subject} -> {relation.Target}";
         return facts.Count == 0 ? head : $"{head} ({string.Join(" ", facts)})";
     }
 

@@ -10,6 +10,30 @@ every published version has a section here.
 
 ## Unreleased
 
+### Changed
+
+Every entry in this section is a breaking change.
+
+- `IOntologyProposer.ProposeAsync` takes `IReadOnlyList<DeclaredStructure>` — one declaration
+  per subject — instead of a single nullable `DeclaredStructure`. Pass `[]` where you passed
+  `null`, and `[structure]` where you passed one. Records that name several kinds of thing (a
+  document chunk names companies, people and products at once) can now have each kind declared,
+  and a type can be declared by name alone (`new DeclaredStructure(subject, [], [])`). Declaring
+  the same subject twice (compared ignoring case and separators) throws `ArgumentException`
+  before the model is called.
+- The declaration clause of the prompt asks the model to propose an entity a declared type
+  describes under that declared type, as it already asked for relations, so
+  `SinglePassOntologyProposer.PromptFingerprint` changes. Each declared relation line now names
+  the subject it leaves (`asset: work_order -> asset`).
+
+### Added
+
+- Every entity whose type is any declared subject is stamped `ProposalBasis.Declared`. A relation
+  under a declared name is kept as declared when its ends match any declaration of that name, and
+  is rejected with `RejectionReason.ContradictsDeclaration` when they match none. Declarations
+  still do not filter or rename: an undeclared type such as `Company` next to a declared
+  `Organization` is returned as inferred, unchanged.
+
 ### Internal
 
 - The CI and release workflows run the Node.js 24 majors of the actions they use (`actions/checkout`

@@ -173,7 +173,7 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
         OntologyProposal proposal;
         try
         {
-            proposal = await proposer.ProposeAsync(level.Structure, qualityCase.Records);
+            proposal = await proposer.ProposeAsync(level.Structure is null ? [] : [level.Structure], qualityCase.Records);
         }
         catch (FormatException ex)
         {

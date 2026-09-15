@@ -27,7 +27,7 @@ public class OntologyProposerContractSmokeTests
             new("rec-1", new Dictionary<string, string?> { ["total"] = "100" }),
         ];
 
-        var proposal = await proposer.ProposeAsync(structure, records, TestContext.Current.CancellationToken);
+        var proposal = await proposer.ProposeAsync([structure], records, TestContext.Current.CancellationToken);
 
         Assert.Single(proposal.Entities);
         Assert.Single(proposal.Relations);
@@ -41,14 +41,14 @@ public class OntologyProposerContractSmokeTests
         IOntologyProposer proposer = new StubOntologyProposer();
         IReadOnlyList<RawRecord> records = [new("rec-1", new Dictionary<string, string?>())];
 
-        var proposal = await proposer.ProposeAsync(declaredStructure: null, records, TestContext.Current.CancellationToken);
+        var proposal = await proposer.ProposeAsync(declaredStructures: [], records, TestContext.Current.CancellationToken);
 
         Assert.NotNull(proposal);
     }
 
     private sealed class StubOntologyProposer : IOntologyProposer
     {
-        public Task<OntologyProposal> ProposeAsync(DeclaredStructure? declaredStructure, IReadOnlyList<RawRecord> records, CancellationToken cancellationToken = default)
+        public Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, CancellationToken cancellationToken = default)
         {
             var claim = GroundedClaim.Create("rec-1 denotes an Invoice", sources: [new SourceRef("rec-1")]);
             var entity = EntityProposal.Create("e1", "INV-1", "Invoice", claim, VocabularyOrigin.Innate, confidence: 0.9);

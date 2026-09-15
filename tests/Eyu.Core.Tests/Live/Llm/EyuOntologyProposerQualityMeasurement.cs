@@ -188,7 +188,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         OntologyProposal proposal;
         try
         {
-            proposal = await proposer.ProposeAsync(declaredStructure: null, records);
+            proposal = await proposer.ProposeAsync(declaredStructures: [], records);
         }
         catch (FormatException ex)
         {

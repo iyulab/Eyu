@@ -512,8 +512,11 @@ public class SinglePassOntologyProposerTests
         // company came back as "Organization" in one document and "Company" in the next.
         Assert.Contains("Where a declared type describes an entity, propose the entity under that type; where a declared relation describes a relation, propose it under that name", model.LastPrompt);
         // And the declared types are not a closed list: asked only to go "beyond what is declared",
-        // the model kept to exactly the declared entity types and dropped every other kind.
-        Assert.Contains("A declaration is a floor, not a ceiling: the declared types and relations are not the only ones, so still propose every entity and relation the records show, under a type or name of your own wherever nothing declared describes it.", model.LastPrompt);
+        // the model kept document chunks to exactly the declared entity types; told to use its own
+        // types only "wherever nothing declared describes it", it proposed nothing beyond a form
+        // declaration. Both measured, so the sentence is pinned.
+        Assert.Contains("A declaration is a floor, not a ceiling: the declared types and relations are not the only ones, so still propose every entity and relation the records show beyond what is declared, under types and names of your own.", model.LastPrompt);
+        Assert.DoesNotContain("wherever nothing declared describes it", model.LastPrompt);
         Assert.DoesNotContain("infer only what nothing declares", model.LastPrompt);
     }
 

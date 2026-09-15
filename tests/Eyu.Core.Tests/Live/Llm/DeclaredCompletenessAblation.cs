@@ -36,7 +36,7 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// it does not gate — the only assertion is the instrument's own sanity floor.
 /// </para>
 /// Reads the same environment as the quality measurement (<c>EYU_LLM_QUALITY_RUNS</c>,
-/// <c>EYU_LLM_QUALITY_REPORT</c>, <c>EYU_LLM_QUALITY_STRUCTURED_LOG_DIR</c>) so the same runner
+/// <c>EYU_LLM_QUALITY_REPORT</c>, <c>EYU_LLM_QUALITY_STRUCTURED_LOG_DIR</c>, <c>EYU_LLM_QUALITY_CASES</c>) so the same runner
 /// script drives both; the structured log file is prefixed <c>ablation-</c> to keep the two
 /// run histories apart.
 /// </summary>
@@ -113,7 +113,8 @@ public class DeclaredCompletenessAblation(ITestOutputHelper output)
         var points = new List<Point>();
         try
         {
-            foreach (var qualityCase in QualityCatalog.Cases)
+            var selected = QualityCatalog.SelectedCaseNames();
+            foreach (var qualityCase in QualityCatalog.Cases.Where(c => selected is null || selected.Contains(c.Name)))
             {
                 var perLevel = stats[qualityCase.Name] = [];
                 foreach (var level in qualityCase.Declaration.Levels(LadderSteps))

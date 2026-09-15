@@ -190,6 +190,32 @@ internal static class QualityCatalog
         new(SubjectRef.Create("Product"), [], []),
     ];
 
+    /// <summary>
+    /// The catalog case names <c>EYU_LLM_QUALITY_CASES</c> selects (comma-separated), or
+    /// <c>null</c> for all of them — read by every live instrument over this catalog, so one prompt
+    /// change can be re-measured on the cases it touches. A name that matches no case fails the run rather than measuring
+    /// nothing under a report that looks complete.
+    /// </summary>
+    public static HashSet<string>? SelectedCaseNames()
+    {
+        var value = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_CASES");
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var names = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
+        var known = Cases.Select(c => c.Name).Concat(DocumentCases.Select(c => c.Name)).ToHashSet(StringComparer.Ordinal);
+        var unknown = names.Where(n => !known.Contains(n)).ToList();
+        if (unknown.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"EYU_LLM_QUALITY_CASES names no catalog case: {string.Join(", ", unknown)}. Known cases: {string.Join(", ", known)}.");
+        }
+
+        return names;
+    }
+
     private static CompetencyQuestion PartnersAndCustomers => new(
         "Which organizations are the company's partners, and which are its customers?",
         ["organization|organisation|company|firm|enterprise|business|corporation", "partner|alliance|collaborat", "customer|client|buyer"]);

@@ -119,31 +119,6 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         public int HangulTypedEntities;
     }
 
-    /// <summary>
-    /// The catalog case names <c>EYU_LLM_QUALITY_CASES</c> selects (comma-separated), or
-    /// <c>null</c> for all of them. A name that matches no case fails the run rather than measuring
-    /// nothing under a report that looks complete.
-    /// </summary>
-    private static HashSet<string>? SelectedCaseNames()
-    {
-        var value = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_CASES");
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        var names = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
-        var known = QualityCatalog.Cases.Select(c => c.Name).Concat(QualityCatalog.DocumentCases.Select(c => c.Name)).ToHashSet(StringComparer.Ordinal);
-        var unknown = names.Where(n => !known.Contains(n)).ToList();
-        if (unknown.Count > 0)
-        {
-            throw new InvalidOperationException(
-                $"EYU_LLM_QUALITY_CASES names no catalog case: {string.Join(", ", unknown)}. Known cases: {string.Join(", ", known)}.");
-        }
-
-        return names;
-    }
-
     private static LinkageOptions BuildLinkageOptionsFromEnvironment()
     {
         var defaults = LinkageOptions.Default;
@@ -175,7 +150,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         using var _ = httpClient;
         var proposer = new SinglePassOntologyProposer(modelClient, linkageOptions);
 
-        var selected = SelectedCaseNames();
+        var selected = QualityCatalog.SelectedCaseNames();
         var stats = new Dictionary<string, CaseStats>();
         foreach (var qualityCase in QualityCatalog.Cases.Where(c => selected is null || selected.Contains(c.Name)))
         {

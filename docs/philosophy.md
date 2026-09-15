@@ -95,6 +95,19 @@ rather than a candidate competing with an extraction (README, "Declared
 always wins"). The practical difference is that constraining extraction
 improves a graph you are building, and here no graph is being built at all.
 
+The same holds when what a caller declares is a vocabulary rather than a
+form. A caller holding documents has no fields to declare, but it may know
+which kinds of thing it expects — organizations, people, products — and which
+roles it needs kept apart. Declaring those types and typed relations by name
+asks the model to use those names where they fit and stamps what matches as
+declared; it does not narrow what else the model may propose, and it does not
+map a different word onto a declared one, so an undeclared `Company` next to a
+declared `Organization` stays visible as what it is. Nor is it the steering §E
+keeps out of the prompt: §E is about a sentence the library would put in front
+of every call, deciding for every caller what counts as an entity, while a
+declaration is one caller's own structure and only that caller's calls carry
+it.
+
 
 Gilles Kassel's *epistemic ontology* position — "we advocate the use of
 'epistemic' ontologies, i.e., systems of categories representing our

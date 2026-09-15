@@ -22,9 +22,9 @@ Every entry in this section is a breaking change.
   the same subject twice (compared ignoring case and separators) throws `ArgumentException`
   before the model is called.
 - The declaration clause of the prompt asks the model to propose an entity a declared type
-  describes under that declared type, as it already asked for relations, so
-  `SinglePassOntologyProposer.PromptFingerprint` changes. Each declared relation line now names
-  the subject it leaves (`asset: work_order -> asset`).
+  describes under that type, as it already asked for relations, and says the declared types and
+  relations are not the only ones, so `SinglePassOntologyProposer.PromptFingerprint` changes.
+  Each declared relation line now names the subject it leaves (`asset: work_order -> asset`).
 
 ### Added
 

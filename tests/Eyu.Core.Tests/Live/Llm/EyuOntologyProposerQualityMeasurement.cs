@@ -33,7 +33,8 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// written there as one timestamped JSON file — a git-friendly run-history directory (borrowing
 /// only <c>mloop</c>'s filesystem/git-based run-record convention, not a dependency on it: `mloop`
 /// itself targets ML.NET AutoML training runs, not LLM proposal quality). Unset by default, so a
-/// plain `dotnet test` run never writes one. Repetitions per case come from
+/// plain `dotnet test` run never writes one. <c>EYU_LLM_QUALITY_CASES</c>, when set, limits the
+/// run to the named catalog cases (comma-separated). Repetitions per case come from
 /// <c>EYU_LLM_QUALITY_RUNS</c> (default 2 — lower than formbase's 5: a single real call here was
 /// observed to take ~2 minutes); when <c>EYU_LLM_QUALITY_REPORT</c> names a file, the markdown
 /// report is also written there. The Fellegi-Sunter pre-filter's <see cref="LinkageOptions"/> is
@@ -118,6 +119,31 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         public int HangulTypedEntities;
     }
 
+    /// <summary>
+    /// The catalog case names <c>EYU_LLM_QUALITY_CASES</c> selects (comma-separated), or
+    /// <c>null</c> for all of them. A name that matches no case fails the run rather than measuring
+    /// nothing under a report that looks complete.
+    /// </summary>
+    private static HashSet<string>? SelectedCaseNames()
+    {
+        var value = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_CASES");
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var names = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
+        var known = QualityCatalog.Cases.Select(c => c.Name).Concat(QualityCatalog.DocumentCases.Select(c => c.Name)).ToHashSet(StringComparer.Ordinal);
+        var unknown = names.Where(n => !known.Contains(n)).ToList();
+        if (unknown.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"EYU_LLM_QUALITY_CASES names no catalog case: {string.Join(", ", unknown)}. Known cases: {string.Join(", ", known)}.");
+        }
+
+        return names;
+    }
+
     private static LinkageOptions BuildLinkageOptionsFromEnvironment()
     {
         var defaults = LinkageOptions.Default;
@@ -149,8 +175,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         using var _ = httpClient;
         var proposer = new SinglePassOntologyProposer(modelClient, linkageOptions);
 
+        var selected = SelectedCaseNames();
         var stats = new Dictionary<string, CaseStats>();
-        foreach (var qualityCase in QualityCatalog.Cases)
+        foreach (var qualityCase in QualityCatalog.Cases.Where(c => selected is null || selected.Contains(c.Name)))
         {
             var caseStats = stats[qualityCase.Name] = new CaseStats
             {
@@ -165,7 +192,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         var documentOptions = linkageOptions with { RecordsDenoteEntities = false };
         var documentProposer = new SinglePassOntologyProposer(modelClient, documentOptions);
-        foreach (var documentCase in QualityCatalog.DocumentCases)
+        foreach (var documentCase in QualityCatalog.DocumentCases.Where(c => selected is null || selected.Contains(c.Name)))
         {
             // The undeclared row keeps the case's own name, so it still compares with runs made
             // before the declared row existed.

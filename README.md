@@ -71,9 +71,9 @@ storage or access model, is the only way it doesn't get rebuilt every time a
 new consumer needs it.
 
 This is the bet the design makes, not yet a cross-validated claim: today Eyu
-has exactly one consumer (`Eyu.Formbase`, in this same repo), and no external
-package consumer has exercised it (see Status above). Read "every system" as
-the target the architecture is built toward, not as a track record.
+has one source adapter (`Eyu.Formbase`, in this same repo) and one external
+package consumer, on one document corpus (see Status above). Read "every
+system" as the target the architecture is built toward, not as a track record.
 
 ## The idea
 
@@ -89,6 +89,21 @@ the target the architecture is built toward, not as a track record.
   records to look at. What the caller doesn't supply, Eyu doesn't know.
 - **Declared always wins.** Where structure is explicitly declared, the
   declaration is the answer. Inference only fills what nothing declared.
+  A call takes one declaration per subject, so a caller whose records name
+  several kinds of thing — chunks of a document name companies, people and
+  products at once — declares each kind, by name alone when that is all it
+  knows (`new DeclaredStructure(SubjectRef.Create("Organization"), [], [])`),
+  and the roles it needs kept apart as typed relations (`PartnerOf`,
+  `CustomerOf`). A declaration is neither a filter nor a renaming: a type the
+  model proposes that nothing declares still comes back, as inferred, under the
+  name the model used. Measured on two Korean company-profile documents, three
+  attempts each, declaring `Organization`, `Person` and `Product` with four
+  typed relations took the entity names proposed under more than one type
+  (`company` in one attempt, `organization` in the next) from 7 of 9 and 7 of
+  20 to 0 of 8 and 1 of 20, while kinds nothing declared — locations,
+  services — kept coming. A first wording of the declaration sentence held the
+  model to exactly the declared types instead, which is why the prompt now says
+  the declared types are not the only ones: a measurement, not a promise.
   Enforced after the model answers, not only asked of it: every proposal
   carries whether its type was declared (`ProposalBasis`), and a relation
   proposed under a declared name whose ends contradict the declaration is

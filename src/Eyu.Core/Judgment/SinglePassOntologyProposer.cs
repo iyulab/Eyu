@@ -104,7 +104,13 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         }
         """);
 
-    private const string DeclarationClause = "Declared structure is authoritative: a declared type, field or relation is fact, not a hypothesis. Propose an entity a declared type describes under that declared type, and a relation a declared relation describes under its declared name, and never contradict declared structure. A declaration is a floor, not a ceiling: still propose every entity and relation the records show beyond what is declared.";
+    // Measured: an earlier form of this clause that only added "beyond what is declared" after
+    // asking for declared types kept the model to exactly the declared entity types -- every
+    // undeclared kind of entity the same documents yielded without a declaration was gone, while
+    // relations beyond the declared ones kept coming. So the floor sentence now says in so many
+    // words that the declared types and relations are not the only ones, without naming any kind
+    // of entity (that would be the steering design rationale §E keeps out of the prompt).
+    private const string DeclarationClause = "Declared structure is authoritative: a declared type, field or relation is fact, not a hypothesis. Where a declared type describes an entity, propose the entity under that type; where a declared relation describes a relation, propose it under that name; never contradict declared structure. A declaration is a floor, not a ceiling: the declared types and relations are not the only ones, so still propose every entity and relation the records show, under a type or name of your own wherever nothing declared describes it.";
 
     /// <summary>
     /// First 8 hex characters of the SHA-256 of the request's fixed part (preamble + the declaration

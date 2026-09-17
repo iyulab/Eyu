@@ -8,6 +8,13 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Dependencies
+
+- `Formbase.Core` to 0.10.1. The release is a patch carrying its own dependency round; the surface
+  the coupling smoke test consumes is unchanged.
+
 ## 0.3.0
 
 ### Changed

@@ -14,6 +14,7 @@ every published version has a section here.
 
 - `Formbase.Core` to 0.10.1. The release is a patch carrying its own dependency round; the surface
   the coupling smoke test consumes is unchanged.
+- `Microsoft.NET.Test.Sdk` to 18.10.1 (tests only).
 
 ## 0.3.0
 

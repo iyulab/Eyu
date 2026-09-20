@@ -10,6 +10,12 @@ every published version has a section here.
 
 ## Unreleased
 
+### Documentation
+
+- The README states the current release and how to install both packages at it. Until now nothing
+  in the documents named a version, so a reader had no way to tell which release the text
+  described, and the pairing with Formbase was stated by package name only.
+
 ### Dependencies
 
 - `Formbase.Core` to 0.10.1. The release is a patch carrying its own dependency round; the surface

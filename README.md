@@ -59,6 +59,21 @@ references `Formbase.Core` the same way, as a package.
 
 ---
 
+## Install
+
+Current release: **0.3.0**. Both packages ship from this repository and move together:
+
+```bash
+dotnet add package Eyu.Core --version 0.3.0
+dotnet add package Eyu.Formbase --version 0.3.0
+```
+
+`Eyu.Core` alone is enough to implement the five ports against your own source; `Eyu.Formbase` is
+the adapter for one of them and reads `Formbase.Core` as a package, so it pairs with a Formbase
+release — this one is built against `Formbase.* 0.10.1`.
+
+---
+
 ## Why
 
 Every system that wants an ontology chatbot ends up rebuilding the same brain:

@@ -128,6 +128,12 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         public readonly List<double> LinkedRecordsConfidences = [];
         public readonly List<double> UnlinkedRecordsConfidences = [];
         public readonly List<string> UnlinkedRecordsEntities = [];
+
+        /// <summary>Entities whose name reads as a field value (<see cref="ValueLikeName"/>) — a date or a number — and the long names listed for review.</summary>
+        public int DateNamedEntities;
+        public int NumberNamedEntities;
+        public readonly List<string> ValueNamedEntities = [];
+        public readonly List<string> LongNamedEntities = [];
     }
 
     private static LinkageOptions BuildLinkageOptionsFromEnvironment()
@@ -361,6 +367,25 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
             stats.EntityTypeCounts[entity.EntityType] = stats.EntityTypeCounts.GetValueOrDefault(entity.EntityType) + 1;
             var name = entity.Name.Trim();
+            switch (ValueLikeName.Classify(name))
+            {
+                case ValueLikeName.Kind.Date:
+                    stats.DateNamedEntities++;
+                    stats.ValueNamedEntities.Add($"{name} ({entity.EntityType})");
+                    break;
+                case ValueLikeName.Kind.Number:
+                    stats.NumberNamedEntities++;
+                    stats.ValueNamedEntities.Add($"{name} ({entity.EntityType})");
+                    break;
+                default:
+                    if (ValueLikeName.IsLong(name))
+                    {
+                        stats.LongNamedEntities.Add($"{name} ({entity.EntityType})");
+                    }
+
+                    break;
+            }
+
             if (!stats.TypesByEntityName.TryGetValue(name, out var types))
             {
                 stats.TypesByEntityName[name] = types = new HashSet<string>(StringComparer.Ordinal);
@@ -500,6 +525,34 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 {
                     report.AppendLine(CultureInfo.InvariantCulture, $"- {name}: {entity}");
                 }
+            }
+        }
+
+        report.AppendLine().AppendLine("## Entities named by a value (across parsed attempts)")
+            .AppendLine()
+            .AppendLine("A proposal has no attribute channel, so a record's dates and quantities can only come back as entities. Counted: names that are a date or a number with at most a short unit. Listed, not counted: names of six words or more, which may be a free-text value or may be an event's title.")
+            .AppendLine()
+            .AppendLine("| case | entities | date-named | number-named | value-named share | long names (review) |")
+            .AppendLine("|---|---|---|---|---|---|");
+        foreach (var (name, s) in stats)
+        {
+            var valueNamed = s.DateNamedEntities + s.NumberNamedEntities;
+            var share = s.EntitiesProposed == 0 ? "-" : ((double)valueNamed / s.EntitiesProposed).ToString("P0", CultureInfo.InvariantCulture);
+            report.AppendLine(CultureInfo.InvariantCulture,
+                $"| {name} | {s.EntitiesProposed} | {s.DateNamedEntities} | {s.NumberNamedEntities} | {share} | {s.LongNamedEntities.Count} |");
+        }
+
+        report.AppendLine();
+        foreach (var (name, s) in stats)
+        {
+            foreach (var entity in s.ValueNamedEntities.Distinct())
+            {
+                report.AppendLine(CultureInfo.InvariantCulture, $"- {name} value: {entity}");
+            }
+
+            foreach (var entity in s.LongNamedEntities.Distinct())
+            {
+                report.AppendLine(CultureInfo.InvariantCulture, $"- {name} long: {entity}");
             }
         }
 

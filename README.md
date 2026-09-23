@@ -310,18 +310,18 @@ to the assertion itself. Acquired terms are minted
 under the namespace you pass; innate ones are Eyu's own terms, and neither is aligned to an outside
 vocabulary. Rejections are not written. The package depends on nothing beyond `Eyu.Core`.
 
-An individual's IRI never comes from `EntityId`, which the model picks afresh on every call. An
-entity some records denote is named by that set of records; one no record denotes — what a document
-chunk describes — by its name and type, compared ignoring case and separators. Either key is hashed
-under `entity/` in your namespace, so two exports of the same records name one entity alike and a
-triple store merging them merges its individuals. The IRI holds only as long as its inputs do: a
-different set of denoting records, or a renamed entity, is a different IRI, and two different
-things with one name and one type, neither denoted by a record, share one — within one proposal
-too, where a model reading a document chunk by chunk proposes the same company once per chunk: those
-entities are one individual carrying every claim. Entities one proposal says the very same records
-denote are a contradiction instead, and are written under `entity/local/` and their `EntityId`, an
-IRI that means nothing outside that proposal. `OntologyTurtle.IndividualIris` returns the IRI
-each entity is written under, for linking your own triples to them.
+An individual's IRI never comes from `EntityId`, which the model picks afresh on every call. It is
+derived from the entity's name and type, compared ignoring case and separators, together with the
+records that denote it when any does — the records alone are not enough, since a model reading one
+row that reports an event says the row denotes the aircraft, the part and the event alike. The key is
+hashed under `entity/` in your namespace, so two exports of the same records name one entity alike
+and a triple store merging them merges its individuals. The IRI holds only as long as its inputs do:
+a renamed entity, a type spelled differently (a declared vocabulary holds types still) or a different
+set of denoting records is a different IRI, and two different things with one name, type and set of
+denoting records share one — within one proposal too, where a model reading a document chunk by chunk
+proposes the same company once per chunk: those entities are one individual carrying every claim.
+`OntologyTurtle.IndividualIris` returns the IRI each entity is written under, for linking your own
+triples to them.
 
 Not published yet: it ships with the next release, alongside the two packages above.
 

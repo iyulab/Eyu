@@ -137,28 +137,30 @@ public static class OntologyTurtle
     /// <see cref="Uri"/>: under a <c>#</c> namespace an individual is a fragment, and <see cref="Uri"/>
     /// equality ignores fragments.
     /// <para>
-    /// An entity some records denote (<see cref="EntityProposal.DenotedBy"/>) is identified by that set of
-    /// records: the records are the entity, whatever the model called it. An entity no record denotes —
-    /// a chunk of a document mentions what it describes, it is not a record of it — is identified by its
-    /// name and type, compared the way Eyu compares names, case and separators ignored. Either key is
-    /// hashed into <c>entity/</c> under <see cref="RdfExportOptions.BaseIri"/>, so an IRI is the same
-    /// length however many records denote the entity, and reads nothing into their ids.
+    /// An individual is identified by its name and type, compared the way Eyu compares names — case and
+    /// separators ignored — and by the records that denote it (<see cref="EntityProposal.DenotedBy"/>),
+    /// when any does. The records alone do not identify it: a model reading one row that reports an event
+    /// names the aircraft, the part and the event, and says the row denotes each of them, so one set of
+    /// denoting records is often claimed by several entities of one proposal. A document chunk denotes
+    /// nothing it describes, and there the name and type are the whole key. The key is hashed into
+    /// <c>entity/</c> under <see cref="RdfExportOptions.BaseIri"/>, so an IRI is the same length however
+    /// many records denote the entity, and reads nothing into their ids.
     /// </para>
     /// <para>
     /// The rule is only as stable as its inputs. Proposed again, an entity keeps its IRI when the model
-    /// names the same denoting records, or the same name and type — not when it names a different set,
-    /// or renames the entity. Two different things with one name and one type, neither denoted by a
-    /// record, get one IRI: nothing in the proposal tells them apart.
+    /// gives it the same name, type and denoting records — not when it renames the entity, spells its type
+    /// differently (a declared vocabulary is what holds the type still) or names a different set of
+    /// records. Two different things with one name and one type, denoted by the same records or by none,
+    /// get one IRI: nothing in the proposal tells them apart.
     /// </para>
     /// <para>
-    /// Within one proposal the same holds. Entities with one name and one type that no record denotes are
-    /// one individual — nothing else in the proposal could tell them apart, and a model reading a document
-    /// chunk by chunk proposes one company or product once per chunk it appears in — written once for each
+    /// Within one proposal the same holds: entities with one key are one individual — a model reading a
+    /// document chunk by chunk proposes one company once per chunk it appears in — written once for each
     /// entity, so the individual carries every claim, cited record and confidence, as it would after two
-    /// exports were merged. Entities denoted by the very same records are a contradiction instead: the model
-    /// says those records are two things. Each of them is written under <c>entity/local/</c> and its
-    /// <see cref="EntityProposal.EntityId"/> — an IRI that, like the id, means nothing outside this proposal —
-    /// and so is a relation end no entity carries, or an entity whose name has no letter or digit to key on.
+    /// exports were merged. A relation end no entity carries, and an entity with no denoting record and no
+    /// letter or digit in its name, have nothing to key on: each is written under <c>entity/local/</c> and
+    /// its <see cref="EntityProposal.EntityId"/>, an IRI that, like the id, means nothing outside this
+    /// proposal.
     /// </para>
     /// </summary>
     public static IReadOnlyDictionary<string, string> IndividualIris(OntologyProposal proposal, RdfExportOptions options)
@@ -170,13 +172,6 @@ public static class OntologyTurtle
         var keys = proposal.Entities
             .GroupBy(e => e.EntityId, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => IdentityKey(g.First()), StringComparer.Ordinal);
-        var contradicted = keys.Values
-            .OfType<string>()
-            .Where(k => k.StartsWith(RecordsKey, StringComparison.Ordinal))
-            .GroupBy(k => k, StringComparer.Ordinal)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToHashSet(StringComparer.Ordinal);
 
         // A relation end no entity carries has nothing to key on either: it keeps a proposal-local IRI.
         foreach (var end in proposal.Relations.SelectMany(r => new[] { r.FromEntityId, r.ToEntityId }))
@@ -186,28 +181,27 @@ public static class OntologyTurtle
 
         return keys.ToDictionary(
             kv => kv.Key,
-            kv => kv.Value is { } key && !contradicted.Contains(key)
+            kv => kv.Value is { } key
                 ? baseIri + "entity/" + Hash(key)
                 : baseIri + "entity/local/" + TermSet.LocalName(kv.Key),
             StringComparer.Ordinal);
     }
 
-    private const string RecordsKey = "records";
-
     // Each part is length-prefixed, so no two different inputs spell the same key whatever characters a
-    // record id or name holds. Null when there is nothing to key on (a name with no letter or digit).
+    // record id or name holds. Null when there is nothing to key on: no denoting record, and a name with
+    // no letter or digit.
     private static string? IdentityKey(EntityProposal entity)
     {
-        if (entity.DenotedBy.Count > 0)
+        var name = Normalize(entity.Name);
+        if (entity.DenotedBy.Count == 0 && name.Length == 0)
         {
-            return RecordsKey + string.Concat(entity.DenotedBy
-                .Distinct(StringComparer.Ordinal)
-                .Order(StringComparer.Ordinal)
-                .Select(Part));
+            return null;
         }
 
-        var name = Normalize(entity.Name);
-        return name.Length == 0 ? null : "name" + Part(Normalize(entity.EntityType)) + Part(name);
+        return Part(Normalize(entity.EntityType)) + Part(name) + string.Concat(entity.DenotedBy
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .Select(Part));
 
         static string Part(string value) => "|" + value.Length.ToString(CultureInfo.InvariantCulture) + ":" + value;
     }

@@ -331,8 +331,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
     internal sealed record IdentityKeys(string EntityId, string Iri, string DenotedBy, string Cited, string EntityType, int SharingDenotedBy)
     {
-        /// <summary>Which rule named the individual: its denoting records, its name and type, or its own id after a key collision.</summary>
-        public string KeyKind => Iri.Contains("/local/", StringComparison.Ordinal) ? "proposal-local" : DenotedBy.Length > 0 ? "records" : "name+type";
+        /// <summary>Whether the individual was keyed (name, type and any denoting records) or fell back to its own id.</summary>
+        public bool ProposalLocal => Iri.Contains("/local/", StringComparison.Ordinal);
     }
 
     private static readonly RdfExportOptions IdentityExport = new(new Uri("https://example.org/measurement#"));
@@ -432,15 +432,21 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 continue;
             }
 
-            var kinds = keys.Select(k => k.KeyKind).ToList();
-            var cause = kinds.Contains("proposal-local")
-                ? $"proposal-local in {kinds.Count(k => k == "proposal-local")} of {kinds.Count} attempts (denoting set shared by "
-                  + string.Join(" / ", keys.Where(k => k.KeyKind == "proposal-local").Select(k => $"{k.SharingDenotedBy} entities: {{{k.DenotedBy}}}")) + ")"
-                : kinds.Distinct(StringComparer.Ordinal).Count() > 1
-                    ? "key changed: " + string.Join(" / ", kinds)
-                    : kinds[0] == "records"
-                        ? "denoting records differ: " + string.Join(" / ", keys.Select(k => k.DenotedBy))
-                        : "type differs: " + string.Join(" / ", keys.Select(k => k.EntityType));
+            var local = keys.Count(k => k.ProposalLocal);
+            var differing = new List<string>();
+            if (keys.Select(k => LenientTypeName(k.EntityType)).Distinct(StringComparer.Ordinal).Count() > 1)
+            {
+                differing.Add("type " + string.Join(" / ", keys.Select(k => k.EntityType)));
+            }
+
+            if (keys.Select(k => k.DenotedBy).Distinct(StringComparer.Ordinal).Count() > 1)
+            {
+                differing.Add("denoting records " + string.Join(" / ", keys.Select(k => $"{{{k.DenotedBy}}}")));
+            }
+
+            var cause = local > 0
+                ? $"proposal-local in {local} of {keys.Count} attempts"
+                : differing.Count > 0 ? "differs: " + string.Join("; ", differing) : "name spelled differently";
             yield return $"\"{name}\" — {cause}";
         }
     }

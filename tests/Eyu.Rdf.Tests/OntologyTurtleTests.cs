@@ -195,20 +195,20 @@ public class OntologyTurtleTests
     }
 
     // The model picks an entity's id afresh on every call, so an IRI minted from it never carried over
-    // from one export to the next. The records that denote an entity, or failing those its name and
-    // type, are what a second proposal over the same records repeats.
+    // from one export to the next. Its name, type and denoting records are what a second proposal over the
+    // same records repeats.
     [Fact]
-    public void An_individual_is_named_by_its_denoting_records_whatever_id_the_model_gave_it()
+    public void An_individual_is_named_by_its_name_type_and_denoting_records_whatever_id_the_model_gave_it()
     {
         EntityProposal Machine(string id, string name, params string[] denotedBy) => EntityProposal.Create(id, name, "Machine",
             Cite("a machine", [.. denotedBy.Select(r => new SourceRef(r)), new SourceRef("w-01")]), VocabularyOrigin.Acquired, 0.9, denotedBy: denotedBy);
+        string Iri(EntityProposal e) => OntologyTurtle.IndividualIris(new OntologyProposal([e], [], []), Options)[e.EntityId];
 
-        var first = OntologyTurtle.IndividualIris(new OntologyProposal([Machine("E1", "Press 3", "m-01", "m-02")], [], []), Options)["E1"];
-        var again = OntologyTurtle.IndividualIris(new OntologyProposal([Machine("machine_1", "Press No. 3", "m-02", "m-01")], [], []), Options)["machine_1"];
-        var other = OntologyTurtle.IndividualIris(new OntologyProposal([Machine("E1", "Press 3", "m-01")], [], []), Options)["E1"];
+        var first = Iri(Machine("E1", "Press 3", "m-01", "m-02"));
 
-        Assert.Equal(first, again);
-        Assert.NotEqual(first, other);
+        Assert.Equal(first, Iri(Machine("machine_1", "press-3", "m-02", "m-01")));
+        Assert.NotEqual(first, Iri(Machine("E1", "Press 3", "m-01")));
+        Assert.NotEqual(first, Iri(Machine("E1", "Press No. 3", "m-01", "m-02")));
         Assert.StartsWith(Base + "entity/", first, StringComparison.Ordinal);
         Assert.DoesNotContain("m-01", first, StringComparison.Ordinal);
     }
@@ -246,20 +246,20 @@ public class OntologyTurtleTests
         Assert.Equal(kim, g.GetTriplesWithPredicate(U(g, Base + "maintains")).Single().Subject);
     }
 
-    // Two entities denoted by the very same records are the model saying those records are two things: a
-    // contradiction the export does not resolve by merging them.
+    // One row reporting an event names the aircraft, the part and the event, and a model says the row
+    // denotes each of them. The records alone are no identity then; the name and type tell them apart.
     [Fact]
-    public void Entities_one_proposal_says_the_same_records_denote_are_written_under_their_own_ids()
+    public void Entities_one_row_is_said_to_denote_are_told_apart_by_name_and_type()
     {
-        EntityProposal Denoted(string id, string name) => EntityProposal.Create(id, name, "Machine",
-            Cite($"{name} is m-01", new SourceRef("m-01")), VocabularyOrigin.Acquired, 0.7, denotedBy: ["m-01"]);
-        var proposal = new OntologyProposal([Denoted("a", "Press 3"), Denoted("b", "Lathe 1"), Entity("e1", "Pump P-101", "Equipment")], [], []);
+        EntityProposal FromRow(string id, string name, string type) => EntityProposal.Create(id, name, type,
+            Cite($"{name} appears in sdr-1", new SourceRef("sdr-1")), VocabularyOrigin.Acquired, 0.7, denotedBy: ["sdr-1"]);
+        var proposal = new OntologyProposal(
+            [FromRow("a", "Boeing 737-823", "Aircraft"), FromRow("b", "Floor beam", "AircraftPart"), FromRow("c", "Cracked floor beam", "Discrepancy")], [], []);
 
         var iris = OntologyTurtle.IndividualIris(proposal, Options);
 
-        Assert.Equal(Base + "entity/local/a", iris["a"]);
-        Assert.Equal(Base + "entity/local/b", iris["b"]);
-        Assert.DoesNotContain("/local/", iris["e1"], StringComparison.Ordinal);
+        Assert.Equal(3, iris.Values.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(iris.Values, iri => Assert.DoesNotContain("/local/", iri, StringComparison.Ordinal));
         Assert.Equal(3, SubjectsOfType(Parse(proposal), Owl + "NamedIndividual").Count());
     }
 

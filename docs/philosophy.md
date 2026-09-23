@@ -139,6 +139,23 @@ assertions about reality** — they are claims about what the source records
 support, and they stop being meaningful the moment they're detached from
 their sources.
 
+Writing a proposal in a standard form does not change what it is, and the
+export is built so that it cannot. `Eyu.Rdf` writes a proposal as an OWL
+ontology — the form a knowledge-graph practice's tools already read — and an
+OWL file is ordinarily read as a set of assertions. So nothing is written
+bare: every individual carries its claim, the records it cites, its
+confidence and whether its type was declared, and every relation carries the
+same on the `rdf:Statement` that reifies it. A consumer that strips those
+annotations to get a "clean" graph has turned claims into assertions by
+subtraction, which is exactly the detachment the paragraph above warns
+against. Two more choices follow from this section rather than from
+convenience. Nothing is aligned to an outside vocabulary — innate `Person` is
+Eyu's own term, not another vocabulary's `Person` — because that alignment is
+the term normalization this library does not perform. And no domain or range
+is asserted: that a relation was seen between two types is evidence, while a
+range is an axiom, and turning one into the other is a step a caller takes in
+their own graph, where it is their claim.
+
 ## C. Innate layer vs. acquired layer — decided: exposed as proposal-level provenance 🟡
 
 A judgment engine that starts from nothing has no vocabulary to propose

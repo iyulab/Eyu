@@ -10,6 +10,19 @@ every published version has a section here.
 
 ## Unreleased
 
+### Added
+
+- `Eyu.Rdf`, a third package: writes an `OntologyProposal` as an OWL ontology in RDF 1.1 Turtle
+  (`OntologyTurtle.ToTurtle` / `Write`, with `RdfExportOptions` naming the caller's namespace). Entity
+  types become classes, relation names object properties, entities named individuals, and relations
+  assertions between them; each element's claim, cited records, confidence and basis are carried as
+  annotations in an Eyu vocabulary (`EyuVocabulary`), a relation's on the `rdf:Statement` that
+  reifies it. Names Eyu compares as one — case and separators ignored — become one term. Innate
+  types and relations are written as Eyu's own terms, not aligned to any outside vocabulary.
+  Rejections are not written. Until now a proposal could only be read by code that knew Eyu's record
+  types. The package takes no dependency beyond `Eyu.Core`: its tests read the output back with an
+  independent parser, but the writer itself does not ship one.
+
 ### Documentation
 
 - The README states the current release and how to install both packages at it. Until now nothing

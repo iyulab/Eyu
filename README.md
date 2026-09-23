@@ -288,6 +288,25 @@ relations to entities inside one proposal and must never be persisted as an iden
 per batch, and mind that every record is rendered into the
 prompt in full — the batch size is bounded by the model's context, not by Eyu.
 
+## Exporting as RDF/OWL
+
+`Eyu.Rdf` writes an `OntologyProposal` as an OWL ontology in RDF Turtle, so a proposal can be
+opened in an OWL editor, loaded into a triple store or checked by a SHACL validator:
+
+```csharp
+var turtle = OntologyTurtle.ToTurtle(proposal, new RdfExportOptions(new Uri("https://example.org/plant#")));
+```
+
+Each distinct entity type becomes an `owl:Class`, each distinct relation name an
+`owl:ObjectProperty`, each entity an `owl:NamedIndividual` and each relation an assertion between
+two of them. The claim, the cited records, the confidence and whether a type was declared travel as
+annotations — on a relation, through an `rdf:Statement` that reifies it. Acquired terms are minted
+under the namespace you pass; innate ones are Eyu's own terms, and neither is aligned to an outside
+vocabulary. Rejections are not written, and entity IRIs come from `EntityId`, which means nothing
+outside one proposal. The package depends on nothing beyond `Eyu.Core`.
+
+Not published yet: it ships with the next release, alongside the two packages above.
+
 ## Further reading
 
 [Design rationale](docs/philosophy.md) — why judgment requires structure

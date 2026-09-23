@@ -18,6 +18,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      Eyu.Rdf's tests read the exported Turtle back with an independent parser, so the writer is not
+      checked against its own idea of the grammar. Test-only: the package writes Turtle itself and
+      ships with no RDF dependency. AngleSharp is pinned because dotNetRdf.Core 3.5.2 (the latest)
+      resolves a release below the fix for GHSA-pgww-w46g-26qg.
+    -->
+    <PackageVersion Include="dotNetRdf.Core" Version="3.5.2" />
+    <PackageVersion Include="AngleSharp" Version="1.8.2" />
     <!-- Test -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="xunit.v3" Version="4.0.1" />

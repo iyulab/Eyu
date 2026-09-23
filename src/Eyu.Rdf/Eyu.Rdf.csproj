@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Eyu.Rdf</RootNamespace>
+    <Description>Writes an Eyu OntologyProposal as an OWL ontology in RDF Turtle -- proposed types as classes, relation names as object properties, entities as named individuals -- with every claim's sources, confidence and basis carried as annotations. No dependency beyond Eyu.Core.</Description>
+    <PackageTags>$(PackageTags);rdf;owl;turtle</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Eyu.Core\Eyu.Core.csproj" />
+  </ItemGroup>
+
+</Project>

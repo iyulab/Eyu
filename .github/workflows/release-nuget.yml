@@ -88,7 +88,7 @@ jobs:
       - name: Test
         run: dotnet test --no-build --configuration Release --verbosity normal
 
-      # Packs every IsPackable project in the solution: Eyu.Core and Eyu.Formbase. The test
+      # Packs every IsPackable project in the solution: Eyu.Core, Eyu.Formbase and Eyu.Rdf. The test
       # projects opt out with IsPackable=false.
       - name: Pack
         run: dotnet pack --no-build --configuration Release --output ./nupkgs /p:PackageVersion=${{ steps.version.outputs.version }}

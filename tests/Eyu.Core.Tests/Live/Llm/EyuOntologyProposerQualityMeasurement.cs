@@ -83,6 +83,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         public int Attempts;
         public int ParseFailures;
 
+        /// <summary>Attempts whose model call itself failed — a timeout, a dropped connection. Not a parse failure: nothing came back to parse.</summary>
+        public int ModelFailures;
+
         /// <summary>Elements the proposer left out of parsed attempts, by reason — the per-element failures a whole-response parse count no longer sees.</summary>
         public readonly SortedDictionary<RejectionReason, int> Rejections = [];
         public int GroundingViolations;
@@ -232,7 +235,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         // The instrument's own sanity floor, not a graduation gate: a run where nothing ever
         // parsed measured the transport, not the model.
-        Assert.True(stats.Values.Sum(s => s.Attempts - s.ParseFailures) > 0,
+        Assert.True(stats.Values.Sum(s => s.Attempts - s.ParseFailures - s.ModelFailures) > 0,
             "at least one proposal must survive parsing for the measurement to mean anything");
     }
 
@@ -249,6 +252,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         {
             stats.ParseFailures++;
             stats.FailureNotes.Add(ex.Message);
+            return;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !TestContext.Current.CancellationToken.IsCancellationRequested)
+        {
+            // One slow or dropped call is one failed attempt. Letting it escape ended the whole round
+            // and threw away every attempt already measured.
+            stats.ModelFailures++;
+            stats.FailureNotes.Add($"model call failed: {ex.GetType().Name}: {ex.Message}");
             return;
         }
 
@@ -509,11 +520,11 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             .AppendLine("|---|---|---|---|---|---|---|---|---|");
         foreach (var (name, s) in stats)
         {
-            var parseOk = s.Attempts - s.ParseFailures;
+            var parseOk = s.Attempts - s.ParseFailures - s.ModelFailures;
             var entityRange = s.EntityCounts.Count == 0 ? "n/a" : $"{s.EntityCounts.Min()}-{s.EntityCounts.Max()}";
             var relationRange = s.RelationCounts.Count == 0 ? "n/a" : $"{s.RelationCounts.Min()}-{s.RelationCounts.Max()}";
             report.AppendLine(CultureInfo.InvariantCulture,
-                $"| {name} | {Regime(s)} | {parseOk}/{s.Attempts} | {RenderRejections(s.Rejections)} | {s.GroundingViolations} | {s.OverlapViolations} | {entityRange} | {relationRange} | {s.EntityTypeShapes.Count} |");
+                $"| {name} | {Regime(s)} | {parseOk}/{s.Attempts}{(s.ModelFailures > 0 ? $" ({s.ModelFailures} model call failed)" : "")} | {RenderRejections(s.Rejections)} | {s.GroundingViolations} | {s.OverlapViolations} | {entityRange} | {relationRange} | {s.EntityTypeShapes.Count} |");
         }
 
         report.AppendLine().AppendLine("## Fellegi-Sunter pre-filter (per case, independent of model attempts)")

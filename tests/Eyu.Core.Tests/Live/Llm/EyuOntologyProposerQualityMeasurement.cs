@@ -134,6 +134,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         public int DateNamedEntities;
         public int NumberNamedEntities;
         public readonly List<string> ValueNamedEntities = [];
+
+        /// <summary>
+        /// Per parsed attempt: entity name (compared leniently) -> the keys an identifier could be minted from — the
+        /// model's <c>EntityId</c>, the records the entity claims denote it, and every record it cites. Read across
+        /// attempts to see which of them stays put when the same records are proposed again; an entity named twice in
+        /// one attempt keeps its first occurrence.
+        /// </summary>
+        public readonly List<Dictionary<string, IdentityKeys>> IdentityByAttempt = [];
         public readonly List<string> LongNamedEntities = [];
     }
 
@@ -251,6 +259,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
 
         stats.ScoredAttempts++;
+        RecordIdentity(proposal, stats);
         ScoreCompetencyQuestions(proposal, questions, stats);
 
         stats.EntityCounts.Add(proposal.Entities.Count);
@@ -302,6 +311,52 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 }
             }
         }
+    }
+
+    internal sealed record IdentityKeys(string EntityId, string DenotedBy, string Cited);
+
+    private static void RecordIdentity(OntologyProposal proposal, CaseStats stats)
+    {
+        var byName = new Dictionary<string, IdentityKeys>(StringComparer.Ordinal);
+        foreach (var entity in proposal.Entities)
+        {
+            byName.TryAdd(
+                LenientTypeName(entity.Name),
+                new IdentityKeys(
+                    entity.EntityId,
+                    string.Join(",", entity.DenotedBy.Order(StringComparer.Ordinal)),
+                    string.Join(",", entity.Claim.Sources.Select(s => s.RecordId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))));
+        }
+
+        stats.IdentityByAttempt.Add(byName);
+    }
+
+    /// <summary>
+    /// Of the entity names that recur in every parsed attempt, how many kept each key identical across all of them —
+    /// the question behind minting an individual's IRI from <c>EntityId</c> (today) or from its denoting records.
+    /// </summary>
+    private static (int Recurring, int SameId, int SameDenotedBy, int SameCited, int WithDenotedBy) IdentityStability(CaseStats stats)
+    {
+        var attempts = stats.IdentityByAttempt;
+        if (attempts.Count < 2)
+        {
+            return (0, 0, 0, 0, 0);
+        }
+
+        var recurring = attempts.Skip(1).Aggregate(attempts[0].Keys.ToHashSet(StringComparer.Ordinal), (set, next) =>
+        {
+            set.IntersectWith(next.Keys);
+            return set;
+        });
+
+        bool Stable(string name, Func<IdentityKeys, string> key) => attempts.Select(a => key(a[name])).Distinct(StringComparer.Ordinal).Count() == 1;
+
+        return (
+            recurring.Count,
+            recurring.Count(n => Stable(n, k => k.EntityId)),
+            recurring.Count(n => Stable(n, k => k.DenotedBy)),
+            recurring.Count(n => Stable(n, k => k.Cited)),
+            recurring.Count(n => attempts.All(a => a[n].DenotedBy.Length > 0)));
     }
 
     private static void RecordConfidence(OntologyProposal proposal, CaseStats stats)
@@ -507,6 +562,19 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                     report.AppendLine(CultureInfo.InvariantCulture, $"  - \"{entityName}\" under {string.Join(" / ", types.Order(StringComparer.Ordinal))}");
                 }
             }
+        }
+
+        report.AppendLine().AppendLine("## Entity identity across attempts (same records, proposed again)")
+            .AppendLine()
+            .AppendLine("An entity is followed from attempt to attempt by its name, compared leniently — a heuristic join, since a renamed entity drops out. For each name present in every parsed attempt: did the model's id stay the same (an exported individual's IRI is minted from it), did the records it claims denote it, did the records it cites? A key that holds across attempts is one a consumer merging two exports could join on.")
+            .AppendLine()
+            .AppendLine("| case | names in every attempt | same id | same denotedBy | same cited records | denoted by ≥1 record in every attempt |")
+            .AppendLine("|---|---|---|---|---|---|");
+        foreach (var (name, s) in stats)
+        {
+            var (recurring, sameId, sameDenotedBy, sameCited, withDenotedBy) = IdentityStability(s);
+            report.AppendLine(CultureInfo.InvariantCulture,
+                $"| {name} | {recurring} | {sameId} | {sameDenotedBy} | {sameCited} | {withDenotedBy} |");
         }
 
         var recordRows = stats.Where(kv => kv.Value.RecordsDenoteEntities && kv.Value.Linkage is not null).ToList();

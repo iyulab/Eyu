@@ -38,8 +38,9 @@ every published version has a section here.
   `eyu:denotedBy` for each cited record that is a record of it. An individual's IRI is derived from
   the records that denote the entity, or, when none does, from its name and type — not from
   `EntityId`, which the model picks afresh on every call — so two exports of the same records name
-  one entity alike (`OntologyTurtle.IndividualIris` returns them); entities one proposal keeps apart
-  whose keys coincide keep a proposal-local IRI. Names Eyu compares as one — case and separators ignored — become one term. Innate
+  one entity alike (`OntologyTurtle.IndividualIris` returns them). Within one proposal, entities with
+  one name and type that no record denotes are one individual carrying every claim; entities the very
+  same records are said to denote keep a proposal-local IRI. Names Eyu compares as one — case and separators ignored — become one term. Innate
   types and relations are written as Eyu's own terms, not aligned to any outside vocabulary.
   Rejections are not written. Until now a proposal could only be read by code that knew Eyu's record
   types. The package takes no dependency beyond `Eyu.Core`: its tests read the output back with an

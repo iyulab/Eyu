@@ -147,6 +147,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         /// </summary>
         public readonly List<Dictionary<string, IdentityKeys>> IdentityByAttempt = [];
         public int ProposalLocalIris;
+        public int MergedInProposal;
         public readonly List<string> LongNamedEntities = [];
     }
 
@@ -338,6 +339,10 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
     {
         var iris = OntologyTurtle.IndividualIris(proposal, IdentityExport);
         stats.ProposalLocalIris += proposal.Entities.Count(e => iris[e.EntityId].Contains("/local/", StringComparison.Ordinal));
+        stats.MergedInProposal += proposal.Entities
+            .GroupBy(e => iris[e.EntityId], StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Sum(g => g.Count());
 
         var byName = new Dictionary<string, IdentityKeys>(StringComparer.Ordinal);
         foreach (var entity in proposal.Entities)
@@ -630,15 +635,15 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         report.AppendLine().AppendLine("## Entity identity across attempts (same records, proposed again)")
             .AppendLine()
-            .AppendLine("An entity is followed from attempt to attempt by its name, compared leniently — a heuristic join, since a renamed entity drops out. For each name present in every parsed attempt: did the model's id stay the same, did the IRI `Eyu.Rdf` writes its individual under (derived from its denoting records, else its name and type), did the records it claims denote it, did the records it cites? A key that holds across attempts is one a consumer merging two exports could join on. Proposal-local IRIs counts entities, over all parsed attempts, whose derived key another entity of the same proposal shared, so they were written under their own id instead.")
+            .AppendLine("An entity is followed from attempt to attempt by its name, compared leniently — a heuristic join, since a renamed entity drops out. For each name present in every parsed attempt: did the model's id stay the same, did the IRI `Eyu.Rdf` writes its individual under (derived from its denoting records, else its name and type), did the records it claims denote it, did the records it cites? A key that holds across attempts is one a consumer merging two exports could join on. Merged counts entities, over all parsed attempts, that shared one individual with another entity of the same proposal (one name and type, no denoting record — a duplicate the model proposed once per chunk); proposal-local counts entities written under their own id because another entity of the proposal claimed the very same denoting records.")
             .AppendLine()
-            .AppendLine("| case | names in every attempt | same id | same IRI | same denotedBy | same cited records | denoted by ≥1 record in every attempt | proposal-local IRIs |")
-            .AppendLine("|---|---|---|---|---|---|---|---|");
+            .AppendLine("| case | names in every attempt | same id | same IRI | same denotedBy | same cited records | denoted by ≥1 record in every attempt | merged in one proposal | proposal-local IRIs |")
+            .AppendLine("|---|---|---|---|---|---|---|---|---|");
         foreach (var (name, s) in stats)
         {
             var (recurring, sameId, sameIri, sameDenotedBy, sameCited, withDenotedBy) = IdentityStability(s);
             report.AppendLine(CultureInfo.InvariantCulture,
-                $"| {name} | {recurring} | {sameId} | {sameIri} | {sameDenotedBy} | {sameCited} | {withDenotedBy} | {s.ProposalLocalIris}/{s.EntitiesProposed} |");
+                $"| {name} | {recurring} | {sameId} | {sameIri} | {sameDenotedBy} | {sameCited} | {withDenotedBy} | {s.MergedInProposal}/{s.EntitiesProposed} | {s.ProposalLocalIris}/{s.EntitiesProposed} |");
         }
 
         report.AppendLine();

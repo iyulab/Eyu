@@ -316,9 +316,11 @@ chunk describes — by its name and type, compared ignoring case and separators.
 under `entity/` in your namespace, so two exports of the same records name one entity alike and a
 triple store merging them merges its individuals. The IRI holds only as long as its inputs do: a
 different set of denoting records, or a renamed entity, is a different IRI, and two different
-things with one name and one type, neither denoted by a record, share one. Entities one proposal
-keeps apart but whose keys coincide are written under `entity/local/` and their `EntityId` instead,
-an IRI that means nothing outside that proposal. `OntologyTurtle.IndividualIris` returns the IRI
+things with one name and one type, neither denoted by a record, share one — within one proposal
+too, where a model reading a document chunk by chunk proposes the same company once per chunk: those
+entities are one individual carrying every claim. Entities one proposal says the very same records
+denote are a contradiction instead, and are written under `entity/local/` and their `EntityId`, an
+IRI that means nothing outside that proposal. `OntologyTurtle.IndividualIris` returns the IRI
 each entity is written under, for linking your own triples to them.
 
 Not published yet: it ships with the next release, alongside the two packages above.

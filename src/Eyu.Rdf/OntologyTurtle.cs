@@ -148,11 +148,17 @@ public static class OntologyTurtle
     /// The rule is only as stable as its inputs. Proposed again, an entity keeps its IRI when the model
     /// names the same denoting records, or the same name and type — not when it names a different set,
     /// or renames the entity. Two different things with one name and one type, neither denoted by a
-    /// record, get one IRI: nothing in the proposal tells them apart. Within one proposal, entities whose
-    /// keys coincide are the model saying two things are distinct where the rule sees one, and each of
-    /// them is written under <c>entity/local/</c> and its <see cref="EntityProposal.EntityId"/> instead — an
-    /// IRI that, like the id, means nothing outside this proposal — rather than merged into an individual
-    /// carrying two claims and two confidences.
+    /// record, get one IRI: nothing in the proposal tells them apart.
+    /// </para>
+    /// <para>
+    /// Within one proposal the same holds. Entities with one name and one type that no record denotes are
+    /// one individual — nothing else in the proposal could tell them apart, and a model reading a document
+    /// chunk by chunk proposes one company or product once per chunk it appears in — written once for each
+    /// entity, so the individual carries every claim, cited record and confidence, as it would after two
+    /// exports were merged. Entities denoted by the very same records are a contradiction instead: the model
+    /// says those records are two things. Each of them is written under <c>entity/local/</c> and its
+    /// <see cref="EntityProposal.EntityId"/> — an IRI that, like the id, means nothing outside this proposal —
+    /// and so is a relation end no entity carries, or an entity whose name has no letter or digit to key on.
     /// </para>
     /// </summary>
     public static IReadOnlyDictionary<string, string> IndividualIris(OntologyProposal proposal, RdfExportOptions options)
@@ -164,8 +170,9 @@ public static class OntologyTurtle
         var keys = proposal.Entities
             .GroupBy(e => e.EntityId, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => IdentityKey(g.First()), StringComparer.Ordinal);
-        var shared = keys.Values
+        var contradicted = keys.Values
             .OfType<string>()
+            .Where(k => k.StartsWith(RecordsKey, StringComparison.Ordinal))
             .GroupBy(k => k, StringComparer.Ordinal)
             .Where(g => g.Count() > 1)
             .Select(g => g.Key)
@@ -179,11 +186,13 @@ public static class OntologyTurtle
 
         return keys.ToDictionary(
             kv => kv.Key,
-            kv => kv.Value is { } key && !shared.Contains(key)
+            kv => kv.Value is { } key && !contradicted.Contains(key)
                 ? baseIri + "entity/" + Hash(key)
                 : baseIri + "entity/local/" + TermSet.LocalName(kv.Key),
             StringComparer.Ordinal);
     }
+
+    private const string RecordsKey = "records";
 
     // Each part is length-prefixed, so no two different inputs spell the same key whatever characters a
     // record id or name holds. Null when there is nothing to key on (a name with no letter or digit).
@@ -191,7 +200,7 @@ public static class OntologyTurtle
     {
         if (entity.DenotedBy.Count > 0)
         {
-            return "records" + string.Concat(entity.DenotedBy
+            return RecordsKey + string.Concat(entity.DenotedBy
                 .Distinct(StringComparer.Ordinal)
                 .Order(StringComparer.Ordinal)
                 .Select(Part));

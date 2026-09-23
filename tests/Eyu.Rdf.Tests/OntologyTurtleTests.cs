@@ -226,23 +226,41 @@ public class OntologyTurtleTests
         Assert.NotEqual(Iri(Chunked("E4", "Korea Hydro", "Company")), Iri(Chunked("E4", "Korea Nuclear", "Company")));
     }
 
-    // Two entities the model keeps apart within one proposal are not merged because the rule cannot
-    // tell them apart: an individual with two claims and two confidences says neither.
+    // A model reading a document chunk by chunk proposes one company once per chunk it appears in. With no
+    // record denoting either, nothing tells the two apart — they are one individual carrying both claims.
     [Fact]
-    public void Entities_one_proposal_keeps_apart_but_the_rule_cannot_are_written_under_their_own_ids()
+    public void Entities_one_proposal_names_alike_and_no_record_denotes_are_one_individual()
     {
-        EntityProposal Named(string id) => EntityProposal.Create(id, "Kim", "Person",
-            Cite($"{id} is a person", new SourceRef("chunk-1")), VocabularyOrigin.Innate, 0.6, denotedBy: []);
-        var proposal = new OntologyProposal([Named("p1"), Named("p2"), Entity("e1", "Pump P-101", "Equipment")], [Relation("maintains", "p2", "e1")], []);
+        EntityProposal Named(string id, string chunk) => EntityProposal.Create(id, "Kim", "Person",
+            Cite($"{chunk} names Kim", new SourceRef(chunk)), VocabularyOrigin.Innate, 0.6, denotedBy: []);
+        var proposal = new OntologyProposal([Named("p1", "chunk-1"), Named("p2", "chunk-2"), Entity("e1", "Pump P-101", "Equipment")], [Relation("maintains", "p2", "e1")], []);
 
         var iris = OntologyTurtle.IndividualIris(proposal, Options);
         var g = Parse(proposal);
 
-        Assert.Equal(Base + "entity/local/p1", iris["p1"]);
-        Assert.Equal(Base + "entity/local/p2", iris["p2"]);
+        Assert.Equal(iris["p1"], iris["p2"]);
+        Assert.DoesNotContain("/local/", iris["p1"], StringComparison.Ordinal);
+        Assert.Equal(2, SubjectsOfType(g, Owl + "NamedIndividual").Count());
+        var kim = Individual(g, proposal, "p1");
+        Assert.Equal(2, g.GetTriplesWithSubjectPredicate(kim, U(g, EyuVocabulary.Claim)).Count());
+        Assert.Equal(kim, g.GetTriplesWithPredicate(U(g, Base + "maintains")).Single().Subject);
+    }
+
+    // Two entities denoted by the very same records are the model saying those records are two things: a
+    // contradiction the export does not resolve by merging them.
+    [Fact]
+    public void Entities_one_proposal_says_the_same_records_denote_are_written_under_their_own_ids()
+    {
+        EntityProposal Denoted(string id, string name) => EntityProposal.Create(id, name, "Machine",
+            Cite($"{name} is m-01", new SourceRef("m-01")), VocabularyOrigin.Acquired, 0.7, denotedBy: ["m-01"]);
+        var proposal = new OntologyProposal([Denoted("a", "Press 3"), Denoted("b", "Lathe 1"), Entity("e1", "Pump P-101", "Equipment")], [], []);
+
+        var iris = OntologyTurtle.IndividualIris(proposal, Options);
+
+        Assert.Equal(Base + "entity/local/a", iris["a"]);
+        Assert.Equal(Base + "entity/local/b", iris["b"]);
         Assert.DoesNotContain("/local/", iris["e1"], StringComparison.Ordinal);
-        Assert.Equal(3, SubjectsOfType(g, Owl + "NamedIndividual").Count());
-        Assert.Equal(Individual(g, proposal, "p2"), g.GetTriplesWithPredicate(U(g, Base + "maintains")).Single().Subject);
+        Assert.Equal(3, SubjectsOfType(Parse(proposal), Owl + "NamedIndividual").Count());
     }
 
     [Fact]

@@ -8,6 +8,19 @@
     <NoWarn>$(NoWarn);CA1707;CA1859</NoWarn>
   </PropertyGroup>
 
+  <!--
+    Real-model smoke: a proposal a model actually produced, exported and read back. Same gate and
+    variables as Eyu.Core.Tests' live suite (EYU_LLM_ENDPOINT / EYU_LLM_API_KEY / EYU_LLM_MODEL,
+    dotnet test -p:IncludeEyuLlmLiveTests=true); excluded by default. The endpoint helper is linked
+    from that suite rather than copied, so there is one place that knows how to reach a model.
+  -->
+  <ItemGroup Condition="'$(IncludeEyuLlmLiveTests)' != 'true'">
+    <Compile Remove="Live/Llm/**/*.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(IncludeEyuLlmLiveTests)' == 'true'">
+    <Compile Include="..\Eyu.Core.Tests\Live\Llm\EyuLlmLiveClient.cs" Link="Live/Llm/EyuLlmLiveClient.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Eyu.Rdf\Eyu.Rdf.csproj" />
   </ItemGroup>

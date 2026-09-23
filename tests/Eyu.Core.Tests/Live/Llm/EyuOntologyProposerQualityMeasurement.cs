@@ -326,7 +326,11 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
     }
 
-    internal sealed record IdentityKeys(string EntityId, string Iri, string DenotedBy, string Cited);
+    internal sealed record IdentityKeys(string EntityId, string Iri, string DenotedBy, string Cited, string EntityType)
+    {
+        /// <summary>Which rule named the individual: its denoting records, its name and type, or its own id after a key collision.</summary>
+        public string KeyKind => Iri.Contains("/local/", StringComparison.Ordinal) ? "proposal-local" : DenotedBy.Length > 0 ? "records" : "name+type";
+    }
 
     private static readonly RdfExportOptions IdentityExport = new(new Uri("https://example.org/measurement#"));
 
@@ -344,7 +348,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                     entity.EntityId,
                     iris[entity.EntityId],
                     string.Join(",", entity.DenotedBy.Order(StringComparer.Ordinal)),
-                    string.Join(",", entity.Claim.Sources.Select(s => s.RecordId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))));
+                    string.Join(",", entity.Claim.Sources.Select(s => s.RecordId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)),
+                    entity.EntityType));
         }
 
         stats.IdentityByAttempt.Add(byName);
@@ -377,6 +382,45 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             recurring.Count(n => Stable(n, k => k.DenotedBy)),
             recurring.Count(n => Stable(n, k => k.Cited)),
             recurring.Count(n => attempts.All(a => a[n].DenotedBy.Length > 0)));
+    }
+
+    /// <summary>
+    /// For each recurring name whose IRI did not hold across attempts, why: the rule that named it changed
+    /// between attempts, its denoting records differed, its type was spelled differently, or a key collision
+    /// sent it to a proposal-local IRI. The table counts; this says which lever moved.
+    /// </summary>
+    private static IEnumerable<string> IriLosses(CaseStats stats)
+    {
+        var attempts = stats.IdentityByAttempt;
+        if (attempts.Count < 2)
+        {
+            yield break;
+        }
+
+        var recurring = attempts.Skip(1).Aggregate(attempts[0].Keys.ToHashSet(StringComparer.Ordinal), (set, next) =>
+        {
+            set.IntersectWith(next.Keys);
+            return set;
+        });
+
+        foreach (var name in recurring.Order(StringComparer.Ordinal))
+        {
+            var keys = attempts.Select(a => a[name]).ToList();
+            if (keys.Select(k => k.Iri).Distinct(StringComparer.Ordinal).Count() == 1)
+            {
+                continue;
+            }
+
+            var kinds = keys.Select(k => k.KeyKind).ToList();
+            var cause = kinds.Contains("proposal-local")
+                ? $"proposal-local in {kinds.Count(k => k == "proposal-local")} of {kinds.Count} attempts"
+                : kinds.Distinct(StringComparer.Ordinal).Count() > 1
+                    ? "key changed: " + string.Join(" / ", kinds)
+                    : kinds[0] == "records"
+                        ? "denoting records differ: " + string.Join(" / ", keys.Select(k => k.DenotedBy))
+                        : "type differs: " + string.Join(" / ", keys.Select(k => k.EntityType));
+            yield return $"\"{name}\" — {cause}";
+        }
     }
 
     private static void RecordConfidence(OntologyProposal proposal, CaseStats stats)
@@ -595,6 +639,15 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             var (recurring, sameId, sameIri, sameDenotedBy, sameCited, withDenotedBy) = IdentityStability(s);
             report.AppendLine(CultureInfo.InvariantCulture,
                 $"| {name} | {recurring} | {sameId} | {sameIri} | {sameDenotedBy} | {sameCited} | {withDenotedBy} | {s.ProposalLocalIris}/{s.EntitiesProposed} |");
+        }
+
+        report.AppendLine();
+        foreach (var (name, s) in stats)
+        {
+            foreach (var loss in IriLosses(s))
+            {
+                report.AppendLine(CultureInfo.InvariantCulture, $"- {name} IRI lost: {loss}");
+            }
         }
 
         var recordRows = stats.Where(kv => kv.Value.RecordsDenoteEntities && kv.Value.Linkage is not null).ToList();

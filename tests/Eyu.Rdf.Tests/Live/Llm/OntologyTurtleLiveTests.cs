@@ -63,6 +63,6 @@ public class OntologyTurtleLiveTests(ITestOutputHelper output)
         Assert.Equal(proposal.Entities.Count,
             g.GetTriplesWithPredicateObject(g.CreateUriNode(new Uri(Rdf + "type")), g.CreateUriNode(new Uri(Owl + "NamedIndividual"))).Count());
         Assert.Equal(proposal.Relations.Count,
-            g.GetTriplesWithPredicateObject(g.CreateUriNode(new Uri(Rdf + "type")), g.CreateUriNode(new Uri(Rdf + "Statement"))).Count());
+            g.GetTriplesWithPredicateObject(g.CreateUriNode(new Uri(Rdf + "type")), g.CreateUriNode(new Uri(Owl + "Axiom"))).Count());
     }
 }

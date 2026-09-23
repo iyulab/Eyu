@@ -16,8 +16,8 @@ every published version has a section here.
   (`OntologyTurtle.ToTurtle` / `Write`, with `RdfExportOptions` naming the caller's namespace). Entity
   types become classes, relation names object properties, entities named individuals, and relations
   assertions between them; each element's claim, cited records, confidence and basis are carried as
-  annotations in an Eyu vocabulary (`EyuVocabulary`), a relation's on the `rdf:Statement` that
-  reifies it. Names Eyu compares as one — case and separators ignored — become one term. Innate
+  annotations in an Eyu vocabulary (`EyuVocabulary`), a relation's as an OWL axiom annotation
+  (`owl:Axiom`), so an OWL reader keeps them attached to the assertion. Names Eyu compares as one — case and separators ignored — become one term. Innate
   types and relations are written as Eyu's own terms, not aligned to any outside vocabulary.
   Rejections are not written. Until now a proposal could only be read by code that knew Eyu's record
   types. The package takes no dependency beyond `Eyu.Core`: its tests read the output back with an

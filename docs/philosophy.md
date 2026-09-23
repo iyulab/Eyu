@@ -145,7 +145,7 @@ ontology — the form a knowledge-graph practice's tools already read — and an
 OWL file is ordinarily read as a set of assertions. So nothing is written
 bare: every individual carries its claim, the records it cites, its
 confidence and whether its type was declared, and every relation carries the
-same on the `rdf:Statement` that reifies it. A consumer that strips those
+same as an OWL axiom annotation on the assertion itself. A consumer that strips those
 annotations to get a "clean" graph has turned claims into assertions by
 subtraction, which is exactly the detachment the paragraph above warns
 against. Two more choices follow from this section rather than from

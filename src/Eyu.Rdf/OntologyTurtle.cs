@@ -21,8 +21,11 @@ namespace Eyu.Rdf;
 /// <para>
 /// What the proposal knows about each element travels with it, as annotations in
 /// <see cref="EyuVocabulary"/>: the claim, each cited record (and field), the confidence and whether
-/// the type was declared. A relation's annotations sit on an <c>rdf:Statement</c> reifying it, since an
-/// assertion between two individuals has nowhere else to carry them. Innate types and relations are
+/// the type was declared. A relation's annotations are OWL axiom annotations: an <c>owl:Axiom</c> whose
+/// <c>owl:annotatedSource</c>, <c>owl:annotatedProperty</c> and <c>owl:annotatedTarget</c> name the
+/// assertion. That is the one form an OWL reader attaches to the assertion itself — RDF reification
+/// (<c>rdf:Statement</c>) is outside OWL 2 DL, and an OWL parser drops its links, leaving the
+/// annotations on a node that points at nothing. Innate types and relations are
 /// written as Eyu's own terms and acquired ones under the caller's <see cref="RdfExportOptions.BaseIri"/>
 /// — see <see cref="EyuVocabulary"/> for why neither is aligned to an outside vocabulary.
 /// </para>
@@ -108,10 +111,10 @@ public static class OntologyTurtle
             var predicate = properties[Normalize(relation.RelationName)];
 
             writer.Write(from + " " + predicate + " " + to + " .\n");
-            writer.Write("[] a rdf:Statement ;\n");
-            writer.Write("    rdf:subject " + from + " ;\n");
-            writer.Write("    rdf:predicate " + predicate + " ;\n");
-            writer.Write("    rdf:object " + to + " ;\n");
+            writer.Write("[] a owl:Axiom ;\n");
+            writer.Write("    owl:annotatedSource " + from + " ;\n");
+            writer.Write("    owl:annotatedProperty " + predicate + " ;\n");
+            writer.Write("    owl:annotatedTarget " + to + " ;\n");
             WriteProvenance(writer, relation.Claim, relation.Confidence, relation.Basis);
         }
     }

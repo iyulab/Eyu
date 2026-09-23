@@ -300,7 +300,8 @@ var turtle = OntologyTurtle.ToTurtle(proposal, new RdfExportOptions(new Uri("htt
 Each distinct entity type becomes an `owl:Class`, each distinct relation name an
 `owl:ObjectProperty`, each entity an `owl:NamedIndividual` and each relation an assertion between
 two of them. The claim, the cited records, the confidence and whether a type was declared travel as
-annotations — on a relation, through an `rdf:Statement` that reifies it. Acquired terms are minted
+annotations — on a relation, as an OWL axiom annotation (`owl:Axiom`), the form an OWL editor attaches
+to the assertion itself. Acquired terms are minted
 under the namespace you pass; innate ones are Eyu's own terms, and neither is aligned to an outside
 vocabulary. Rejections are not written, and entity IRIs come from `EntityId`, which means nothing
 outside one proposal. The package depends on nothing beyond `Eyu.Core`.

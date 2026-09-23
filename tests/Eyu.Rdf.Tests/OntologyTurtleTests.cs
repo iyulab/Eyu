@@ -71,21 +71,41 @@ public class OntologyTurtleTests
     }
 
     [Fact]
-    public void A_relation_is_an_assertion_between_individuals_with_its_provenance_on_a_reified_statement()
+    public void A_relation_is_an_assertion_between_individuals_with_its_provenance_as_an_axiom_annotation()
     {
         var g = Parse(Plant);
         var maintains = U(g, Base + "maintains");
 
         Assert.Single(g.GetTriplesWithPredicate(maintains));
-        var statements = SubjectsOfType(g, Rdf + "Statement").ToList();
-        Assert.Equal(2, statements.Count);
+        var axioms = SubjectsOfType(g, Owl + "Axiom").ToList();
+        Assert.Equal(2, axioms.Count);
 
-        var reified = statements.Single(s =>
-            g.GetTriplesWithSubjectPredicate(s, U(g, Rdf + "predicate")).Single().Object.Equals(maintains));
-        Assert.Equal(U(g, Base + "entity/e3"), g.GetTriplesWithSubjectPredicate(reified, U(g, Rdf + "subject")).Single().Object);
-        var cites = g.GetTriplesWithSubjectPredicate(reified, U(g, EyuVocabulary.Cites)).Single().Object;
+        var annotated = axioms.Single(s =>
+            g.GetTriplesWithSubjectPredicate(s, U(g, Owl + "annotatedProperty")).Single().Object.Equals(maintains));
+        Assert.Equal(U(g, Base + "entity/e3"), g.GetTriplesWithSubjectPredicate(annotated, U(g, Owl + "annotatedSource")).Single().Object);
+        Assert.Equal(U(g, Base + "entity/e1"), g.GetTriplesWithSubjectPredicate(annotated, U(g, Owl + "annotatedTarget")).Single().Object);
+        var cites = g.GetTriplesWithSubjectPredicate(annotated, U(g, EyuVocabulary.Cites)).Single().Object;
         Assert.Equal("owner", ((ILiteralNode)g.GetTriplesWithSubjectPredicate(cites, U(g, EyuVocabulary.FieldName)).Single().Object).Value);
-        Assert.Equal("0.6", ((ILiteralNode)g.GetTriplesWithSubjectPredicate(reified, U(g, EyuVocabulary.Confidence)).Single().Object).Value);
+        Assert.Equal("0.6", ((ILiteralNode)g.GetTriplesWithSubjectPredicate(annotated, U(g, EyuVocabulary.Confidence)).Single().Object).Value);
+    }
+
+    // An OWL reader maps only the rdf: terms OWL 2 gives a meaning to. Anything else from that namespace
+    // — rdf:Statement and its rdf:subject/predicate/object above all — is reserved vocabulary: an OWL
+    // parser leaves those triples unparsed and the ontology falls outside OWL 2 DL, which a plain RDF
+    // parser, reading every triple alike, never notices.
+    [Fact]
+    public void The_only_rdf_term_written_is_rdf_type_so_an_owl_reader_parses_every_triple()
+    {
+        var g = Parse(Plant);
+
+        var rdfTerms = g.Triples
+            .SelectMany(t => new[] { t.Predicate, t.Object })
+            .OfType<IUriNode>()
+            .Select(n => n.Uri.AbsoluteUri)
+            .Where(iri => iri.StartsWith(Rdf, StringComparison.Ordinal))
+            .Distinct();
+
+        Assert.Equal([Rdf + "type"], rdfTerms);
     }
 
     // Innate words are Eyu's own, so they are written in Eyu's namespace — and nowhere else. Aligning

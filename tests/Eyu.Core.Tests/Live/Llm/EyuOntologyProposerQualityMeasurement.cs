@@ -148,6 +148,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         public readonly List<Dictionary<string, IdentityKeys>> IdentityByAttempt = [];
         public int ProposalLocalIris;
         public int MergedInProposal;
+        public int SharedDenotingSets;
+        public readonly SortedDictionary<string, int> DenotedBySizes = new(StringComparer.Ordinal);
         public readonly List<string> LongNamedEntities = [];
     }
 
@@ -327,7 +329,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
     }
 
-    internal sealed record IdentityKeys(string EntityId, string Iri, string DenotedBy, string Cited, string EntityType)
+    internal sealed record IdentityKeys(string EntityId, string Iri, string DenotedBy, string Cited, string EntityType, int SharingDenotedBy)
     {
         /// <summary>Which rule named the individual: its denoting records, its name and type, or its own id after a key collision.</summary>
         public string KeyKind => Iri.Contains("/local/", StringComparison.Ordinal) ? "proposal-local" : DenotedBy.Length > 0 ? "records" : "name+type";
@@ -344,6 +346,19 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             .Where(g => g.Count() > 1)
             .Sum(g => g.Count());
 
+        string DenotingSet(EntityProposal e) => string.Join(",", e.DenotedBy.Order(StringComparer.Ordinal));
+        var sharing = proposal.Entities
+            .Where(e => e.DenotedBy.Count > 0)
+            .GroupBy(DenotingSet, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        foreach (var entity in proposal.Entities)
+        {
+            var size = entity.DenotedBy.Count >= 2 ? "2+" : entity.DenotedBy.Count.ToString(CultureInfo.InvariantCulture);
+            stats.DenotedBySizes[size] = stats.DenotedBySizes.GetValueOrDefault(size) + 1;
+        }
+
+        stats.SharedDenotingSets += sharing.Count(kv => kv.Value > 1);
+
         var byName = new Dictionary<string, IdentityKeys>(StringComparer.Ordinal);
         foreach (var entity in proposal.Entities)
         {
@@ -354,7 +369,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                     iris[entity.EntityId],
                     string.Join(",", entity.DenotedBy.Order(StringComparer.Ordinal)),
                     string.Join(",", entity.Claim.Sources.Select(s => s.RecordId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)),
-                    entity.EntityType));
+                    entity.EntityType,
+                    entity.DenotedBy.Count > 0 ? sharing[DenotingSet(entity)] : 0));
         }
 
         stats.IdentityByAttempt.Add(byName);
@@ -418,7 +434,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
             var kinds = keys.Select(k => k.KeyKind).ToList();
             var cause = kinds.Contains("proposal-local")
-                ? $"proposal-local in {kinds.Count(k => k == "proposal-local")} of {kinds.Count} attempts"
+                ? $"proposal-local in {kinds.Count(k => k == "proposal-local")} of {kinds.Count} attempts (denoting set shared by "
+                  + string.Join(" / ", keys.Where(k => k.KeyKind == "proposal-local").Select(k => $"{k.SharingDenotedBy} entities: {{{k.DenotedBy}}}")) + ")"
                 : kinds.Distinct(StringComparer.Ordinal).Count() > 1
                     ? "key changed: " + string.Join(" / ", kinds)
                     : kinds[0] == "records"
@@ -649,6 +666,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         report.AppendLine();
         foreach (var (name, s) in stats)
         {
+            report.AppendLine(CultureInfo.InvariantCulture,
+                $"- {name} denotedBy sizes: {string.Join(", ", s.DenotedBySizes.Select(kv => $"{kv.Key} → {kv.Value}"))}; denoting sets several entities claimed, over all attempts: {s.SharedDenotingSets}");
             foreach (var loss in IriLosses(s))
             {
                 report.AppendLine(CultureInfo.InvariantCulture, $"- {name} IRI lost: {loss}");

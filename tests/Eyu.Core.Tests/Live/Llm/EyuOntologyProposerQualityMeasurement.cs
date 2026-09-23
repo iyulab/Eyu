@@ -117,6 +117,17 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         /// <summary>Entities whose type name is written in Hangul — a type name the English innate vocabulary and English declarations can never match.</summary>
         public int HangulTypedEntities;
+
+        /// <summary>
+        /// Confidence of every entity that cites a single record, and of every entity citing several, split by whether the
+        /// pre-filter linked those records into one cluster. An entity cited from records the pre-filter did not link is,
+        /// in a records case, usually one the rows refer to rather than one they denote — the case the confidence
+        /// adjustment reads as a merge claim.
+        /// </summary>
+        public readonly List<double> SingleRecordConfidences = [];
+        public readonly List<double> LinkedRecordsConfidences = [];
+        public readonly List<double> UnlinkedRecordsConfidences = [];
+        public readonly List<string> UnlinkedRecordsEntities = [];
     }
 
     private static LinkageOptions BuildLinkageOptionsFromEnvironment()
@@ -240,6 +251,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         stats.EntityTypeShapes.Add(string.Join(",", proposal.Entities.Select(e => e.EntityType).Distinct().OrderBy(t => t, StringComparer.Ordinal)));
         ScoreTypeVocabulary(proposal, stats);
 
+        RecordConfidence(proposal, stats);
+
         foreach (var entity in proposal.Entities)
         {
             if (entity.Claim.Sources.Any(s => !recordIds.Contains(s.RecordId)))
@@ -280,6 +293,33 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                     stats.FailureNotes.Add(
                         $"relation {relation.RelationName} overlap {overlap.MatchedTokenCount}/{overlap.ClaimTokenCount} ({overlap.Ratio:P0}): \"{relation.Claim.Claim}\"");
                 }
+            }
+        }
+    }
+
+    private static void RecordConfidence(OntologyProposal proposal, CaseStats stats)
+    {
+        if (!stats.RecordsDenoteEntities || stats.Linkage is null)
+        {
+            return;
+        }
+
+        foreach (var entity in proposal.Entities)
+        {
+            var cited = entity.Claim.Sources.Select(s => s.RecordId).ToHashSet(StringComparer.Ordinal);
+            if (cited.Count <= 1)
+            {
+                stats.SingleRecordConfidences.Add(entity.Confidence);
+            }
+            else if (stats.Linkage.Clustering.Clusters.Any(c => cited.IsSubsetOf(c.RecordIds)))
+            {
+                stats.LinkedRecordsConfidences.Add(entity.Confidence);
+            }
+            else
+            {
+                stats.UnlinkedRecordsConfidences.Add(entity.Confidence);
+                stats.UnlinkedRecordsEntities.Add(
+                    string.Create(CultureInfo.InvariantCulture, $"{entity.Name} ({entity.EntityType}, {cited.Count} records) {entity.Confidence:F3}"));
             }
         }
     }
@@ -438,6 +478,31 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             }
         }
 
+        var recordRows = stats.Where(kv => kv.Value.RecordsDenoteEntities && kv.Value.Linkage is not null).ToList();
+        if (recordRows.Count > 0)
+        {
+            report.AppendLine().AppendLine("## Entity confidence by what the cited records are (records cases, across parsed attempts)")
+                .AppendLine()
+                .AppendLine("An entity citing several records the pre-filter did not link is usually one the rows refer to (a plant, a make, a machine named in a field) rather than one they denote; the confidence adjustment reads those citations as a claim that the records are one entity.")
+                .AppendLine()
+                .AppendLine("| case | one record: n · mean | linked records: n · mean | unlinked records: n · mean |")
+                .AppendLine("|---|---|---|---|");
+            foreach (var (name, s) in recordRows)
+            {
+                report.AppendLine(CultureInfo.InvariantCulture,
+                    $"| {name} | {Summary(s.SingleRecordConfidences)} | {Summary(s.LinkedRecordsConfidences)} | {Summary(s.UnlinkedRecordsConfidences)} |");
+            }
+
+            report.AppendLine();
+            foreach (var (name, s) in recordRows)
+            {
+                foreach (var entity in s.UnlinkedRecordsEntities.Distinct())
+                {
+                    report.AppendLine(CultureInfo.InvariantCulture, $"- {name}: {entity}");
+                }
+            }
+        }
+
         report.AppendLine().AppendLine("## Competency questions (vocabulary reach — heuristic, not a semantic check)")
             .AppendLine()
             .AppendLine("| case | question | reached |")
@@ -465,6 +530,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         return report.ToString();
     }
+
+    private static string Summary(List<double> values) =>
+        values.Count == 0 ? "0 · -" : string.Create(CultureInfo.InvariantCulture, $"{values.Count} · {values.Average():F3}");
 
     private static string Regime(CaseStats stats) => stats.RecordsDenoteEntities ? "entities" : "document chunks";
 

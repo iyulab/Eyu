@@ -760,6 +760,42 @@ public class SinglePassOntologyProposerTests
         return filled;
     }
 
+    // Pins current behavior, not intended behavior. Each row here denotes one entity -- two work
+    // orders and one machine -- and the work orders name the machine in a field, the way normalized
+    // business data refers to other entities. The model's machine entity cites all three rows, which
+    // is right: they are where the machine appears. The confidence adjustment reads those citations as
+    // a claim that the three rows denote one entity, finds the two work orders a NonMatch, and pulls
+    // the machine's confidence from 0.9 to 0.1, while a relation keeps the model's number. Citing a row
+    // as the place an entity is mentioned and citing it as the entity itself are not yet told apart;
+    // when they are, this test changes.
+    [Fact]
+    public async Task Characterization_an_entity_rows_only_refer_to_is_penalized_by_the_linkage_of_the_rows_themselves()
+    {
+        RawRecord[] records =
+        [
+            new("w-01", new Dictionary<string, string?> { ["order_no"] = "WO-2024-0311", ["machine"] = "Press 3", ["operator"] = "Kim", ["process"] = "blanking", ["site"] = "Plant 1", ["start"] = "2024-03-11" }),
+            new("w-02", new Dictionary<string, string?> { ["order_no"] = "WO-2024-0312", ["machine"] = "Press 3", ["operator"] = "Lee", ["process"] = "piercing", ["site"] = "Plant 1", ["start"] = "2024-03-12", ["note"] = "first-article inspection after die change" }),
+            new("m-01", new Dictionary<string, string?> { ["machine_name"] = "Press 3", ["maker"] = "Hanbit", ["installed_at"] = "Plant 1", ["rated_tons"] = "200" }),
+        ];
+        var model = new StubModelClient("""
+            {
+              "entities": [
+                {"id": "wo1", "name": "WO-2024-0311", "type": "WorkOrder", "claim": "w-01 is a work order", "sources": ["w-01"], "confidence": 0.9},
+                {"id": "press", "name": "Press 3", "type": "Machine", "claim": "Press 3 appears in both work orders and the machine master", "sources": ["w-01", "w-02", "m-01"], "confidence": 0.9}
+              ],
+              "relations": [
+                {"name": "uses_machine", "from": "wo1", "to": "press", "claim": "w-01 names Press 3 as its machine", "sources": ["w-01"], "confidence": 0.9}
+              ]
+            }
+            """);
+
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], records, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0.9, proposal.Entities.Single(e => e.EntityId == "wo1").Confidence);
+        Assert.Equal(0.1, proposal.Entities.Single(e => e.EntityId == "press").Confidence, precision: 3);
+        Assert.Equal(0.9, Assert.Single(proposal.Relations).Confidence);
+    }
+
     private sealed class StubModelClient(string responseText) : IModelClient
     {
         public string? LastPrompt { get; private set; }

@@ -139,7 +139,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         var linkageAnalysis = LinkagePipeline.Analyze(records, options);
         var prompt = BuildPrompt(declaredStructures, records, linkageAnalysis);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt, ResponseSchema), cancellationToken).ConfigureAwait(false);
-        var parsed = ParseResponse(response.Text, records, linkageAnalysis);
+        var parsed = ParseResponse(response.Text, records, linkageAnalysis, options.RecordsDenoteEntities);
         return DeclaredStructureMerge.Apply(declaredStructures, parsed.Entities, parsed.Relations, parsed.Rejections);
     }
 
@@ -277,7 +277,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     /// own and against the entities that survived. Origin is stamped from
     /// <see cref="InnateVocabulary"/>, not read from the model.
     /// </summary>
-    private static OntologyProposal ParseResponse(string responseText, IReadOnlyList<RawRecord> records, LinkageAnalysis linkageAnalysis)
+    private static OntologyProposal ParseResponse(string responseText, IReadOnlyList<RawRecord> records, LinkageAnalysis linkageAnalysis, bool recordsDenoteEntities)
     {
         ProposalResponse parsed;
         try
@@ -320,7 +320,10 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             // records claimed to denote this one. A record that merely mentions the entity -- a work
             // order naming its machine -- says nothing about whether it is the same thing as another,
             // and reading it that way penalized exactly the entities many rows refer to.
-            var denotedBy = Denoting(e);
+            // Where records do not each denote one entity -- chunks of a document -- no record is an
+            // entity, whatever the answer says: a record it names there is kept as a citation, never as
+            // an identity. Models fill the field for chunks anyway, and not the same way twice.
+            var denotedBy = recordsDenoteEntities ? Denoting(e) : [];
             var claim = ToClaim(e.Claim!, EntitySources(e));
             var confidence = LinkageConfidenceAdjuster.AdjustConfidence(denotedBy, e.Confidence!.Value, linkageAnalysis);
             entities.Add(EntityProposal.Create(e.Id!, e.Name!.Trim(), e.Type!, claim, InnateVocabulary.OfEntityType(e.Type!), confidence, denotedBy: denotedBy));

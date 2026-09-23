@@ -352,6 +352,25 @@ public class SinglePassOntologyProposerTests
         Assert.Contains("2012, 대전", rejection.Detail);
     }
 
+    // A chunk of a document mentions what it describes; it is not a record of it. A model asked for
+    // "denotedBy" fills it for chunks anyway, and differently on every call, so in that regime the
+    // answer is kept as a citation and never as an identity claim.
+    [Fact]
+    public async Task ProposeAsync_claims_no_denoting_record_where_records_do_not_denote_entities()
+    {
+        var model = new StubModelClient("""
+            {"entities":[{"id":"E1","name":"Acme","type":"Organization","claim":"x","sources":["c1"],"denotedBy":["c1","c2"],"confidence":0.8}],"relations":[]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model, new LinkageOptions(RecordsDenoteEntities: false));
+
+        var proposal = await proposer.ProposeAsync(declaredStructures: [], records: [OneRecord("c1"), OneRecord("c2")], TestContext.Current.CancellationToken);
+
+        var entity = Assert.Single(proposal.Entities);
+        Assert.Empty(entity.DenotedBy);
+        Assert.Equal(["c1", "c2"], entity.Claim.Sources.Select(s => s.RecordId));
+        Assert.Equal(0.8, entity.Confidence);
+    }
+
     [Fact]
     public async Task ProposeAsync_still_refuses_the_whole_response_when_an_element_cites_an_invented_source()
     {

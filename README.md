@@ -287,8 +287,9 @@ ground correctly (a chunk id is a fine source id); pass
 record stays its own singleton, and the prompt carries no pre-linked groups or gray-zone
 pairs. With the pre-filter off there is no linkage prior, so nothing adjusts the model's
 self-reported confidence up or down — it is carried through as given. The cited sources then
-no longer identify an entity either (a chunk cites many), so `EntityProposal.Name` — the
-entity as the records write it — is what a caller links and stores by; `EntityId` only ties
+no longer identify an entity either (a chunk cites many), and no chunk denotes one —
+`EntityProposal.DenotedBy` is always empty here, whatever the model answered — so
+`EntityProposal.Name` — the entity as the records write it — is what a caller links and stores by; `EntityId` only ties
 relations to entities inside one proposal and must never be persisted as an identity. Keep one document
 per batch, and mind that every record is rendered into the
 prompt in full — the batch size is bounded by the model's context, not by Eyu.

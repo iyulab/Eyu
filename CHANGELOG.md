@@ -26,6 +26,10 @@ every published version has a section here.
   `denotedBy` claims no identity and nothing is adjusted; a denoting record missing from `sources`
   is added to them; a `denotedBy` id the call was never given refuses the response like any invented
   source. `EntityProposal.Create` takes an optional `denotedBy`, defaulting to every cited record.
+  Where records do not denote entities (`LinkageOptions.RecordsDenoteEntities: false`, document
+  chunks) `DenotedBy` is always empty: a chunk mentions what it describes and is not a record of it,
+  and models asked for `denotedBy` there fill it anyway, differently on every call. A record named in
+  it is kept as a citation.
 
 ### Added
 

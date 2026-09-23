@@ -9,6 +9,32 @@ public class EntityProposalTests
     private static GroundedClaim SampleClaim() =>
         GroundedClaim.Create("records rec-1 and rec-2 denote the same person", sources: [new SourceRef("rec-1"), new SourceRef("rec-2")]);
 
+    [Fact]
+    public void Create_without_denotedBy_takes_every_cited_record_as_denoting_the_entity()
+    {
+        var entity = EntityProposal.Create("e1", "Kim", "Person", SampleClaim(), VocabularyOrigin.Innate, confidence: 0.8);
+
+        Assert.Equal(["rec-1", "rec-2"], entity.DenotedBy);
+        Assert.Empty(entity.MentionedIn);
+    }
+
+    [Fact]
+    public void Create_splits_the_cited_records_into_those_that_denote_and_those_that_mention()
+    {
+        var entity = EntityProposal.Create("e1", "Kim", "Person", SampleClaim(), VocabularyOrigin.Innate, confidence: 0.8, denotedBy: ["rec-2"]);
+
+        Assert.Equal(["rec-2"], entity.DenotedBy);
+        Assert.Equal(["rec-1"], entity.MentionedIn);
+    }
+
+    [Fact]
+    public void Create_rejects_a_denoting_record_the_claim_does_not_cite()
+    {
+        var ex = Assert.Throws<ArgumentException>(() =>
+            EntityProposal.Create("e1", "Kim", "Person", SampleClaim(), VocabularyOrigin.Innate, confidence: 0.8, denotedBy: ["rec-9"]));
+        Assert.Contains("rec-9", ex.Message);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

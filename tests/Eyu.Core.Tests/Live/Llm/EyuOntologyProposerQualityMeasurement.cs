@@ -119,12 +119,13 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         public int HangulTypedEntities;
 
         /// <summary>
-        /// Confidence of every entity that cites a single record, and of every entity citing several, split by whether the
-        /// pre-filter linked those records into one cluster. An entity cited from records the pre-filter did not link is,
-        /// in a records case, usually one the rows refer to rather than one they denote — the case the confidence
-        /// adjustment reads as a merge claim.
+        /// Confidence of every entity that cites a single record, and of every entity citing several, split by what it
+        /// claims about them: denoted by at most one (the rest only mention it — a plant, a make, a machine named in a
+        /// field), or denoted by several the pre-filter did or did not link. Only the last two are merge claims, so only
+        /// they are adjusted; an unlinked one is a merge the linkage evidence argues against.
         /// </summary>
         public readonly List<double> SingleRecordConfidences = [];
+        public readonly List<double> ReferencedConfidences = [];
         public readonly List<double> LinkedRecordsConfidences = [];
         public readonly List<double> UnlinkedRecordsConfidences = [];
         public readonly List<string> UnlinkedRecordsEntities = [];
@@ -313,11 +314,16 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         foreach (var entity in proposal.Entities)
         {
             var cited = entity.Claim.Sources.Select(s => s.RecordId).ToHashSet(StringComparer.Ordinal);
+            var denoting = entity.DenotedBy.ToHashSet(StringComparer.Ordinal);
             if (cited.Count <= 1)
             {
                 stats.SingleRecordConfidences.Add(entity.Confidence);
             }
-            else if (stats.Linkage.Clustering.Clusters.Any(c => cited.IsSubsetOf(c.RecordIds)))
+            else if (denoting.Count <= 1)
+            {
+                stats.ReferencedConfidences.Add(entity.Confidence);
+            }
+            else if (stats.Linkage.Clustering.Clusters.Any(c => denoting.IsSubsetOf(c.RecordIds)))
             {
                 stats.LinkedRecordsConfidences.Add(entity.Confidence);
             }
@@ -325,7 +331,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             {
                 stats.UnlinkedRecordsConfidences.Add(entity.Confidence);
                 stats.UnlinkedRecordsEntities.Add(
-                    string.Create(CultureInfo.InvariantCulture, $"{entity.Name} ({entity.EntityType}, {cited.Count} records) {entity.Confidence:F3}"));
+                    string.Create(CultureInfo.InvariantCulture, $"{entity.Name} ({entity.EntityType}, denoted by {denoting.Count} of {cited.Count} records) {entity.Confidence:F3}"));
             }
         }
     }
@@ -508,14 +514,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         {
             report.AppendLine().AppendLine("## Entity confidence by what the cited records are (records cases, across parsed attempts)")
                 .AppendLine()
-                .AppendLine("An entity citing several records the pre-filter did not link is usually one the rows refer to (a plant, a make, a machine named in a field) rather than one they denote; the confidence adjustment reads those citations as a claim that the records are one entity.")
+                .AppendLine("An entity citing several records is split by what it claims about them. Denoted by at most one, the rest only mention it (a plant, a make, a machine named in a field) and nothing is adjusted. Denoted by several, it claims they are one entity, and the confidence adjustment weighs that claim against the linkage evidence — linked when the pre-filter agrees, unlinked when it does not (listed below).")
                 .AppendLine()
-                .AppendLine("| case | one record: n · mean | linked records: n · mean | unlinked records: n · mean |")
-                .AppendLine("|---|---|---|---|");
+                .AppendLine("| case | one record: n · mean | referenced (denoted by ≤1): n · mean | denoted, linked: n · mean | denoted, unlinked: n · mean |")
+                .AppendLine("|---|---|---|---|---|");
             foreach (var (name, s) in recordRows)
             {
                 report.AppendLine(CultureInfo.InvariantCulture,
-                    $"| {name} | {Summary(s.SingleRecordConfidences)} | {Summary(s.LinkedRecordsConfidences)} | {Summary(s.UnlinkedRecordsConfidences)} |");
+                    $"| {name} | {Summary(s.SingleRecordConfidences)} | {Summary(s.ReferencedConfidences)} | {Summary(s.LinkedRecordsConfidences)} | {Summary(s.UnlinkedRecordsConfidences)} |");
             }
 
             report.AppendLine();

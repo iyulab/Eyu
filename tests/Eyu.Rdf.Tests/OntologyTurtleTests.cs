@@ -172,6 +172,24 @@ public class OntologyTurtleTests
         Assert.Equal("acquired", ((ILiteralNode)g.GetTriplesWithSubjectPredicate(U(g, Base + "Equipment"), U(g, EyuVocabulary.Origin)).Single().Object).Value);
     }
 
+    // Which cited records are the individual itself travels with it, so a reader of the ontology can
+    // tell the records that are one entity from the records that only mention it -- the distinction
+    // the proposal's confidence already rests on.
+    [Fact]
+    public void The_records_that_denote_an_individual_are_annotated_apart_from_those_that_mention_it()
+    {
+        var machine = EntityProposal.Create("m", "Press 3", "Machine",
+            Cite("Press 3 appears in two work orders and the machine master", new SourceRef("w-01"), new SourceRef("w-02"), new SourceRef("m-01")),
+            VocabularyOrigin.Acquired, 0.9, denotedBy: ["m-01"]);
+
+        var g = Parse(new OntologyProposal([machine], [], []));
+
+        var individual = U(g, Base + "entity/m");
+        Assert.Equal(["m-01"], g.GetTriplesWithSubjectPredicate(individual, U(g, EyuVocabulary.DenotedBy)).Select(t => ((ILiteralNode)t.Object).Value));
+        Assert.Equal(3, g.GetTriplesWithSubjectPredicate(individual, U(g, EyuVocabulary.Cites)).Count());
+        Assert.Contains(g.GetTriplesWithSubjectPredicate(U(g, EyuVocabulary.DenotedBy), U(g, Rdf + "type")), t => t.Object.Equals(U(g, Owl + "AnnotationProperty")));
+    }
+
     // A rejection is a fact about the model's answer, not about the domain: an ontology carrying it
     // would assert what the proposer refused to.
     [Fact]

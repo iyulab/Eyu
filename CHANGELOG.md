@@ -10,6 +10,23 @@ every published version has a section here.
 
 ## Unreleased
 
+### Changed
+
+- An entity now says which of the records it cites *are* it. `EntityProposal.DenotedBy` lists the
+  cited records that denote the entity, and `MentionedIn` the rest — records that only refer to it,
+  the way a work order names the machine it ran on; the claim's sources are still every record the
+  entity appears in. The response schema and prompt ask the model for `denotedBy` alongside
+  `sources`, so the prompt fingerprint changes and measurement runs before and after this release
+  are not comparable. The linkage confidence adjustment now reads only `denotedBy`: until now it read
+  every citation as a claim that the cited records are one entity, so an entity many rows refer to —
+  a machine, a plant, a manufacturer — had its confidence pulled toward zero because those rows are
+  different rows (0.9 → 0.1 for a machine two work orders and its master row cite), while an entity
+  cited by rows the pre-filter had linked was pushed to 0.999 whatever the model said. A claim that
+  two non-matching records are one entity is penalized exactly as before. An answer that omits
+  `denotedBy` claims no identity and nothing is adjusted; a denoting record missing from `sources`
+  is added to them; a `denotedBy` id the call was never given refuses the response like any invented
+  source. `EntityProposal.Create` takes an optional `denotedBy`, defaulting to every cited record.
+
 ### Added
 
 - `Eyu.Rdf`, a third package: writes an `OntologyProposal` as an OWL ontology in RDF 1.1 Turtle
@@ -17,7 +34,8 @@ every published version has a section here.
   types become classes, relation names object properties, entities named individuals, and relations
   assertions between them; each element's claim, cited records, confidence and basis are carried as
   annotations in an Eyu vocabulary (`EyuVocabulary`), a relation's as an OWL axiom annotation
-  (`owl:Axiom`), so an OWL reader keeps them attached to the assertion. Names Eyu compares as one — case and separators ignored — become one term. Innate
+  (`owl:Axiom`), so an OWL reader keeps them attached to the assertion. An individual also carries
+  `eyu:denotedBy` for each cited record that is a record of it. Names Eyu compares as one — case and separators ignored — become one term. Innate
   types and relations are written as Eyu's own terms, not aligned to any outside vocabulary.
   Rejections are not written. Until now a proposal could only be read by code that knew Eyu's record
   types. The package takes no dependency beyond `Eyu.Core`: its tests read the output back with an

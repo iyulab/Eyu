@@ -71,7 +71,7 @@ public static class OntologyTurtle
 
         writer.Write(Iri(baseIri.TrimEnd('#')) + " a owl:Ontology .\n\n");
 
-        foreach (var property in new[] { "claim", "cites", "recordId", "fieldName", "confidence", "basis", "origin" })
+        foreach (var property in new[] { "claim", "cites", "recordId", "fieldName", "denotedBy", "confidence", "basis", "origin" })
         {
             writer.Write("eyu:" + property + " a owl:AnnotationProperty .\n");
         }
@@ -101,6 +101,11 @@ public static class OntologyTurtle
             var subject = Iri(terms.Individual(entity.EntityId));
             writer.Write(subject + " a owl:NamedIndividual, " + classes[Normalize(entity.EntityType)] + " ;\n");
             writer.Write("    rdfs:label " + Literal(entity.Name) + " ;\n");
+            foreach (var recordId in entity.DenotedBy)
+            {
+                writer.Write("    eyu:denotedBy " + Literal(recordId) + " ;\n");
+            }
+
             WriteProvenance(writer, entity.Claim, entity.Confidence, entity.Basis);
         }
 

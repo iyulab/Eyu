@@ -559,7 +559,7 @@ public class SinglePassOntologyProposerTests
     public async Task ProposeAsync_overrides_confidence_with_FS_derived_probability_for_a_clear_match()
     {
         var model = new StubModelClient("""
-            {"entities":[{"id":"e1","name":"e1-name","type":"Organization","claim":"rec-1 and rec-2 are the same org","sources":["rec-1","rec-2"],"confidence":0.5}],"relations":[]}
+            {"entities":[{"id":"e1","name":"e1-name","type":"Organization","claim":"rec-1 and rec-2 are the same org","sources":["rec-1","rec-2"],"denotedBy":["rec-1","rec-2"],"confidence":0.5}],"relations":[]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
         var records = new[]
@@ -584,7 +584,7 @@ public class SinglePassOntologyProposerTests
     public async Task ProposeAsync_combines_FS_prior_with_LLM_confidence_for_a_gray_zone_pair()
     {
         var model = new StubModelClient("""
-            {"entities":[{"id":"e1","name":"e1-name","type":"Organization","claim":"rec-1 and rec-2 are the same org","sources":["rec-1","rec-2"],"confidence":0.9}],"relations":[]}
+            {"entities":[{"id":"e1","name":"e1-name","type":"Organization","claim":"rec-1 and rec-2 are the same org","sources":["rec-1","rec-2"],"denotedBy":["rec-1","rec-2"],"confidence":0.9}],"relations":[]}
             """);
         var proposer = new SinglePassOntologyProposer(model);
         var records = new[]
@@ -664,8 +664,8 @@ public class SinglePassOntologyProposerTests
         var expectedPreamble = string.Join(Environment.NewLine,
         [
             "Propose entities and relations grounded in the input below.",
-            "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.",
-            "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id.",
+            "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"denotedBy\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.",
+            "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id. An entity's \"sources\" are every record it appears in; its \"denotedBy\" lists only those that are records of that entity itself (empty when the records only refer to it), so two ids there claim those records are the same entity.",
             "",
             "Records:",
         ]) + Environment.NewLine;
@@ -760,41 +760,104 @@ public class SinglePassOntologyProposerTests
         return filled;
     }
 
-    // Pins current behavior, not intended behavior. Each row here denotes one entity -- two work
-    // orders and one machine -- and the work orders name the machine in a field, the way normalized
-    // business data refers to other entities. The model's machine entity cites all three rows, which
-    // is right: they are where the machine appears. The confidence adjustment reads those citations as
-    // a claim that the three rows denote one entity, finds the two work orders a NonMatch, and pulls
-    // the machine's confidence from 0.9 to 0.1, while a relation keeps the model's number. Citing a row
-    // as the place an entity is mentioned and citing it as the entity itself are not yet told apart;
-    // when they are, this test changes.
+    // Each row here denotes one entity -- two work orders and one machine -- and the work orders name
+    // the machine in a field, the way normalized business data refers to other entities. The machine
+    // appears in all three rows but only the machine master is a record of it; the work orders only
+    // mention it. Linkage evidence is about whether records are the same entity, so the two work
+    // orders being a NonMatch says nothing about the machine, and its confidence stays the model's.
     [Fact]
-    public async Task Characterization_an_entity_rows_only_refer_to_is_penalized_by_the_linkage_of_the_rows_themselves()
+    public async Task ProposeAsync_leaves_an_entity_rows_only_refer_to_at_the_models_confidence()
     {
-        RawRecord[] records =
-        [
-            new("w-01", new Dictionary<string, string?> { ["order_no"] = "WO-2024-0311", ["machine"] = "Press 3", ["operator"] = "Kim", ["process"] = "blanking", ["site"] = "Plant 1", ["start"] = "2024-03-11" }),
-            new("w-02", new Dictionary<string, string?> { ["order_no"] = "WO-2024-0312", ["machine"] = "Press 3", ["operator"] = "Lee", ["process"] = "piercing", ["site"] = "Plant 1", ["start"] = "2024-03-12", ["note"] = "first-article inspection after die change" }),
-            new("m-01", new Dictionary<string, string?> { ["machine_name"] = "Press 3", ["maker"] = "Hanbit", ["installed_at"] = "Plant 1", ["rated_tons"] = "200" }),
-        ];
-        var model = new StubModelClient("""
-            {
-              "entities": [
-                {"id": "wo1", "name": "WO-2024-0311", "type": "WorkOrder", "claim": "w-01 is a work order", "sources": ["w-01"], "confidence": 0.9},
-                {"id": "press", "name": "Press 3", "type": "Machine", "claim": "Press 3 appears in both work orders and the machine master", "sources": ["w-01", "w-02", "m-01"], "confidence": 0.9}
-              ],
-              "relations": [
-                {"name": "uses_machine", "from": "wo1", "to": "press", "claim": "w-01 names Press 3 as its machine", "sources": ["w-01"], "confidence": 0.9}
-              ]
-            }
-            """);
+        var model = new StubModelClient(WorkOrdersAndMachineResponse(pressDenotedBy: """["m-01"]"""));
 
-        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], records, TestContext.Current.CancellationToken);
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrdersAndMachine(), TestContext.Current.CancellationToken);
 
-        Assert.Equal(0.9, proposal.Entities.Single(e => e.EntityId == "wo1").Confidence);
-        Assert.Equal(0.1, proposal.Entities.Single(e => e.EntityId == "press").Confidence, precision: 3);
+        var press = proposal.Entities.Single(e => e.EntityId == "press");
+        Assert.Equal(0.9, press.Confidence);
+        Assert.Equal(["m-01"], press.DenotedBy);
+        Assert.Equal(["w-01", "w-02"], press.MentionedIn);
+        Assert.Equal(["w-01", "w-02", "m-01"], press.Claim.Sources.Select(s => s.RecordId));
         Assert.Equal(0.9, Assert.Single(proposal.Relations).Confidence);
     }
+
+    // The pre-filter's original purpose, kept: a model that claims two records the linkage found to
+    // be different entities are one is still penalized -- the claim is now the one it made in
+    // "denotedBy", not a citation of where the entity appears.
+    [Fact]
+    public async Task ProposeAsync_still_penalizes_a_claim_that_two_non_matching_records_are_one_entity()
+    {
+        var model = new StubModelClient(WorkOrdersAndMachineResponse(pressDenotedBy: """["w-01", "w-02"]"""));
+
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrdersAndMachine(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(0.1, proposal.Entities.Single(e => e.EntityId == "press").Confidence, precision: 3);
+    }
+
+    // An answer that leaves "denotedBy" out has claimed no identity, so nothing is linked. Taking every
+    // cited record as denoting the entity would restore the penalty on referenced entities; taking
+    // none is what the answer said.
+    [Fact]
+    public async Task ProposeAsync_links_nothing_for_an_entity_whose_answer_omits_denotedBy()
+    {
+        var model = new StubModelClient("""
+            {"entities":[{"id":"press","name":"Press 3","type":"Machine","claim":"x","sources":["w-01","w-02","m-01"],"confidence":0.9}],"relations":[]}
+            """);
+
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrdersAndMachine(), TestContext.Current.CancellationToken);
+
+        var press = Assert.Single(proposal.Entities);
+        Assert.Equal(0.9, press.Confidence);
+        Assert.Empty(press.DenotedBy);
+    }
+
+    // A record that is the entity is evidence for it whether or not the model also listed it under
+    // "sources", so it joins the claim's sources rather than the entity being refused.
+    [Fact]
+    public async Task ProposeAsync_adds_a_denoting_record_the_sources_left_out_to_the_claim()
+    {
+        var model = new StubModelClient("""
+            {"entities":[{"id":"press","name":"Press 3","type":"Machine","claim":"x","sources":["w-01"],"denotedBy":["m-01"],"confidence":0.9}],"relations":[]}
+            """);
+
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrdersAndMachine(), TestContext.Current.CancellationToken);
+
+        var press = Assert.Single(proposal.Entities);
+        Assert.Equal(["w-01", "m-01"], press.Claim.Sources.Select(s => s.RecordId));
+        Assert.Equal(["m-01"], press.DenotedBy);
+    }
+
+    // "denotedBy" is a citation too, so an id the call never supplied there is invented evidence and
+    // refuses the whole response, exactly as it does under "sources".
+    [Fact]
+    public async Task ProposeAsync_refuses_a_response_whose_denotedBy_names_a_record_it_was_never_given()
+    {
+        var model = new StubModelClient("""
+            {"entities":[{"id":"press","name":"Press 3","type":"Machine","claim":"x","sources":["m-01"],"denotedBy":["m-99"],"confidence":0.9}],"relations":[]}
+            """);
+
+        var ex = await Assert.ThrowsAsync<FormatException>(() =>
+            new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrdersAndMachine(), TestContext.Current.CancellationToken));
+        Assert.Contains("m-99", ex.Message);
+    }
+
+    private static RawRecord[] WorkOrdersAndMachine() =>
+    [
+        new("w-01", new Dictionary<string, string?> { ["order_no"] = "WO-2024-0311", ["machine"] = "Press 3", ["operator"] = "Kim", ["process"] = "blanking", ["site"] = "Plant 1", ["start"] = "2024-03-11" }),
+        new("w-02", new Dictionary<string, string?> { ["order_no"] = "WO-2024-0312", ["machine"] = "Press 3", ["operator"] = "Lee", ["process"] = "piercing", ["site"] = "Plant 1", ["start"] = "2024-03-12", ["note"] = "first-article inspection after die change" }),
+        new("m-01", new Dictionary<string, string?> { ["machine_name"] = "Press 3", ["maker"] = "Hanbit", ["installed_at"] = "Plant 1", ["rated_tons"] = "200" }),
+    ];
+
+    private static string WorkOrdersAndMachineResponse(string pressDenotedBy) => $$"""
+        {
+          "entities": [
+            {"id": "wo1", "name": "WO-2024-0311", "type": "WorkOrder", "claim": "w-01 is a work order", "sources": ["w-01"], "denotedBy": ["w-01"], "confidence": 0.9},
+            {"id": "press", "name": "Press 3", "type": "Machine", "claim": "Press 3 appears in both work orders and the machine master", "sources": ["w-01", "w-02", "m-01"], "denotedBy": {{pressDenotedBy}}, "confidence": 0.9}
+          ],
+          "relations": [
+            {"name": "uses_machine", "from": "wo1", "to": "press", "claim": "w-01 names Press 3 as its machine", "sources": ["w-01"], "confidence": 0.9}
+          ]
+        }
+        """;
 
     private sealed class StubModelClient(string responseText) : IModelClient
     {

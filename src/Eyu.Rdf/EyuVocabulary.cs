@@ -29,6 +29,13 @@ public static class EyuVocabulary
     /// <summary>The field within the cited record, when the citation names one.</summary>
     public const string FieldName = Namespace + "fieldName";
 
+    /// <summary>
+    /// The id of a cited record that is a record of this individual itself, not one that only
+    /// mentions it; two on one individual are the proposal's claim that those records are the same
+    /// entity. Written on individuals only — a relation has no identity to claim.
+    /// </summary>
+    public const string DenotedBy = Namespace + "denotedBy";
+
     /// <summary>The proposer's confidence — a routing signal, uncalibrated unless the proposer says otherwise.</summary>
     public const string Confidence = Namespace + "confidence";
 

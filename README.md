@@ -26,7 +26,9 @@ run to run). `SinglePassOntologyProposer` also takes an optional `LinkageOptions
 record pairs it confirms as a match are injected into the prompt as "merge them, do not
 re-decide", gray-zone pairs are injected as a log-odds hint for the model to judge itself, and
 confirmed non-matches get neither — so the prompt does now carry a resolution instruction, where
-before it carried none. A live run measured that this classification is observable (per-pair
+before it carried none. The linkage evidence then adjusts an entity's confidence only through the
+records the entity claims denote it (`DenotedBy`), never through records that merely mention it:
+a machine several work orders name is not penalized because the work orders are different orders. A live run measured that this classification is observable (per-pair
 Match/GrayZone/NonMatch, EM convergence status, match prior) and that changing the thresholds
 measurably changes both the resulting prompt and the grounding-overlap counts. What that run does
 **not** establish: whether any particular threshold setting is more *correct* — no labeled
@@ -167,8 +169,11 @@ system" as the target the architecture is built toward, not as a track record.
 - **A judgment library.** Given structure and records, it proposes what the
   entities, relations, and their confidence are — including which records
   refer to the same real-world entity (entity resolution is part of
-  proposing what the entities *are*, not a separate concern). That's the
-  whole surface.
+  proposing what the entities *are*, not a separate concern). An entity
+  cites every record it appears in, and says which of those *are* it
+  (`EntityProposal.DenotedBy`) — the rest only mention it, the way a work
+  order names its machine. Only the denoting records are a claim that they
+  are one entity. That's the whole surface.
 - **Storage-agnostic.** It has no raw store, no projection target, no query
   engine of its own.
 - **Provider-agnostic.** Model access is a single injected port; local or
@@ -299,8 +304,8 @@ var turtle = OntologyTurtle.ToTurtle(proposal, new RdfExportOptions(new Uri("htt
 
 Each distinct entity type becomes an `owl:Class`, each distinct relation name an
 `owl:ObjectProperty`, each entity an `owl:NamedIndividual` and each relation an assertion between
-two of them. The claim, the cited records, the confidence and whether a type was declared travel as
-annotations — on a relation, as an OWL axiom annotation (`owl:Axiom`), the form an OWL editor attaches
+two of them. The claim, the cited records, which of them denote an individual (`eyu:denotedBy`), the
+confidence and whether a type was declared travel as annotations — on a relation, as an OWL axiom annotation (`owl:Axiom`), the form an OWL editor attaches
 to the assertion itself. Acquired terms are minted
 under the namespace you pass; innate ones are Eyu's own terms, and neither is aligned to an outside
 vocabulary. Rejections are not written, and entity IRIs come from `EntityId`, which means nothing

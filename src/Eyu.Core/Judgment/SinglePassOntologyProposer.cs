@@ -22,6 +22,8 @@ namespace Eyu.Core.Judgment;
 /// confirmed match, a confirmed non-match, or a gray-zone case needing the model's judgment.
 /// Confirmed matches never use the model's self-reported confidence; gray-zone cases combine the
 /// Fellegi-Sunter prior with it via a Bayesian update (<see cref="LinkageConfidenceAdjuster"/>).
+/// Either way the adjustment reads only the records an entity claims are <em>itself</em>
+/// (<see cref="EntityProposal.DenotedBy"/>), never the records that merely mention it.
 /// The parse refuses the whole response only for invalid JSON or an invented source; any other
 /// defective element is left out and reported in <see cref="OntologyProposal.Rejections"/>, and
 /// every surviving element's <see cref="VocabularyOrigin"/> is stamped from
@@ -53,8 +55,8 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     // hashes them. Keeping the literals here (rather than inline in BuildPrompt) makes them the
     // single source both use, so the fingerprint cannot silently disagree with the prompt.
     private const string PromptInstruction = "Propose entities and relations grounded in the input below.";
-    private const string PromptSchema = "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.";
-    private const string PromptReferenceRule = "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id.";
+    private const string PromptSchema = "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"denotedBy\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.";
+    private const string PromptReferenceRule = "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id. An entity's \"sources\" are every record it appears in; its \"denotedBy\" lists only those that are records of that entity itself (empty when the records only refer to it), so two ids there claim those records are the same entity.";
 
     // The same response shape as PromptSchema, as a JSON Schema handed to the model client for
     // structured output. The prompt sentence stays: a client that ignores the schema has only the
@@ -76,9 +78,10 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
                   "type": { "type": "string" },
                   "claim": { "type": "string" },
                   "sources": { "type": "array", "items": { "type": "string" } },
+                  "denotedBy": { "type": "array", "items": { "type": "string" } },
                   "confidence": { "type": "number" }
                 },
-                "required": ["id", "name", "type", "claim", "sources", "confidence"],
+                "required": ["id", "name", "type", "claim", "sources", "denotedBy", "confidence"],
                 "additionalProperties": false
               }
             },
@@ -313,10 +316,14 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
                 continue;
             }
 
-            var claim = ToClaim(e.Claim!, e.Sources!);
-            var citedRecordIds = claim.Sources.Select(s => s.RecordId).Distinct().ToList();
-            var confidence = LinkageConfidenceAdjuster.AdjustConfidence(citedRecordIds, e.Confidence!.Value, linkageAnalysis);
-            entities.Add(EntityProposal.Create(e.Id!, e.Name!.Trim(), e.Type!, claim, InnateVocabulary.OfEntityType(e.Type!), confidence));
+            // Linkage evidence bears on whether records are the same entity, so it adjusts only the
+            // records claimed to denote this one. A record that merely mentions the entity -- a work
+            // order naming its machine -- says nothing about whether it is the same thing as another,
+            // and reading it that way penalized exactly the entities many rows refer to.
+            var denotedBy = Denoting(e);
+            var claim = ToClaim(e.Claim!, EntitySources(e));
+            var confidence = LinkageConfidenceAdjuster.AdjustConfidence(denotedBy, e.Confidence!.Value, linkageAnalysis);
+            entities.Add(EntityProposal.Create(e.Id!, e.Name!.Trim(), e.Type!, claim, InnateVocabulary.OfEntityType(e.Type!), confidence, denotedBy: denotedBy));
         }
 
         var proposedIds = entityResponses.Where(e => !string.IsNullOrWhiteSpace(e.Id)).Select(e => e.Id!).ToHashSet(StringComparer.Ordinal);
@@ -342,13 +349,29 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
 
     private static Defect? EntityDefect(EntityResponse e) =>
         MissingFields(("id", e.Id), ("name", e.Name), ("type", e.Type), ("claim", e.Claim)) is { } missing ? new Defect(RejectionReason.MissingField, missing)
-        : !CitesSources(e.Sources) ? new Defect(RejectionReason.MissingField, "cites no source")
+        : !CitesSources(EntitySources(e)) ? new Defect(RejectionReason.MissingField, "cites no source")
         : ConfidenceDefect(e.Confidence);
 
     private static Defect? RelationDefect(RelationResponse r) =>
         MissingFields(("name", r.Name), ("from", r.From), ("to", r.To), ("claim", r.Claim)) is { } missing ? new Defect(RejectionReason.MissingField, missing)
         : !CitesSources(r.Sources) ? new Defect(RejectionReason.MissingField, "cites no source")
         : ConfidenceDefect(r.Confidence);
+
+    /// <summary>
+    /// An entity's evidence: its sources, and any record it names as denoting it that the sources
+    /// left out — a record that is the entity is evidence for it whether or not the model repeated
+    /// it, so it is added rather than the entity refused.
+    /// </summary>
+    private static List<string?> EntitySources(EntityResponse e) =>
+        (e.Sources ?? []).Concat(Denoting(e).Where(id => !(e.Sources ?? []).Contains(id))).ToList();
+
+    /// <summary>
+    /// The records claimed to denote the entity. An answer that omits the field makes no identity
+    /// claim, so nothing is linked — the schema requires the field, and a record is not taken to
+    /// denote an entity because it was cited as mentioning it.
+    /// </summary>
+    private static List<string> Denoting(EntityResponse e) =>
+        (e.DenotedBy ?? []).Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id!).Distinct(StringComparer.Ordinal).ToList();
 
     private static bool CitesSources(IReadOnlyList<string?>? sources) =>
         sources is { Count: > 0 } && sources.All(id => !string.IsNullOrWhiteSpace(id));
@@ -404,7 +427,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     private static void RejectUnknownSources(IReadOnlyList<EntityResponse> entities, IReadOnlyList<RelationResponse> relations, IReadOnlyList<RawRecord> records, string responseText)
     {
         var known = records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
-        var cited = entities.SelectMany(e => e.Sources ?? [])
+        var cited = entities.SelectMany(EntitySources)
             .Concat(relations.SelectMany(r => r.Sources ?? []))
             .OfType<string>()
             .Where(id => !string.IsNullOrWhiteSpace(id));
@@ -441,7 +464,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
 
     // Every field is nullable: a model can omit any of them, and an omission is a per-element
     // rejection, not a deserialization failure of the whole answer.
-    private sealed record EntityResponse(string? Id, string? Name, string? Type, string? Claim, IReadOnlyList<string?>? Sources, double? Confidence);
+    private sealed record EntityResponse(string? Id, string? Name, string? Type, string? Claim, IReadOnlyList<string?>? Sources, IReadOnlyList<string?>? DenotedBy, double? Confidence);
 
     private sealed record RelationResponse(string? Name, string? From, string? To, string? Claim, IReadOnlyList<string?>? Sources, double? Confidence);
 }

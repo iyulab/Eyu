@@ -665,7 +665,7 @@ public class SinglePassOntologyProposerTests
         [
             "Propose entities and relations grounded in the input below.",
             "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"denotedBy\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.",
-            "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id. An entity's \"sources\" are every record it appears in; its \"denotedBy\" lists only those that are records of that entity itself (empty when the records only refer to it), so two ids there claim those records are the same entity.",
+            "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id. In an entity's \"denotedBy\", list the source ids that are records of that entity itself, not those that only refer to it.",
             "",
             "Records:",
         ]) + Environment.NewLine;

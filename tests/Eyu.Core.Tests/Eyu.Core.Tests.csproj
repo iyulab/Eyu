@@ -21,6 +21,11 @@
     <Compile Remove="Live/Llm/**/*.cs" />
   </ItemGroup>
 
+  <!-- The quality measurement reads identity stability through the IRIs Eyu.Rdf writes, not a copy of its rule. -->
+  <ItemGroup Condition="'$(IncludeEyuLlmLiveTests)' == 'true'">
+    <ProjectReference Include="..\..\src\Eyu.Rdf\Eyu.Rdf.csproj" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Eyu.Core\Eyu.Core.csproj" />
   </ItemGroup>

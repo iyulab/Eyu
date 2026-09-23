@@ -39,6 +39,9 @@ public class OntologyTurtleTests
 
     private static INode U(IGraph g, string iri) => g.CreateUriNode(new Uri(iri));
 
+    private static INode Individual(IGraph g, OntologyProposal proposal, string entityId) =>
+        g.CreateUriNode(new Uri(OntologyTurtle.IndividualIris(proposal, Options)[entityId]));
+
     private static IEnumerable<INode> SubjectsOfType(IGraph g, string type) =>
         g.GetTriplesWithPredicateObject(U(g, Rdf + "type"), U(g, type)).Select(t => t.Subject);
 
@@ -64,7 +67,7 @@ public class OntologyTurtleTests
         Assert.Equal(2, SubjectsOfType(g, Owl + "ObjectProperty").Count());
         Assert.Equal(3, SubjectsOfType(g, Owl + "NamedIndividual").Count());
 
-        var pump = U(g, Base + "entity/e1");
+        var pump = Individual(g, Plant, "e1");
         Assert.Contains(g.GetTriplesWithSubjectPredicate(pump, U(g, Rdf + "type")), t => t.Object.Equals(U(g, Base + "Equipment")));
         Assert.Contains(g.GetTriplesWithSubjectPredicate(pump, U(g, Rdfs + "label")),
             t => t.Object is ILiteralNode { Value: "Pump P-101" });
@@ -82,8 +85,8 @@ public class OntologyTurtleTests
 
         var annotated = axioms.Single(s =>
             g.GetTriplesWithSubjectPredicate(s, U(g, Owl + "annotatedProperty")).Single().Object.Equals(maintains));
-        Assert.Equal(U(g, Base + "entity/e3"), g.GetTriplesWithSubjectPredicate(annotated, U(g, Owl + "annotatedSource")).Single().Object);
-        Assert.Equal(U(g, Base + "entity/e1"), g.GetTriplesWithSubjectPredicate(annotated, U(g, Owl + "annotatedTarget")).Single().Object);
+        Assert.Equal(Individual(g, Plant, "e3"), g.GetTriplesWithSubjectPredicate(annotated, U(g, Owl + "annotatedSource")).Single().Object);
+        Assert.Equal(Individual(g, Plant, "e1"), g.GetTriplesWithSubjectPredicate(annotated, U(g, Owl + "annotatedTarget")).Single().Object);
         var cites = g.GetTriplesWithSubjectPredicate(annotated, U(g, EyuVocabulary.Cites)).Single().Object;
         Assert.Equal("owner", ((ILiteralNode)g.GetTriplesWithSubjectPredicate(cites, U(g, EyuVocabulary.FieldName)).Single().Object).Value);
         Assert.Equal("0.6", ((ILiteralNode)g.GetTriplesWithSubjectPredicate(annotated, U(g, EyuVocabulary.Confidence)).Single().Object).Value);
@@ -138,7 +141,7 @@ public class OntologyTurtleTests
         Assert.Single(SubjectsOfType(g, Owl + "ObjectProperty"));
         Assert.Equal(2, g.GetTriplesWithPredicate(U(g, EyuVocabulary.Namespace + "LocatedIn")).Count());
         Assert.Equal(U(g, Base + "WorkOrder"),
-            g.GetTriplesWithSubjectPredicate(U(g, Base + "entity/b"), U(g, Rdf + "type"))
+            g.GetTriplesWithSubjectPredicate(Individual(g, proposal, "b"), U(g, Rdf + "type"))
                 .Single(t => !t.Object.Equals(U(g, Owl + "NamedIndividual"))).Object);
     }
 
@@ -167,7 +170,7 @@ public class OntologyTurtleTests
     {
         var g = Parse(Plant);
 
-        Assert.Equal("declared", ((ILiteralNode)g.GetTriplesWithSubjectPredicate(U(g, Base + "entity/e2"), U(g, EyuVocabulary.Basis)).Single().Object).Value);
+        Assert.Equal("declared", ((ILiteralNode)g.GetTriplesWithSubjectPredicate(Individual(g, Plant, "e2"), U(g, EyuVocabulary.Basis)).Single().Object).Value);
         Assert.Equal("innate", ((ILiteralNode)g.GetTriplesWithSubjectPredicate(U(g, EyuVocabulary.Namespace + "Person"), U(g, EyuVocabulary.Origin)).Single().Object).Value);
         Assert.Equal("acquired", ((ILiteralNode)g.GetTriplesWithSubjectPredicate(U(g, Base + "Equipment"), U(g, EyuVocabulary.Origin)).Single().Object).Value);
     }
@@ -182,12 +185,74 @@ public class OntologyTurtleTests
             Cite("Press 3 appears in two work orders and the machine master", new SourceRef("w-01"), new SourceRef("w-02"), new SourceRef("m-01")),
             VocabularyOrigin.Acquired, 0.9, denotedBy: ["m-01"]);
 
-        var g = Parse(new OntologyProposal([machine], [], []));
+        var proposal = new OntologyProposal([machine], [], []);
+        var g = Parse(proposal);
 
-        var individual = U(g, Base + "entity/m");
+        var individual = Individual(g, proposal, "m");
         Assert.Equal(["m-01"], g.GetTriplesWithSubjectPredicate(individual, U(g, EyuVocabulary.DenotedBy)).Select(t => ((ILiteralNode)t.Object).Value));
         Assert.Equal(3, g.GetTriplesWithSubjectPredicate(individual, U(g, EyuVocabulary.Cites)).Count());
         Assert.Contains(g.GetTriplesWithSubjectPredicate(U(g, EyuVocabulary.DenotedBy), U(g, Rdf + "type")), t => t.Object.Equals(U(g, Owl + "AnnotationProperty")));
+    }
+
+    // The model picks an entity's id afresh on every call, so an IRI minted from it never carried over
+    // from one export to the next. The records that denote an entity, or failing those its name and
+    // type, are what a second proposal over the same records repeats.
+    [Fact]
+    public void An_individual_is_named_by_its_denoting_records_whatever_id_the_model_gave_it()
+    {
+        EntityProposal Machine(string id, string name, params string[] denotedBy) => EntityProposal.Create(id, name, "Machine",
+            Cite("a machine", [.. denotedBy.Select(r => new SourceRef(r)), new SourceRef("w-01")]), VocabularyOrigin.Acquired, 0.9, denotedBy: denotedBy);
+
+        var first = OntologyTurtle.IndividualIris(new OntologyProposal([Machine("E1", "Press 3", "m-01", "m-02")], [], []), Options)["E1"];
+        var again = OntologyTurtle.IndividualIris(new OntologyProposal([Machine("machine_1", "Press No. 3", "m-02", "m-01")], [], []), Options)["machine_1"];
+        var other = OntologyTurtle.IndividualIris(new OntologyProposal([Machine("E1", "Press 3", "m-01")], [], []), Options)["E1"];
+
+        Assert.Equal(first, again);
+        Assert.NotEqual(first, other);
+        Assert.StartsWith(Base + "entity/", first, StringComparison.Ordinal);
+        Assert.DoesNotContain("m-01", first, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_individual_no_record_denotes_is_named_by_its_name_and_type_compared_as_Eyu_compares_them()
+    {
+        EntityProposal Chunked(string id, string name, string type) => EntityProposal.Create(id, name, type,
+            Cite("the report names it", new SourceRef("chunk-3")), VocabularyOrigin.Acquired, 0.7, denotedBy: []);
+
+        string Iri(EntityProposal e) => OntologyTurtle.IndividualIris(new OntologyProposal([e], [], []), Options)[e.EntityId];
+
+        Assert.Equal(Iri(Chunked("E4", "Korea Hydro", "Company")), Iri(Chunked("org_2", "korea-hydro", "company")));
+        Assert.NotEqual(Iri(Chunked("E4", "Korea Hydro", "Company")), Iri(Chunked("E4", "Korea Hydro", "Regulator")));
+        Assert.NotEqual(Iri(Chunked("E4", "Korea Hydro", "Company")), Iri(Chunked("E4", "Korea Nuclear", "Company")));
+    }
+
+    // Two entities the model keeps apart within one proposal are not merged because the rule cannot
+    // tell them apart: an individual with two claims and two confidences says neither.
+    [Fact]
+    public void Entities_one_proposal_keeps_apart_but_the_rule_cannot_are_written_under_their_own_ids()
+    {
+        EntityProposal Named(string id) => EntityProposal.Create(id, "Kim", "Person",
+            Cite($"{id} is a person", new SourceRef("chunk-1")), VocabularyOrigin.Innate, 0.6, denotedBy: []);
+        var proposal = new OntologyProposal([Named("p1"), Named("p2"), Entity("e1", "Pump P-101", "Equipment")], [Relation("maintains", "p2", "e1")], []);
+
+        var iris = OntologyTurtle.IndividualIris(proposal, Options);
+        var g = Parse(proposal);
+
+        Assert.Equal(Base + "entity/local/p1", iris["p1"]);
+        Assert.Equal(Base + "entity/local/p2", iris["p2"]);
+        Assert.DoesNotContain("/local/", iris["e1"], StringComparison.Ordinal);
+        Assert.Equal(3, SubjectsOfType(g, Owl + "NamedIndividual").Count());
+        Assert.Equal(Individual(g, proposal, "p2"), g.GetTriplesWithPredicate(U(g, Base + "maintains")).Single().Subject);
+    }
+
+    [Fact]
+    public void Every_individual_a_relation_names_is_the_one_its_entity_is_written_under()
+    {
+        var g = Parse(Plant);
+        var individuals = SubjectsOfType(g, Owl + "NamedIndividual").ToHashSet();
+
+        Assert.All(g.GetTriplesWithPredicate(U(g, Base + "maintains")).Concat(g.GetTriplesWithPredicate(U(g, EyuVocabulary.Namespace + "PartOf"))),
+            t => Assert.True(individuals.Contains(t.Subject) && individuals.Contains(t.Object)));
     }
 
     // A rejection is a fact about the model's answer, not about the domain: an ontology carrying it

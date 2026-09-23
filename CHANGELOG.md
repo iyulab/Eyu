@@ -35,7 +35,11 @@ every published version has a section here.
   assertions between them; each element's claim, cited records, confidence and basis are carried as
   annotations in an Eyu vocabulary (`EyuVocabulary`), a relation's as an OWL axiom annotation
   (`owl:Axiom`), so an OWL reader keeps them attached to the assertion. An individual also carries
-  `eyu:denotedBy` for each cited record that is a record of it. Names Eyu compares as one — case and separators ignored — become one term. Innate
+  `eyu:denotedBy` for each cited record that is a record of it. An individual's IRI is derived from
+  the records that denote the entity, or, when none does, from its name and type — not from
+  `EntityId`, which the model picks afresh on every call — so two exports of the same records name
+  one entity alike (`OntologyTurtle.IndividualIris` returns them); entities one proposal keeps apart
+  whose keys coincide keep a proposal-local IRI. Names Eyu compares as one — case and separators ignored — become one term. Innate
   types and relations are written as Eyu's own terms, not aligned to any outside vocabulary.
   Rejections are not written. Until now a proposal could only be read by code that knew Eyu's record
   types. The package takes no dependency beyond `Eyu.Core`: its tests read the output back with an

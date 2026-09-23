@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using Eyu.Core.Grounding;
 using Eyu.Core.Proposals;
@@ -32,9 +33,13 @@ namespace Eyu.Rdf;
 /// <para>
 /// <see cref="OntologyProposal.Rejections"/> is not written: a rejection is a fact about the model's
 /// answer, not about the domain, and an ontology that carried it would assert what the proposer
-/// refused to. A caller keeps it from the proposal itself. An entity's IRI is minted from its
-/// <see cref="EntityProposal.EntityId"/>, which means nothing outside the one proposal — two exports
-/// of two proposals are two sets of individuals, and merging them is entity resolution, not export.
+/// refused to. A caller keeps it from the proposal itself.
+/// </para>
+/// <para>
+/// An individual's IRI is derived from what the proposal says the entity is, never from
+/// <see cref="EntityProposal.EntityId"/>, which the model picks afresh on every call — so two exports
+/// of the same records name one entity alike, and a triple store merging them merges its individuals.
+/// See <see cref="IndividualIris"/> for the rule and what it cannot tell apart.
 /// </para>
 /// </summary>
 public static class OntologyTurtle
@@ -61,6 +66,7 @@ public static class OntologyTurtle
 
         var baseIri = options.BaseIri.AbsoluteUri;
         var terms = new TermSet(baseIri);
+        var individuals = IndividualIris(proposal, options);
 
         writer.Write("@prefix rdf: <" + Rdf + "> .\n");
         writer.Write("@prefix rdfs: <" + Rdfs + "> .\n");
@@ -98,7 +104,7 @@ public static class OntologyTurtle
 
         foreach (var entity in proposal.Entities)
         {
-            var subject = Iri(terms.Individual(entity.EntityId));
+            var subject = Iri(individuals[entity.EntityId]);
             writer.Write(subject + " a owl:NamedIndividual, " + classes[Normalize(entity.EntityType)] + " ;\n");
             writer.Write("    rdfs:label " + Literal(entity.Name) + " ;\n");
             foreach (var recordId in entity.DenotedBy)
@@ -111,8 +117,8 @@ public static class OntologyTurtle
 
         foreach (var relation in proposal.Relations)
         {
-            var from = Iri(terms.Individual(relation.FromEntityId));
-            var to = Iri(terms.Individual(relation.ToEntityId));
+            var from = Iri(individuals[relation.FromEntityId]);
+            var to = Iri(individuals[relation.ToEntityId]);
             var predicate = properties[Normalize(relation.RelationName)];
 
             writer.Write(from + " " + predicate + " " + to + " .\n");
@@ -123,6 +129,83 @@ public static class OntologyTurtle
             WriteProvenance(writer, relation.Claim, relation.Confidence, relation.Basis);
         }
     }
+
+    /// <summary>
+    /// The IRI each entity of <paramref name="proposal"/> is written under, by
+    /// <see cref="EntityProposal.EntityId"/> — the IRIs <see cref="ToTurtle"/> writes, for a caller that
+    /// links its own triples to the exported individuals or joins two exports. Strings, not
+    /// <see cref="Uri"/>: under a <c>#</c> namespace an individual is a fragment, and <see cref="Uri"/>
+    /// equality ignores fragments.
+    /// <para>
+    /// An entity some records denote (<see cref="EntityProposal.DenotedBy"/>) is identified by that set of
+    /// records: the records are the entity, whatever the model called it. An entity no record denotes —
+    /// a chunk of a document mentions what it describes, it is not a record of it — is identified by its
+    /// name and type, compared the way Eyu compares names, case and separators ignored. Either key is
+    /// hashed into <c>entity/</c> under <see cref="RdfExportOptions.BaseIri"/>, so an IRI is the same
+    /// length however many records denote the entity, and reads nothing into their ids.
+    /// </para>
+    /// <para>
+    /// The rule is only as stable as its inputs. Proposed again, an entity keeps its IRI when the model
+    /// names the same denoting records, or the same name and type — not when it names a different set,
+    /// or renames the entity. Two different things with one name and one type, neither denoted by a
+    /// record, get one IRI: nothing in the proposal tells them apart. Within one proposal, entities whose
+    /// keys coincide are the model saying two things are distinct where the rule sees one, and each of
+    /// them is written under <c>entity/local/</c> and its <see cref="EntityProposal.EntityId"/> instead — an
+    /// IRI that, like the id, means nothing outside this proposal — rather than merged into an individual
+    /// carrying two claims and two confidences.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> IndividualIris(OntologyProposal proposal, RdfExportOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(proposal);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var baseIri = options.BaseIri.AbsoluteUri;
+        var keys = proposal.Entities
+            .GroupBy(e => e.EntityId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => IdentityKey(g.First()), StringComparer.Ordinal);
+        var shared = keys.Values
+            .OfType<string>()
+            .GroupBy(k => k, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.Ordinal);
+
+        // A relation end no entity carries has nothing to key on either: it keeps a proposal-local IRI.
+        foreach (var end in proposal.Relations.SelectMany(r => new[] { r.FromEntityId, r.ToEntityId }))
+        {
+            keys.TryAdd(end, null);
+        }
+
+        return keys.ToDictionary(
+            kv => kv.Key,
+            kv => kv.Value is { } key && !shared.Contains(key)
+                ? baseIri + "entity/" + Hash(key)
+                : baseIri + "entity/local/" + TermSet.LocalName(kv.Key),
+            StringComparer.Ordinal);
+    }
+
+    // Each part is length-prefixed, so no two different inputs spell the same key whatever characters a
+    // record id or name holds. Null when there is nothing to key on (a name with no letter or digit).
+    private static string? IdentityKey(EntityProposal entity)
+    {
+        if (entity.DenotedBy.Count > 0)
+        {
+            return "records" + string.Concat(entity.DenotedBy
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .Select(Part));
+        }
+
+        var name = Normalize(entity.Name);
+        return name.Length == 0 ? null : "name" + Part(Normalize(entity.EntityType)) + Part(name);
+
+        static string Part(string value) => "|" + value.Length.ToString(CultureInfo.InvariantCulture) + ":" + value;
+    }
+
+    // 128 bits of SHA-256, lowercase hex: long enough that two keys meeting is not a case to handle.
+    private static string Hash(string key)
+        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(key)).AsSpan(0, 16));
 
     private static void WriteTerm(TextWriter writer, string iri, string kind, string label, VocabularyOrigin origin)
     {
@@ -189,7 +272,7 @@ public static class OntologyTurtle
         return builder.Append('"').ToString();
     }
 
-    /// <summary>Mints the IRIs of one export: its classes and properties once per name, its individuals per id.</summary>
+    /// <summary>Mints the IRIs of one export's classes and properties, once per name.</summary>
     private sealed class TermSet(string baseIri)
     {
         public bool TryAdd(Dictionary<string, string> seen, string name, VocabularyOrigin origin, out string iri)
@@ -207,8 +290,6 @@ public static class OntologyTurtle
             seen[key] = iri;
             return true;
         }
-
-        public string Individual(string entityId) => baseIri + "entity/" + LocalName(entityId);
 
         // An innate name is written in the spelling the innate vocabulary gives it, so part_of from one
         // proposal and PartOf from another land on the same Eyu term.
@@ -235,7 +316,7 @@ public static class OntologyTurtle
         // Letters, digits, '_' and '-' stay as written (non-ASCII letters included — an IRI may carry
         // them); every other character is percent-encoded as UTF-8, so nothing the IRIREF grammar
         // forbids can reach the output.
-        private static string LocalName(string name)
+        public static string LocalName(string name)
         {
             var builder = new StringBuilder(name.Length);
             Span<byte> bytes = stackalloc byte[4];

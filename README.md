@@ -308,8 +308,18 @@ two of them. The claim, the cited records, which of them denote an individual (`
 confidence and whether a type was declared travel as annotations — on a relation, as an OWL axiom annotation (`owl:Axiom`), the form an OWL editor attaches
 to the assertion itself. Acquired terms are minted
 under the namespace you pass; innate ones are Eyu's own terms, and neither is aligned to an outside
-vocabulary. Rejections are not written, and entity IRIs come from `EntityId`, which means nothing
-outside one proposal. The package depends on nothing beyond `Eyu.Core`.
+vocabulary. Rejections are not written. The package depends on nothing beyond `Eyu.Core`.
+
+An individual's IRI never comes from `EntityId`, which the model picks afresh on every call. An
+entity some records denote is named by that set of records; one no record denotes — what a document
+chunk describes — by its name and type, compared ignoring case and separators. Either key is hashed
+under `entity/` in your namespace, so two exports of the same records name one entity alike and a
+triple store merging them merges its individuals. The IRI holds only as long as its inputs do: a
+different set of denoting records, or a renamed entity, is a different IRI, and two different
+things with one name and one type, neither denoted by a record, share one. Entities one proposal
+keeps apart but whose keys coincide are written under `entity/local/` and their `EntityId` instead,
+an IRI that means nothing outside that proposal. `OntologyTurtle.IndividualIris` returns the IRI
+each entity is written under, for linking your own triples to them.
 
 Not published yet: it ships with the next release, alongside the two packages above.
 

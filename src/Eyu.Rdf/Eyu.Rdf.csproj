@@ -10,4 +10,11 @@
     <ProjectReference Include="..\Eyu.Core\Eyu.Core.csproj" />
   </ItemGroup>
 
+  <!-- Eyu's name comparison and text forms, compiled here from Eyu.Core's own source rather than made
+       public there: one rule for both packages, and no core surface that exists only for this one. -->
+  <ItemGroup>
+    <Compile Include="..\Eyu.Core\Primitives\TextForm.cs" Link="Shared\TextForm.cs" />
+    <Compile Include="..\Eyu.Core\Proposals\VocabularyName.cs" Link="Shared\VocabularyName.cs" />
+  </ItemGroup>
+
 </Project>

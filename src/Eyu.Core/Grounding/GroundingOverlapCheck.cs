@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Eyu.Core.Primitives;
 using Eyu.Core.Records;
 
 namespace Eyu.Core.Grounding;
@@ -102,7 +103,9 @@ public static partial class GroundingOverlapCheck
     private static List<string> Tokenize(string text)
     {
         var tokens = new List<string>();
-        foreach (Match run in TokenPattern().Matches(text))
+        // Folded first, so a claim and a source that hold the same characters in different Unicode
+        // forms (decomposed Hangul, full-width Latin) meet token for token.
+        foreach (Match run in TokenPattern().Matches(TextForm.Fold(text)))
         {
             // A run of letters and digits can mix scripts ("IoT플랫폼"); each stretch is tokenized
             // the way its own script separates words.

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Eyu.Core.Grounding;
+using Eyu.Core.Primitives;
 using Eyu.Core.Proposals;
 
 namespace Eyu.Rdf;
@@ -106,7 +107,7 @@ public static class OntologyTurtle
         {
             var subject = Iri(individuals[entity.EntityId]);
             writer.Write(subject + " a owl:NamedIndividual, " + classes[Normalize(entity.EntityType)] + " ;\n");
-            writer.Write("    rdfs:label " + Literal(entity.Name) + " ;\n");
+            writer.Write("    rdfs:label " + Text(entity.Name) + " ;\n");
             foreach (var recordId in entity.DenotedBy)
             {
                 writer.Write("    eyu:denotedBy " + Literal(recordId) + " ;\n");
@@ -213,13 +214,13 @@ public static class OntologyTurtle
     private static void WriteTerm(TextWriter writer, string iri, string kind, string label, VocabularyOrigin origin)
     {
         writer.Write(iri + " a " + kind + " ;\n");
-        writer.Write("    rdfs:label " + Literal(label) + " ;\n");
+        writer.Write("    rdfs:label " + Text(label) + " ;\n");
         writer.Write("    eyu:origin " + Literal(origin == VocabularyOrigin.Innate ? "innate" : "acquired") + " .\n\n");
     }
 
     private static void WriteProvenance(TextWriter writer, GroundedClaim claim, double confidence, ProposalBasis basis)
     {
-        writer.Write("    eyu:claim " + Literal(claim.Claim) + " ;\n");
+        writer.Write("    eyu:claim " + Text(claim.Claim) + " ;\n");
         foreach (var source in claim.Sources)
         {
             writer.Write("    eyu:cites [ eyu:recordId " + Literal(source.RecordId));
@@ -236,12 +237,18 @@ public static class OntologyTurtle
     }
 
     /// <summary>
-    /// Eyu's lexical name comparison — case and separators ignored. Restated rather than shared: the
-    /// rule is internal to Eyu.Core, and one line of it here is cheaper than a public surface on the
-    /// core that exists only for this package.
+    /// Eyu's lexical name comparison — case, separators and Unicode form ignored. The same source file
+    /// Eyu.Core compiles (linked, see the project file), so the two packages cannot drift apart on it
+    /// and the core carries no public surface that exists only for this package.
     /// </summary>
-    private static string Normalize(string name)
-        => new(name.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+    private static string Normalize(string name) => VocabularyName.Normalize(name);
+
+    /// <summary>
+    /// A literal holding text written for a reader — a name, a label, a claim — in Normalization Form
+    /// C, as RDF 1.1 asks of a literal's lexical form. Identifiers (record ids, field names) go through
+    /// <see cref="Literal"/> as given: a consumer joins back on them, and must find them unchanged.
+    /// </summary>
+    private static string Text(string value) => Literal(TextForm.Canonical(value));
 
     private static string Iri(string iri) => "<" + iri + ">";
 
@@ -302,9 +309,9 @@ public static class OntologyTurtle
         // The spelling the proposal used stays as the term's rdfs:label. A name with no letter or digit
         // has no key and is written as it came.
         private static string Acquired(string name, string key, bool isClass)
-            => key.Length == 0 ? name
+            => TextForm.Canonical(key.Length == 0 ? name
                 : isClass ? char.ToUpperInvariant(key[0]) + key[1..]
-                : key;
+                : key);
 
         // An innate name is written in the spelling the innate vocabulary gives it, so part_of from one
         // proposal and PartOf from another land on the same Eyu term.
@@ -312,7 +319,7 @@ public static class OntologyTurtle
         {
             var key = Normalize(name);
             return InnateVocabulary.EntityTypes.Concat(InnateVocabulary.RelationNames)
-                .FirstOrDefault(n => Normalize(n) == key) ?? name;
+                .FirstOrDefault(n => Normalize(n) == key) ?? TextForm.Canonical(name);
         }
 
         // A prefixed name when the local part is plainly safe in one; the full IRI otherwise, so no

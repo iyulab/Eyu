@@ -54,7 +54,8 @@ the proposer's self-reported
 confidence is informative on its own, which it was not in an earlier measurement (see
 [design rationale, §D](docs/philosophy.md)); gray-zone cases now combine it with the
 Fellegi-Sunter prior via a Bayesian update instead of using it alone. Field comparison inside
-that pre-filter is exact-match (case/whitespace-insensitive) by default; `LinkageOptions.
+that pre-filter is exact-match (case-insensitive, ignoring surrounding whitespace and Unicode form —
+decomposed Hangul, full-width digits) by default; `LinkageOptions.
 UseStringSimilarityComparator` opts into a Jaro-Winkler threshold instead, so two records
 denoting the same entity but differing only in notation (punctuation, spacing) still register as
 agreeing on that field — still no ground truth to say which mode classifies better on any given
@@ -379,14 +380,15 @@ two of them. The claim, the cited records, which of them denote an individual (`
 confidence and whether a type was declared travel as annotations — on a relation, as an OWL axiom annotation (`owl:Axiom`), the form an OWL editor attaches
 to the assertion itself. Acquired terms are minted
 under the namespace you pass; innate ones are Eyu's own terms, and neither is aligned to an outside
-vocabulary. An acquired term's IRI comes from its name compared the way Eyu compares names — case and
-separators ignored — with a class's first letter upper-cased and a property's lower-cased, so
+vocabulary. An acquired term's IRI comes from its name compared the way Eyu compares names — case,
+separators and Unicode form ignored (Hangul decomposed or precomposed, Latin full-width or not) — with a class's first letter upper-cased and a property's lower-cased, so
 `Work Order` and `WorkOrder` from two exports are one class `:Workorder`, and `maintains` and
 `Maintains` one property `:maintains`; the spelling each export used is kept as the term's
-`rdfs:label`. Rejections are not written. The package depends on nothing beyond `Eyu.Core`.
+`rdfs:label`. Names, labels and claims are written in Unicode NFC; record ids and field names exactly as
+given. Rejections are not written. The package depends on nothing beyond `Eyu.Core`.
 
 An individual's IRI never comes from `EntityId`, which the model picks afresh on every call. It is
-derived from the entity's name and type, compared ignoring case and separators, together with the
+derived from the entity's name and type, compared ignoring case, separators and Unicode form, together with the
 records that denote it when any does — the records alone are not enough, since a model reading one
 row that reports an event says the row denotes the aircraft, the part and the event alike. The key is
 hashed under `entity/` in your namespace, so two exports of the same records name one entity alike

@@ -1,3 +1,4 @@
+using System.Text;
 using Eyu.Core.Declared;
 using Eyu.Core.Inference;
 using Eyu.Core.Judgment;
@@ -151,6 +152,33 @@ public class DeclaredStructureMergeTests
               ],
               "relations": [
                 {"name": "assigned_to", "from": "e1", "to": "e2", "claim": "kim is assigned", "sources": ["d1"], "confidence": 0.6}
+              ]
+            }
+            """;
+
+        var proposal = await Propose(answer, declared);
+
+        Assert.Equal(ProposalBasis.Declared, proposal.Entities.Single(e => e.EntityId == "e1").Basis);
+        Assert.Equal(ProposalBasis.Declared, Assert.Single(proposal.Relations).Basis);
+    }
+
+    [Fact]
+    public async Task Names_are_matched_across_unicode_normalization_forms()
+    {
+        // Hangul written decomposed (NFD — how text saved on macOS commonly arrives) renders exactly
+        // like the precomposed form a model answers in; a declaration must match it all the same.
+        var declared = new DeclaredStructure(
+            SubjectRef.Create("작업지시".Normalize(NormalizationForm.FormD)),
+            Fields: [],
+            Relations: [new DeclaredRelation("담당".Normalize(NormalizationForm.FormD), SubjectRef.Create("기술자".Normalize(NormalizationForm.FormD)))]);
+        const string answer = """
+            {
+              "entities": [
+                {"id": "e1", "name": "e1-name", "type": "작업지시", "claim": "d1", "sources": ["d1"], "confidence": 0.9},
+                {"id": "e2", "name": "e2-name", "type": "기술자", "claim": "kim", "sources": ["d1"], "confidence": 0.8}
+              ],
+              "relations": [
+                {"name": "담당", "from": "e1", "to": "e2", "claim": "kim is assigned", "sources": ["d1"], "confidence": 0.6}
               ]
             }
             """;

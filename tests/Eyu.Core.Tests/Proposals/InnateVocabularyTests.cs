@@ -66,4 +66,9 @@ public class InnateVocabularyTests
         Assert.Equal(VocabularyOrigin.Acquired, InnateVocabulary.OfEntityType("PartOf"));
         Assert.Equal(VocabularyOrigin.Acquired, InnateVocabulary.OfRelationName("Person"));
     }
+    [Fact]
+    public void An_innate_type_written_in_full_width_letters_is_Innate()
+    {
+        Assert.Equal(VocabularyOrigin.Innate, InnateVocabulary.OfEntityType("Ｐｅｒｓｏｎ"));
+    }
 }

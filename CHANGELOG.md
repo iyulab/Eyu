@@ -10,7 +10,7 @@ every published version has a section here.
 
 ## Unreleased
 
-A minor with two breaking changes: the IRIs of acquired classes and properties in `Eyu.Rdf`, and clerical-review strata named rather than kinded in `Eyu.Core`.
+A minor with three breaking changes: the IRIs of acquired classes and properties in `Eyu.Rdf`, clerical-review strata named rather than kinded in `Eyu.Core`, and text compared in one Unicode form across both.
 
 ### Changed
 
@@ -22,7 +22,22 @@ A minor with two breaking changes: the IRIs of acquired classes and properties i
   named one individual and put it in two unrelated classes when a triple store merged them. The
   spelling a proposal used stays as the term's `rdfs:label`. A graph holding 0.4.0 exports keeps the
   old class and property IRIs; re-export to replace them. Innate terms and individual IRIs are
-  unchanged.
+  unchanged (but see the next entry for names written in another Unicode form).
+- **Breaking (`Eyu.Core`, `Eyu.Rdf`)**: wherever Eyu decides two pieces of text are the same, it now
+  compares them in Unicode Normalization Form KC — type and relation names (declared against
+  proposed, innate or acquired, and the IRIs `Eyu.Rdf` mints from them), field values in
+  `FieldComparator`, and the words a claim shares with its sources in `GroundingOverlapCheck`. Hangul
+  decomposed into jamo (NFD — how text saved on macOS commonly arrives) and precomposed Hangul render
+  identically but were different code points, so a declared `작업지시` did not match a proposed one,
+  the same name scored a Jaro-Winkler similarity of 0 against itself, a claim quoting its source was
+  judged ungrounded, and two exports put one entity in two classes; full-width Latin letters and
+  digits likewise did not meet their ASCII forms. `Eyu.Rdf` also writes names, labels and claims in
+  NFC, as RDF 1.1 asks of IRIs and literals; record ids and field names are written as given, since a
+  consumer joins back on them. Input already in NFC and ASCII compares and exports exactly as before;
+  what changes is the class, property and individual IRIs of names written in a decomposed or
+  compatibility form, and a name's letters outside the Basic Multilingual Plane, which the comparison
+  used to drop. `FieldComparator`'s exact match ignores leading and trailing whitespace, not whitespace
+  inside a value — its documentation said otherwise.
 - **Breaking (`Eyu.Core`)**: a clerical-review stratum is named, not kinded. `SampledStratum.Kind`
   and `StratumExclusion.Kind` are now `Name` (a string); the pre-filter's three strata are named
   after their `ReviewStratumKind` (`Singleton`, `CleanMerge`, `Contested`), and a seeded pilot over

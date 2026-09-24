@@ -1,3 +1,4 @@
+using System.Text;
 using Eyu.Core.Grounding;
 using Eyu.Core.Proposals;
 using VDS.RDF;
@@ -168,6 +169,46 @@ public class OntologyTurtleTests
         Assert.Equal(U(merged, Base + "maintains"), Assert.Single(SubjectsOfType(merged, Owl + "ObjectProperty")));
         Assert.Equal(["Work Order", "WorkOrder"], merged.GetTriplesWithSubjectPredicate(type, U(merged, Rdfs + "label"))
             .Select(t => ((ILiteralNode)t.Object).Value).Order(StringComparer.Ordinal));
+    }
+
+    // The same comparison reaches below spelling: Hangul decomposed (NFD, how text saved on macOS
+    // commonly arrives) and precomposed render identically, and full-width Latin is the same letters.
+    // Each pair must land on one class and one individual, and nothing written may be left un-NFC —
+    // RDF 1.1 Concepts asks IRIs and literal lexical forms to be in Normalization Form C.
+    [Theory]
+    [InlineData("작업지시", "NFD")]
+    [InlineData("Work Order", "Ｗｏｒｋ Ｏｒｄｅｒ")]
+    public void Two_exports_that_write_a_type_in_different_unicode_forms_merge_into_one_class(string type, string other)
+    {
+        var otherType = other == "NFD" ? type.Normalize(NormalizationForm.FormD) : other;
+        var first = new OntologyProposal([Entity("a", "베어링 교체", type)], [], []);
+        var second = new OntologyProposal([Entity("a", "베어링 교체".Normalize(NormalizationForm.FormD), otherType)], [], []);
+
+        var merged = new Graph();
+        foreach (var proposal in new[] { first, second })
+        {
+            var turtle = OntologyTurtle.ToTurtle(proposal, Options);
+            Assert.True(turtle.IsNormalized(NormalizationForm.FormC));
+            new TurtleParser().Load(merged, new StringReader(turtle));
+        }
+
+        Assert.Single(SubjectsOfType(merged, Owl + "Class"));
+        var individual = Assert.Single(SubjectsOfType(merged, Owl + "NamedIndividual"));
+        Assert.Equal("베어링 교체", ((ILiteralNode)Assert.Single(merged.GetTriplesWithSubjectPredicate(individual, U(merged, Rdfs + "label"))).Object).Value);
+    }
+
+    // A record id is an identifier a consumer joins back on, not text: it is written exactly as given.
+    [Fact]
+    public void A_cited_record_id_is_written_as_given_even_when_it_is_not_NFC()
+    {
+        var recordId = "문서-1".Normalize(NormalizationForm.FormD);
+        var proposal = new OntologyProposal(
+            [EntityProposal.Create("a", "Pump", "Equipment", Cite("pump", new SourceRef(recordId)), VocabularyOrigin.Acquired, 0.5)], [], []);
+
+        var g = Parse(proposal);
+
+        var cited = g.GetTriplesWithPredicate(U(g, EyuVocabulary.RecordId)).Select(t => ((ILiteralNode)t.Object).Value);
+        Assert.Equal([recordId], cited);
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using Eyu.Core.Primitives;
 using Eyu.Core.Records;
 
 namespace Eyu.Core.Linkage;
@@ -6,7 +7,9 @@ namespace Eyu.Core.Linkage;
 /// The Fellegi-Sunter pre-filter's first stage: a per-field, per-record-pair agreement vector.
 /// Only fields present with a non-blank value on both sides are compared — a field missing on
 /// either side carries no evidence and is excluded rather than counted as a disagreement.
-/// Agreement is exact-match (case/whitespace-insensitive) by default; passing a
+/// Agreement is exact-match by default — case-insensitive, ignoring leading and trailing whitespace
+/// (not whitespace inside the value), and comparing the values in one Unicode form
+/// (<see cref="TextForm.Fold"/>: decomposed Hangul, full-width digits); passing a
 /// <see cref="LinkageOptions"/> with <see cref="LinkageOptions.UseStringSimilarityComparator"/>
 /// set switches to a <see cref="JaroWinklerSimilarity"/> threshold instead, so notation variants
 /// (punctuation, spacing) that are not literal duplicates still register as
@@ -36,8 +39,8 @@ public static class FieldComparator
                 continue;
             }
 
-            var trimmedA = valueA.Trim();
-            var trimmedB = valueB.Trim();
+            var trimmedA = TextForm.Fold(valueA).Trim();
+            var trimmedB = TextForm.Fold(valueB).Trim();
 
             var agrees = opts.UseStringSimilarityComparator
                 ? JaroWinklerSimilarity.Compute(trimmedA.ToUpperInvariant(), trimmedB.ToUpperInvariant())

@@ -1,3 +1,4 @@
+using System.Text;
 using Eyu.Core.Grounding;
 using Eyu.Core.Records;
 using Xunit;
@@ -154,5 +155,15 @@ public class GroundingOverlapCheckTests
 
         Assert.False(GroundingOverlapCheck.IsSupportedBy(claim, records));
         Assert.True(GroundingOverlapCheck.IsSupportedBy(claim, records, minOverlapRatio: 0.2));
+    }
+    [Fact]
+    public void A_Korean_claim_is_supported_by_its_source_written_in_another_normalization_form()
+    {
+        // The record text arrives decomposed (NFD); the model quotes it precomposed. Same text, so the
+        // character pairs must meet.
+        var records = new[] { Record("r1", ("memo", "베어링 교체 작업을 완료했습니다".Normalize(NormalizationForm.FormD))) };
+        var claim = GroundedClaim.Create("베어링 교체 작업 완료", sources: [new SourceRef("r1")]);
+
+        Assert.True(GroundingOverlapCheck.IsSupportedBy(claim, records));
     }
 }

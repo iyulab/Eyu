@@ -1,3 +1,4 @@
+using System.Text;
 using Eyu.Core.Linkage;
 using Eyu.Core.Records;
 using Xunit;
@@ -112,5 +113,29 @@ public class FieldComparatorTests
         var result = FieldComparator.Compare(a, b, options);
 
         Assert.Equal(FieldAgreementLevel.Disagree, result["name"]);
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_value_written_in_another_unicode_normalization_form_agrees(bool similarity)
+    {
+        // The same name, precomposed (NFC) and decomposed (NFD): identical on screen, different code units.
+        var a = Record("rec-1", ("name", "김민지"), ("phone", "010-1234"));
+        var b = Record("rec-2", ("name", "김민지".Normalize(NormalizationForm.FormD)), ("phone", "０１０-１２３４"));
+        var options = LinkageOptions.Default with { UseStringSimilarityComparator = similarity };
+
+        var result = FieldComparator.Compare(a, b, options);
+
+        Assert.Equal(FieldAgreementLevel.Agree, result["name"]);
+        Assert.Equal(FieldAgreementLevel.Agree, result["phone"]); // full-width digits are the same digits
+    }
+
+    [Fact]
+    public void Exact_match_ignores_surrounding_whitespace_but_not_whitespace_inside_the_value()
+    {
+        var a = Record("rec-1", ("name", "Kim  Minji"));
+        var b = Record("rec-2", ("name", " Kim Minji "));
+
+        Assert.Equal(FieldAgreementLevel.Disagree, FieldComparator.Compare(a, b)["name"]);
     }
 }

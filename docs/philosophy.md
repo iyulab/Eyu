@@ -213,7 +213,7 @@ names PartOf, ParticipatesIn, LocatedIn, OccursAt — DOLCE's agentive and
 social endurants, perdurants and spatial and temporal regions, and its
 primitive relations of parthood, participation and location. After parsing,
 the proposer stamps `Innate` on a type or relation name that equals one of
-these under lexical comparison (case and separators ignored) and `Acquired`
+these under lexical comparison (case, separators and Unicode form ignored) and `Acquired`
 on anything else; the model is no longer asked. Two things are deliberately
 not done. There is no synonym table — a model that writes `Company` used a
 domain word, and folding it into `Organization` would be the term

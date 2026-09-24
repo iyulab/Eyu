@@ -122,6 +122,41 @@ public class HttpModelClientTests
     }
 
     [Fact]
+    public async Task CompleteAsync_failure_names_the_status_the_request_uri_and_what_the_server_said()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent("""{"error":{"message":"model 'test-model' not found"}}""", Encoding.UTF8, "application/json"),
+        }));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.BadRequest, error.StatusCode);
+        Assert.Contains("400", error.Message);
+        Assert.Contains("https://example.test/v1/chat/completions", error.Message);
+        Assert.Contains("model 'test-model' not found", error.Message);
+        Assert.DoesNotContain("BaseAddress", error.Message);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_not_found_points_at_the_base_address_and_leaves_the_query_out()
+    {
+        // A base address without the version segment and slash is the common way to reach a path the
+        // server does not serve: "https://host" + "chat/completions" is https://host/chat/completions.
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/?key=secret") }, "test-model");
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.NotFound, error.StatusCode);
+        Assert.Contains("https://example.test/chat/completions", error.Message);
+        Assert.Contains("(empty)", error.Message);
+        Assert.Contains("https://host/v1/", error.Message);
+        Assert.DoesNotContain("secret", error.Message);
+    }
+
+    [Fact]
     public async Task CompleteAsync_merges_opaque_extra_body_fields_into_the_request()
     {
         // Provider-specific knobs a consumer needs (a self-hosted server's thinking control, a

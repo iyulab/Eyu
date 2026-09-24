@@ -12,7 +12,15 @@ namespace Eyu.Core.Inference.Http;
 /// servers) — the widest-reach provider-neutral choice, and requires nothing beyond the base
 /// class library (no model SDK package). The caller owns <see cref="HttpClient.BaseAddress"/>,
 /// authentication headers, and timeouts on the injected <see cref="HttpClient"/>; this type only
-/// knows the request/response shape at <c>chat/completions</c>.
+/// knows the request/response shape at <c>chat/completions</c>, which it posts to relative to that
+/// base address — so the base ends with the API version segment and a slash
+/// (<c>https://host/v1/</c>): without the slash the last segment is replaced, and without the
+/// version the path does not exist on most servers. A thinking model can take minutes per call, past
+/// <see cref="HttpClient"/>'s default 100-second timeout.
+///
+/// A response outside the success range throws <see cref="HttpRequestException"/> carrying the
+/// status, the request URI (without its query) and an excerpt of the body the server answered —
+/// OpenAI-compatible servers state the cause there (an unknown model, a rejected field).
 ///
 /// <paramref name="extraBody"/> lets the caller layer provider-specific request fields the library
 /// does not model — a self-hosted server's thinking control (<c>chat_template_kwargs</c>,
@@ -78,11 +86,19 @@ public sealed class HttpModelClient(HttpClient httpClient, string model, IReadOn
 
         var payload = body.ToJsonString(JsonOptions);
 
-        using var content = new StringContent(payload, Encoding.UTF8, "application/json");
-        using var httpResponse = await httpClient.PostAsync("chat/completions", content, cancellationToken).ConfigureAwait(false);
-        httpResponse.EnsureSuccessStatusCode();
-
+        // Sent as a message this method holds, so a failure can name where it went: HttpClient
+        // resolves the relative path against its base address onto this request before sending.
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+        };
+        using var httpResponse = await httpClient.SendAsync(httpRequest, cancellationToken).ConfigureAwait(false);
         var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        if (!httpResponse.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(DescribeFailure(httpRequest, httpResponse, responseBody), inner: null, httpResponse.StatusCode);
+        }
+
         var parsed = JsonSerializer.Deserialize<ChatCompletionResponse>(responseBody, JsonOptions);
         var messageText = parsed?.Choices is [{ Message.Content: { Length: > 0 } text }, ..] ? text : null;
 
@@ -94,6 +110,23 @@ public sealed class HttpModelClient(HttpClient httpClient, string model, IReadOn
 
         var usage = parsed?.Usage is { } u ? new TokenUsage(u.PromptTokens, u.CompletionTokens, u.TotalTokens) : null;
         return new ModelResponse(messageText, Usage: usage);
+    }
+
+    /// <summary>
+    /// What a failed call needs to be diagnosed without re-running it: where the request went (the
+    /// relative path resolved against a base address the caller built) and what the server said
+    /// about it. The query is left out — some providers carry a key there.
+    /// </summary>
+    private static string DescribeFailure(HttpRequestMessage request, HttpResponseMessage response, string body)
+    {
+        var status = (int)response.StatusCode;
+        var uri = request.RequestUri is { IsAbsoluteUri: true } requested
+            ? requested.GetLeftPart(UriPartial.Path)
+            : request.RequestUri?.OriginalString ?? "(unknown)";
+        var message = $"The model endpoint answered {status} {response.ReasonPhrase} to POST {uri}. Response body: {Excerpt(body)}";
+        return response.StatusCode == System.Net.HttpStatusCode.NotFound
+            ? message + " The path is resolved against HttpClient.BaseAddress, which for an OpenAI-compatible server usually ends with the API version segment and a slash (https://host/v1/)."
+            : message;
     }
 
     /// <summary>

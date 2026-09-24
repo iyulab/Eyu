@@ -8,6 +8,23 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Changed
+
+- A model call answered outside the success range now throws `HttpRequestException` whose message
+  names the status, the request URI (without its query) and an excerpt of the body the server
+  answered, with the status on `StatusCode`. It used to say only the status, so the usual cause — a
+  base address missing the API version segment or its trailing slash, which sends the request to a
+  path the server does not serve — could not be told from a wrong model name or a rejected field
+  without re-running the call. A `404` also says how the path is resolved.
+
+### Documentation
+
+- The README has a quick start: records in, a proposal and its Turtle out, including the base-address
+  rule and the timeout a thinking model needs. CI compiles it against freshly packed packages and
+  exactly the packages the README installs.
+
 ## 0.4.0
 
 A minor that carries breaking changes, as 0.x minors may. An entity now says which of the records it

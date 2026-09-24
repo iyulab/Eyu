@@ -81,6 +81,68 @@ the adapter for one of them and reads `Formbase.Core` as a package, so it pairs 
 release — this one is built against `Formbase.* 0.11.0`. `Eyu.Rdf` writes a proposal as OWL in Turtle
 (see [Exporting as RDF/OWL](#exporting-as-rdfowl)).
 
+## Quick start
+
+Hand Eyu a few records, get back the entities, relations and grounded claims it proposes — then,
+optionally, the same proposal as OWL:
+
+<!-- snippet: compile packages="Eyu.Core Eyu.Rdf" -->
+```csharp
+using System.Net.Http.Headers;
+using Eyu.Core.Declared;
+using Eyu.Core.Inference.Http;
+using Eyu.Core.Judgment;
+using Eyu.Core.Primitives;
+using Eyu.Core.Records;
+using Eyu.Rdf;
+
+// Any OpenAI-compatible server. Requests go to "chat/completions" relative to the base address,
+// so it ends with the API version segment and a slash.
+var http = new HttpClient
+{
+    BaseAddress = new Uri("https://api.openai.com/v1/"),
+    Timeout = TimeSpan.FromMinutes(5), // a thinking model can take minutes per call
+};
+http.DefaultRequestHeaders.Authorization =
+    new AuthenticationHeaderValue("Bearer", Environment.GetEnvironmentVariable("OPENAI_API_KEY"));
+var model = new HttpModelClient(http, "gpt-4o-mini");
+
+// Records are handed in, never fetched: an id, and the fields as the source holds them.
+RawRecord[] records =
+[
+    new("emp-1", new Dictionary<string, string?> { ["name"] = "Kim Minji", ["email"] = "minji.kim@example.com" }),
+    new("emp-2", new Dictionary<string, string?> { ["name"] = "Minji Kim", ["email"] = "minji.kim@example.com" }),
+    new("wo-1", new Dictionary<string, string?> { ["title"] = "Replace bearing on press #4", ["reviewer"] = "Kim Minji" }),
+];
+
+// Declare what you already know -- here only that some records are employees. Declared always wins;
+// the model proposes the rest.
+DeclaredStructure[] declared = [new(SubjectRef.Create("Employee"), [], [])];
+
+var proposal = await new SinglePassOntologyProposer(model).ProposeAsync(declared, records);
+
+foreach (var entity in proposal.Entities)
+{
+    Console.WriteLine($"{entity.Name} : {entity.EntityType} ({entity.Confidence:0.00}), denoted by {string.Join(", ", entity.DenotedBy)}");
+}
+
+foreach (var relation in proposal.Relations)
+{
+    Console.WriteLine($"{relation.FromEntityId} -{relation.RelationName}-> {relation.ToEntityId}: {relation.Claim.Claim}");
+}
+
+Console.WriteLine($"{proposal.Rejections.Count} element(s) left out, each with its reason in proposal.Rejections");
+
+Console.WriteLine(OntologyTurtle.ToTurtle(proposal, new RdfExportOptions(new Uri("https://example.org/plant#"))));
+```
+
+The two employee rows are one person written two ways. Whether they come back as one entity denoted
+by both is the proposal's judgment, and `DenotedBy` shows which it made — two runs of this very
+sample have answered both ways, which is why a proposal is routed rather than applied (Status, above,
+says what is and is not measured). A self-hosted thinking model
+can be told not to think through `extraBody` (see [Ports](#ports)); a failed call throws
+`HttpRequestException` naming the status, the request URI and what the server answered.
+
 ---
 
 ## Why

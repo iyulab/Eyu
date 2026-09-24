@@ -276,7 +276,8 @@ output the same way, or ignores it and relies on the prompt.
 
 Entity resolution is tuned through a value, not a port: `SinglePassOntologyProposer`
 accepts an optional [`LinkageOptions`](src/Eyu.Core/Linkage/LinkageOptions.cs) record
-covering the record-linkage pre-filter's classification thresholds, its EM iteration
+covering the record-linkage pre-filter's classification thresholds (compared against the
+log-likelihood ratio, not the posterior — [docs/linkage-benchmark.md](docs/linkage-benchmark.md#which-scale-the-thresholds-are-on)), its EM iteration
 limits, and whether field comparison is exact or similarity-based. Every default
 reproduces the behavior of passing nothing, so a caller reaches for it only once a live
 run shows the defaults classifying that caller's data badly — what each value does, and

@@ -12,6 +12,14 @@ namespace Eyu.Core.Linkage;
 /// <see cref="UseStringSimilarityComparator"/>), or because its records are not what the
 /// pre-filter assumes they are (see <see cref="RecordsDenoteEntities"/>).
 /// </summary>
+/// <param name="MatchThreshold">
+/// The log-likelihood ratio at or above which a pair is a Match — the prior-free ratio, not the
+/// posterior log-odds; see <see cref="LinkageClassifier"/> for the conversion and why.
+/// </param>
+/// <param name="NonMatchThreshold">
+/// The log-likelihood ratio at or below which a pair is a NonMatch; between the two a pair is put
+/// to the model. Same scale as <paramref name="MatchThreshold"/>.
+/// </param>
 /// <param name="RecordsDenoteEntities">
 /// The pre-filter's premise: each record is one mention of one real-world entity, so two records
 /// agreeing on their fields is evidence that they denote the same thing. That holds for a row, a

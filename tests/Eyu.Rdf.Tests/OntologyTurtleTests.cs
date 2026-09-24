@@ -120,7 +120,7 @@ public class OntologyTurtleTests
 
         Assert.Contains(SubjectsOfType(g, Owl + "Class"), n => n.Equals(U(g, EyuVocabulary.Namespace + "Person")));
         Assert.Contains(SubjectsOfType(g, Owl + "ObjectProperty"), n => n.Equals(U(g, EyuVocabulary.Namespace + "PartOf")));
-        Assert.Contains(SubjectsOfType(g, Owl + "Class"), n => n.Equals(U(g, Base + "ProductionLine")));
+        Assert.Contains(SubjectsOfType(g, Owl + "Class"), n => n.Equals(U(g, Base + "Productionline")));
         Assert.DoesNotContain(g.Triples, t => t.Object is IUriNode u
             && !u.Uri.AbsoluteUri.StartsWith(Base, StringComparison.Ordinal)
             && !u.Uri.AbsoluteUri.StartsWith(EyuVocabulary.Namespace, StringComparison.Ordinal)
@@ -140,9 +140,45 @@ public class OntologyTurtleTests
         Assert.Equal(2, SubjectsOfType(g, Owl + "Class").Count());
         Assert.Single(SubjectsOfType(g, Owl + "ObjectProperty"));
         Assert.Equal(2, g.GetTriplesWithPredicate(U(g, EyuVocabulary.Namespace + "LocatedIn")).Count());
-        Assert.Equal(U(g, Base + "WorkOrder"),
+        Assert.Equal(U(g, Base + "Workorder"),
             g.GetTriplesWithSubjectPredicate(Individual(g, proposal, "b"), U(g, Rdf + "type"))
                 .Single(t => !t.Object.Equals(U(g, Owl + "NamedIndividual"))).Object);
+    }
+
+    // The individual's IRI compares type names as Eyu compares them, so two exports that spell a type
+    // differently name one individual. The class it is typed under has to follow the same rule, or a
+    // triple store merging the exports puts that one individual in two unrelated classes.
+    [Fact]
+    public void Two_exports_that_spell_a_type_differently_merge_into_one_class()
+    {
+        var first = new OntologyProposal([Entity("a", "Replace bearing", "Work Order")], [Relation("maintains", "a", "a")], []);
+        var second = new OntologyProposal([Entity("a", "Replace bearing", "WorkOrder")], [Relation("Maintains", "a", "a")], []);
+
+        var merged = new Graph();
+        foreach (var proposal in new[] { first, second })
+        {
+            new TurtleParser().Load(merged, new StringReader(OntologyTurtle.ToTurtle(proposal, Options)));
+        }
+
+        var type = Assert.Single(SubjectsOfType(merged, Owl + "Class"));
+        Assert.Equal(U(merged, Base + "Workorder"), type);
+        var individual = Assert.Single(SubjectsOfType(merged, Owl + "NamedIndividual"));
+        Assert.Equal([type], merged.GetTriplesWithSubjectPredicate(individual, U(merged, Rdf + "type"))
+            .Select(t => t.Object).Where(o => !o.Equals(U(merged, Owl + "NamedIndividual"))));
+        Assert.Equal(U(merged, Base + "maintains"), Assert.Single(SubjectsOfType(merged, Owl + "ObjectProperty")));
+        Assert.Equal(["Work Order", "WorkOrder"], merged.GetTriplesWithSubjectPredicate(type, U(merged, Rdfs + "label"))
+            .Select(t => ((ILiteralNode)t.Object).Value).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void A_class_and_a_property_that_compare_alike_stay_apart()
+    {
+        var proposal = new OntologyProposal([Entity("a", "Kim", "Owner"), Entity("b", "Pump", "Equipment")], [Relation("owner", "a", "b")], []);
+
+        var g = Parse(proposal);
+
+        Assert.Contains(SubjectsOfType(g, Owl + "Class"), n => n.Equals(U(g, Base + "Owner")));
+        Assert.Equal(U(g, Base + "owner"), Assert.Single(SubjectsOfType(g, Owl + "ObjectProperty")));
     }
 
     // Korean, spaces and punctuation in a name, and quotes, backslashes and line breaks in a claim, are

@@ -379,7 +379,11 @@ two of them. The claim, the cited records, which of them denote an individual (`
 confidence and whether a type was declared travel as annotations — on a relation, as an OWL axiom annotation (`owl:Axiom`), the form an OWL editor attaches
 to the assertion itself. Acquired terms are minted
 under the namespace you pass; innate ones are Eyu's own terms, and neither is aligned to an outside
-vocabulary. Rejections are not written. The package depends on nothing beyond `Eyu.Core`.
+vocabulary. An acquired term's IRI comes from its name compared the way Eyu compares names — case and
+separators ignored — with a class's first letter upper-cased and a property's lower-cased, so
+`Work Order` and `WorkOrder` from two exports are one class `:Workorder`, and `maintains` and
+`Maintains` one property `:maintains`; the spelling each export used is kept as the term's
+`rdfs:label`. Rejections are not written. The package depends on nothing beyond `Eyu.Core`.
 
 An individual's IRI never comes from `EntityId`, which the model picks afresh on every call. It is
 derived from the entity's name and type, compared ignoring case and separators, together with the
@@ -387,8 +391,8 @@ records that denote it when any does — the records alone are not enough, since
 row that reports an event says the row denotes the aircraft, the part and the event alike. The key is
 hashed under `entity/` in your namespace, so two exports of the same records name one entity alike
 and a triple store merging them merges its individuals. The IRI holds only as long as its inputs do:
-a renamed entity, a type spelled differently (a declared vocabulary holds types still) or a different
-set of denoting records is a different IRI, and two different things with one name, type and set of
+a renamed entity, a type named differently beyond case and separators (a declared vocabulary holds
+types still) or a different set of denoting records is a different IRI, and two different things with one name, type and set of
 denoting records share one — within one proposal too, where a model reading a document chunk by chunk
 proposes the same company once per chunk: those entities are one individual carrying every claim.
 `OntologyTurtle.IndividualIris` returns the IRI each entity is written under, for linking your own

@@ -10,18 +10,29 @@ every published version has a section here.
 
 ## Unreleased
 
-### Added
-
-- The packages carry their XML documentation, so an IDE shows each member's comment from the package.
+A minor with one breaking change in `Eyu.Rdf`: the IRIs of acquired classes and properties.
 
 ### Changed
 
+- **Breaking (`Eyu.Rdf`)**: an acquired class or property is now minted from its name compared the way
+  Eyu compares names — case and separators ignored — with a class's first letter upper-cased and a
+  property's lower-cased (`Work Order` and `WorkOrder` → `:Workorder`; `maintains` and `Maintains` →
+  `:maintains`). It used to be minted from the spelling the proposal used, while the individual's IRI
+  already ignored case and separators in the type — so two exports that spelled a type differently
+  named one individual and put it in two unrelated classes when a triple store merged them. The
+  spelling a proposal used stays as the term's `rdfs:label`. A graph holding 0.4.0 exports keeps the
+  old class and property IRIs; re-export to replace them. Innate terms and individual IRIs are
+  unchanged.
 - A model call answered outside the success range now throws `HttpRequestException` whose message
   names the status, the request URI (without its query) and an excerpt of the body the server
   answered, with the status on `StatusCode`. It used to say only the status, so the usual cause — a
   base address missing the API version segment or its trailing slash, which sends the request to a
   path the server does not serve — could not be told from a wrong model name or a rejected field
   without re-running the call. A `404` also says how the path is resolved.
+
+### Added
+
+- The packages carry their XML documentation, so an IDE shows each member's comment from the package.
 
 ### Documentation
 

@@ -87,7 +87,7 @@ public static class OntologyTurtle
         var classes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var entity in proposal.Entities)
         {
-            if (terms.TryAdd(classes, entity.EntityType, entity.Origin, out var iri))
+            if (terms.TryAdd(classes, entity.EntityType, entity.Origin, isClass: true, out var iri))
             {
                 WriteTerm(writer, iri, "owl:Class", entity.EntityType, entity.Origin);
             }
@@ -96,7 +96,7 @@ public static class OntologyTurtle
         var properties = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var relation in proposal.Relations)
         {
-            if (terms.TryAdd(properties, relation.RelationName, relation.Origin, out var iri))
+            if (terms.TryAdd(properties, relation.RelationName, relation.Origin, isClass: false, out var iri))
             {
                 WriteTerm(writer, iri, "owl:ObjectProperty", relation.RelationName, relation.Origin);
             }
@@ -278,7 +278,7 @@ public static class OntologyTurtle
     /// <summary>Mints the IRIs of one export's classes and properties, once per name.</summary>
     private sealed class TermSet(string baseIri)
     {
-        public bool TryAdd(Dictionary<string, string> seen, string name, VocabularyOrigin origin, out string iri)
+        public bool TryAdd(Dictionary<string, string> seen, string name, VocabularyOrigin origin, bool isClass, out string iri)
         {
             var key = Normalize(name);
             if (seen.TryGetValue(key, out var existing))
@@ -289,10 +289,22 @@ public static class OntologyTurtle
 
             iri = origin == VocabularyOrigin.Innate
                 ? Term(EyuVocabulary.Namespace, "eyu:", Canonical(name))
-                : Term(baseIri, ":", name);
+                : Term(baseIri, ":", Acquired(name, key, isClass));
             seen[key] = iri;
             return true;
         }
+
+        // An acquired name is minted from its comparison key, not from the spelling one proposal happened
+        // to use, so "Work Order" in one export and "WorkOrder" in the next are one term -- the same rule
+        // that makes them one individual's type. The key keeps no word boundaries, so the only casing
+        // left to choose is the first letter: upper for a class, lower for a property (the OWL
+        // convention), which also keeps a class and a property that compare alike on separate IRIs.
+        // The spelling the proposal used stays as the term's rdfs:label. A name with no letter or digit
+        // has no key and is written as it came.
+        private static string Acquired(string name, string key, bool isClass)
+            => key.Length == 0 ? name
+                : isClass ? char.ToUpperInvariant(key[0]) + key[1..]
+                : key;
 
         // An innate name is written in the spelling the innate vocabulary gives it, so part_of from one
         // proposal and PartOf from another land on the same Eyu term.

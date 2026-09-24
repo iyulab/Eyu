@@ -12,6 +12,20 @@ every published version has a section here.
 
 ### Changed
 
+- The record-linkage EM (`FellegiSunterEstimator.Estimate`) estimates its own match prior. The
+  prior used to share the [0.01, 0.99] bounds of the per-field agreement probabilities, and past
+  about a hundred records a deduplication batch's true prior is below 1%, so the fitted prior was
+  the bound itself (0.01 against 0.001 on a 1,000-record benchmark) and every posterior was pushed
+  toward match tenfold. It now carries Jeffreys' pseudo-count instead (`PriorPseudoCount`), which
+  keeps it inside (0, 1) and vanishes as pairs accumulate: on a labeled benchmark the fitted prior
+  is now the true share of matching pairs (0.00100 on 1,000 records). Because the posteriors move,
+  so do the fitted agreement probabilities and a few classifications — B-cubed F1 moved by at most
+  0.0015 on that benchmark, in both directions — and the unlabeled error-rate estimate: its
+  false-non-match rate went from 0.00498 to 0.00029 where the labels say 0. The agreement probabilities keep their
+  bounds, now public and documented as what they are — an evidence cap
+  (`AgreementProbabilityFloor` / `AgreementProbabilityCeiling`): letting them fall to their true
+  values cut precision from 0.986 to 0.950 on names and addresses alone. Batches under
+  `MinimumPairsForEmEstimation` pairs still use the heuristic default.
 - A stratum of a clerical review whose reviewed scores are all alike no longer contributes zero
   variance to `ClericalReviewEstimator.Estimate`. It contributes `p (1 − p)`, with `p` the exact
   95% upper bound on the fraction of the stratum that could still differ when none of the `n_h`

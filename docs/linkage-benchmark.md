@@ -2,7 +2,8 @@
 
 What `LinkagePipeline` achieves on public data whose true clusters are known, and what the
 clerical review protocol ([clerical-review.md](clerical-review.md)) says about the same runs when
-the labels play the reviewer. The numbers are properties of these datasets and configurations
+the labels play the reviewer. Measured with the estimator as of this release: the EM fits its own match prior and keeps a cap
+on per-field evidence (see "The unlabeled estimate" below). The numbers are properties of these datasets and configurations
 (clerical-review.md §6) — not of the library in general, and not of Korean text, document chunks
 or free-form model output.
 
@@ -30,7 +31,7 @@ B-cubed per record (clerical-review.md §1), precision / recall / F1:
 |---|---|---|
 | exact comparison, all fields | 1.000 / 0.998 / 0.999 | 1.000 / 1.000 / 1.000 |
 | Jaro-Winkler ≥ 0.90, all fields | 1.000 / 1.000 / 1.000 | 1.000 / 1.000 / 1.000 |
-| exact, **without date of birth and identity number** | 0.992 / 0.997 / 0.994 | 0.986 / 0.993 / 0.990 |
+| exact, **without date of birth and identity number** | 0.994 / 0.994 / 0.994 | 0.990 / 0.992 / 0.991 |
 | Jaro-Winkler ≥ 0.90, without them | 1.000 / 1.000 / 1.000 | 1.000 / 0.999 / 0.999 |
 
 With a date of birth and an identity number on every record the sets are close to a ceiling. Names
@@ -49,9 +50,11 @@ errors occur:
 
 | configuration | set | precision: normal / bootstrap | recall: normal / bootstrap |
 |---|---|---|---|
-| exact, without identifiers | `dataset1` | **100** / 81 (was 81 / 81) | **100** / 57 (was 57 / 57) |
-| exact, without identifiers | `dataset3` subset | **100** / 85 (was 85 / 85) | **100** / 79 (was 77 / 79) |
-| Jaro-Winkler, without identifiers | `dataset3` subset | 100 / 100 | **100** / 4 (was 4 / 4) |
+| exact, without identifiers | `dataset1` | **100** / 23 (normal was 81) | **100** / 100 (normal was 57) |
+| exact, without identifiers | `dataset3` subset | **100** / 70 (normal was 85) | **100** / 80 (normal was 77) |
+| Jaro-Winkler, without identifiers | `dataset3` subset | 100 / 100 | **100** / 34 (normal was 4) |
+
+"Was" is the normal interval before the fix below and before the EM fitted its own match prior, over the same seeds.
 
 **What was wrong, and what changed.** Errors here are rare, and a 30-record pilot from a stratum of
 several hundred usually sees none. A stratum whose reviewed scores were all alike used to add zero
@@ -66,12 +69,12 @@ which is why, while `NoVariationInStratum` is set, the normal interval is the on
 
 | measure | census | pilot estimate | normal 95% interval | bootstrap | reviewed |
 |---|---|---|---|---|---|
-| precision | 0.9920 | 0.9800 | [0.9496, 1.0104] | [0.9462, 0.9971] | 65 of 1,000 |
-| recall | 0.9970 | 0.9967 | [0.8903, 1.1030] | [0.9955, 0.9972] | 65 of 1,000 |
+| precision | 0.9940 | 0.9990 | [0.8888, 1.1092] | [0.9990, 0.9990] | 52 of 1,000 |
+| recall | 0.9940 | 0.9940 | [0.8838, 1.1042] | [0.9940, 0.9940] | 52 of 1,000 |
 
-Recall's interval runs from 0.89 past 1.0: no reviewed record in the largest stratum was split
-from its duplicate, and 30 records cannot say more than that fewer than about one in eight might
-be. That is the pilot doing its job — bounding the strata and sizing the next round
+Both intervals run from about 0.88 past 1.0: no reviewed record in the largest stratum was wrong,
+and 30 records cannot say more than that fewer than about one in eight might be. The bootstrap,
+with nothing to resample there, is a point. That is the pilot doing its job — bounding the strata and sizing the next round
 (clerical-review.md §2) — not the review's final number.
 
 ## The unlabeled estimate, checked against the labels
@@ -81,10 +84,18 @@ rates the labels give, for the configurations where errors occur:
 
 | configuration | set | false-match: estimated / labeled | false-non-match: estimated / labeled |
 |---|---|---|---|
-| exact, without identifiers | `dataset1` | 0.00002 / 0.00002 | 0.00498 / 0.00000 |
-| exact, without identifiers | `dataset3` subset | 0.00010 / 0.00004 | 0.00509 / 0.00287 |
+| exact, without identifiers | `dataset1` | 0.00004 / 0.00001 | 0.00029 / 0.00000 |
+| exact, without identifiers | `dataset3` subset | 0.00019 / 0.00002 | 0.00086 / 0.00430 |
 
-It found the false-match rate's order of magnitude and overstated the false-non-match rate.
+Until the EM estimated its own match prior it held it at 0.01 — ten times the true share of
+matching pairs here — and the false-non-match estimate was 0.00498 where the labels say 0. With
+the prior fitted (0.00100 and 0.00233 here) the `dataset1` estimate is close to the labels; on the
+`dataset3` subset it is still off by a factor of five in each direction. The estimate is only as
+good as the model it is read from, and that model assumes the fields are independent: a suburb and
+its postcode, or a street and its suburb, are not, and the per-field evidence cap
+(`FellegiSunterEstimator.AgreementProbabilityFloor`) that keeps such correlated agreements from
+outvoting everything else is itself a departure from the fitted mixture. Read it as the order of
+magnitude, and as a reason to review, not as the rate.
 
 ## Reproducing
 

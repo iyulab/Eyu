@@ -35,7 +35,7 @@ measurably changes both the resulting prompt and the grounding-overlap counts. W
 **not** establish: whether any particular threshold setting is more *correct* — no labeled
 ground truth exists in these domains to score the pre-filter's own match/non-match calls against
 (on a labeled public benchmark it has been scored — [docs/linkage-benchmark.md](docs/linkage-benchmark.md):
-B-cubed F1 0.99–1.00 on Febrl person records, 0.990–0.994 on names and addresses alone with exact
+B-cubed F1 0.99–1.00 on Febrl person records, 0.991–0.994 on names and addresses alone with exact
 comparison); what the pre-filter does report is an
 *unlabeled estimate* of its own error rates (`LinkageAnalysis.ErrorRates`: the false-match and
 false-non-match rates the fitted EM mixture expects of its own calls, with the preconditions of

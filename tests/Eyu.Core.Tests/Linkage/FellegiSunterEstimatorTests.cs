@@ -226,4 +226,51 @@ public class FellegiSunterEstimatorTests
 
         Assert.Equal(Math.Log(0.9 / 0.1), llr, precision: 6);
     }
+
+    // A deduplication batch of more than about a hundred records has a true match prior below one
+    // percent. Twenty matches among four thousand pairs (0.5%) must come back as roughly that, not
+    // as a floor. The agreement rates keep theirs: a value two non-matching pairs in four thousand
+    // happen to share still counts as agreeing by chance one time in a hundred, which caps what one
+    // coincidental agreement can weigh.
+    [Fact]
+    public void A_large_batch_estimates_its_own_match_prior_while_agreement_rates_keep_the_evidence_cap()
+    {
+        var vectors = new List<IReadOnlyDictionary<string, FieldAgreementLevel>>();
+        for (var i = 0; i < 20; i++)
+        {
+            vectors.Add(Vector(("name", FieldAgreementLevel.Agree), ("birth", FieldAgreementLevel.Agree), ("city", FieldAgreementLevel.Agree)));
+        }
+
+        for (var i = 0; i < 3980; i++)
+        {
+            vectors.Add(Vector(
+                ("name", FieldAgreementLevel.Disagree),
+                ("birth", i < 2 ? FieldAgreementLevel.Agree : FieldAgreementLevel.Disagree),
+                ("city", i % 10 == 0 ? FieldAgreementLevel.Agree : FieldAgreementLevel.Disagree)));
+        }
+
+        var parameters = FellegiSunterEstimator.Estimate(vectors);
+
+        Assert.Equal(EstimationStatus.Converged, parameters.Status);
+        Assert.InRange(parameters.MatchPrior, 0.004, 0.006);
+        Assert.Equal(FellegiSunterEstimator.AgreementProbabilityFloor, parameters.UAgreeProbability["birth"], 12);
+        Assert.Equal(FellegiSunterEstimator.AgreementProbabilityCeiling, parameters.MAgreeProbability["name"], 12);
+    }
+
+    // With a handful of pairs the prior's pseudo-count dominates and keeps it well inside (0, 1),
+    // as the fixed floor used to, even when every pair agrees on everything.
+    [Fact]
+    public void A_small_batch_that_agrees_everywhere_still_estimates_strictly_inside_the_unit_interval()
+    {
+        var vectors = Enumerable.Range(0, FellegiSunterEstimator.MinimumPairsForEmEstimation)
+            .Select(_ => Vector(("name", FieldAgreementLevel.Agree)))
+            .ToList();
+
+        var parameters = FellegiSunterEstimator.Estimate(vectors);
+
+        Assert.InRange(parameters.MatchPrior, 0.01, 0.99);
+        Assert.InRange(parameters.MAgreeProbability["name"], 0.01, 0.99);
+        Assert.InRange(parameters.UAgreeProbability["name"], 0.01, 0.99);
+        Assert.True(double.IsFinite(FellegiSunterEstimator.ComputeLogLikelihoodRatio(vectors[0], parameters)));
+    }
 }

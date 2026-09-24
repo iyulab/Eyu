@@ -136,6 +136,13 @@ is known — and report the two numbers apart. Silently adding them gives a reca
 
 ## 4. Adjudication
 
+- **Who adjudicates.** A score that will be published — in a README, a report, a claim to a
+  consumer — rests on ground truth: people applying these rules, or the labels of a benchmark
+  that ships them. A model may pilot the instructions or act as the second reviewer below, and
+  when it does the report's reviewer line says so; its verdicts are not the true clusters of a
+  published score. The reason is the one in *Why this exists* one step removed: a model's errors
+  are not independent of the kind of errors a linkage makes, so a model reviewer can agree with a
+  mistake for the same reason the system made it.
 - **Blind.** The reviewer sees candidates, not verdicts, posteriors, or cluster boundaries as the
   system drew them. A reviewer shown the answer agrees with it.
 - **Three outcomes, never two.** *Same entity* · *different entity* · *cannot tell from the

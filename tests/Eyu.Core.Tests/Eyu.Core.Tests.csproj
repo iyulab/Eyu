@@ -21,6 +21,15 @@
     <Compile Remove="Live/Llm/**/*.cs" />
   </ItemGroup>
 
+  <!--
+    Entity-resolution accuracy on a labeled public benchmark (Benchmark/FebrlLinkageMeasurement):
+      dotnet test -p:IncludeEyuBenchmarks=true [EYU_BENCHMARK_REPORT=<file>]
+    Excluded by default: it downloads its (third-party-licensed) data and measures rather than gates.
+  -->
+  <ItemGroup Condition="'$(IncludeEyuBenchmarks)' != 'true'">
+    <Compile Remove="Benchmark/**/*.cs" />
+  </ItemGroup>
+
   <!-- The quality measurement reads identity stability through the IRIs Eyu.Rdf writes, not a copy of its rule. -->
   <ItemGroup Condition="'$(IncludeEyuLlmLiveTests)' == 'true'">
     <ProjectReference Include="..\..\src\Eyu.Rdf\Eyu.Rdf.csproj" />

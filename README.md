@@ -7,7 +7,8 @@
 > a piece of data is shaped the way it is, made explicit and citable.
 
 **Status: contract implemented; grounding-integrity and response-parsing reliability validated
-against a real model — entity-resolution accuracy is not measured; exercised by one external
+against a real model; entity-resolution accuracy measured on a labeled public benchmark (B-cubed F1
+0.99–1.00 on Febrl synthetic person records) and not yet on any other data; exercised by one external
 package consumer on a Korean-language document corpus, whose first measurement is what the
 entity `Name`, per-element `Rejections` and stamped `VocabularyOrigin` answer.** All five ports exist as C# types (`Eyu.Core`), plus a first source
 adapter (`Eyu.Formbase`). `IOntologyProposer`'s judgment logic (`SinglePassOntologyProposer` +
@@ -32,8 +33,10 @@ a machine several work orders name is not penalized because the work orders are 
 Match/GrayZone/NonMatch, EM convergence status, match prior) and that changing the thresholds
 measurably changes both the resulting prompt and the grounding-overlap counts. What that run does
 **not** establish: whether any particular threshold setting is more *correct* — no labeled
-ground truth exists to score the pre-filter's own match/non-match calls against, so
-entity-resolution accuracy remains unmeasured; what the pre-filter does report is an
+ground truth exists in these domains to score the pre-filter's own match/non-match calls against
+(on a labeled public benchmark it has been scored — [docs/linkage-benchmark.md](docs/linkage-benchmark.md):
+B-cubed F1 0.99–1.00 on Febrl person records, 0.990–0.994 on names and addresses alone with exact
+comparison); what the pre-filter does report is an
 *unlabeled estimate* of its own error rates (`LinkageAnalysis.ErrorRates`: the false-match and
 false-non-match rates the fitted EM mixture expects of its own calls, with the preconditions of
 that estimate flagged when they did not hold — an estimate is not a measurement, and it says
@@ -43,8 +46,9 @@ review will be scored on is already fixed as B-cubed per record, not per pair,
 [docs/clerical-review.md](docs/clerical-review.md), whose estimator is in the library as
 `ClericalReviewEstimator`, and the path from a reviewer's verdicts to the per-record scores it
 consumes is `ClericalReviewScoring` — the arithmetic that turns a reviewed sample into a
-population score with an interval exists end to end; what is still missing is a review actually
-run under it) — or whether
+population score with an interval exists end to end and has been run with a benchmark's labels as
+the reviewer, which showed a pilot's interval covering far less than 95% where errors are rare;
+what is still missing is a review by people on a corpus of the domains above) — or whether
 the proposer's self-reported
 confidence is informative on its own, which it was not in an earlier measurement (see
 [design rationale, §D](docs/philosophy.md)); gray-zone cases now combine it with the

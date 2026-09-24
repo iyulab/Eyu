@@ -105,4 +105,5 @@ dotnet test tests/Eyu.Core.Tests -p:IncludeEyuBenchmarks=true --filter-class Eyu
 
 `EYU_BENCHMARK_REPORT=<file>` writes the full report — the fitted parameters, strata sizes, linkage
 rate, threshold sensitivity and pairwise figures per configuration. A run takes about twenty
-minutes; it needs the network the first time (`EYU_BENCHMARK_CACHE` keeps the files).
+minutes, half of it re-fitting the model at neighbouring thresholds (each report ends with a
+"Run cost" line per configuration); it needs the network the first time (`EYU_BENCHMARK_CACHE` keeps the files).

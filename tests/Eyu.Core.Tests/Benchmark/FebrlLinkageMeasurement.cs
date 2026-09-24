@@ -105,8 +105,10 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
                 var compared = dropped.Length == 0
                     ? records
                     : records.Select(r => new RawRecord(r.Id, r.Fields.Where(f => !dropped.Contains(f.Key)).ToDictionary(f => f.Key, f => f.Value))).ToList();
+                var clock = System.Diagnostics.Stopwatch.StartNew();
                 var analysis = LinkagePipeline.Analyze(compared, options);
-                AppendConfiguration(report, $"{dataset.File} — {name}", options, analysis, compared, truth);
+                var analysisTime = clock.Elapsed;
+                AppendConfiguration(report, $"{dataset.File} — {name}", options, analysis, compared, truth, analysisTime);
             }
         }
 
@@ -124,7 +126,8 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
         LinkageOptions options,
         LinkageAnalysis analysis,
         IReadOnlyList<RawRecord> records,
-        IReadOnlyList<RecordCluster> truth)
+        IReadOnlyList<RecordCluster> truth,
+        TimeSpan analysisTime)
     {
         var predicted = analysis.Clustering.Clusters;
         var census = ClusteringMetrics.BCubed(predicted, truth);
@@ -149,8 +152,16 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
         report.AppendLine(CultureInfo.InvariantCulture, $"| **Census B-cubed** (full truth) | precision **{census.Precision:0.0000}** · recall **{census.Recall:0.0000}** · F1 **{census.F1:0.0000}** |");
         report.AppendLine(CultureInfo.InvariantCulture, $"| Linkage rate | {linked}/{records.Count} = {(double)linked / records.Count:0.000} in a cluster of ≥ 2 (truth: {(double)trulyLinked / records.Count:0.000}); predicted clusters {predicted.Count} (truth {truth.Count}) · gray-zone pairs {analysis.Clustering.GrayZonePairs.Count} |");
 
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         AppendReviewLines(report, analysis, truth, census);
+        var reviewTime = clock.Elapsed;
+        clock.Restart();
         AppendPairLines(report, options, analysis, records, truth);
+        var pairTime = clock.Elapsed;
+
+        // Where a run's time goes, so that a slow run says what to make faster. Not comparable
+        // across machines; everything above this line is deterministic, this line is not.
+        report.AppendLine(CultureInfo.InvariantCulture, $"| Run cost | linkage {analysisTime.TotalSeconds:0}s · review simulation ({CoverageDraws} pilots) {reviewTime.TotalSeconds:0}s · comparison and sensitivity (4 re-fits) {pairTime.TotalSeconds:0}s |");
         report.AppendLine();
     }
 

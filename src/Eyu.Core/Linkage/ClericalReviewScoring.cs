@@ -181,11 +181,27 @@ public static class ClericalReviewScoring
             }
         }
 
+        // Candidates are gathered for the sampled records only: a batch compares every pair, so
+        // building every record's candidate set allocates the square of the batch to use a
+        // pilot's worth of it.
+        var sampled = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var stratum in sample.Strata)
+        {
+            sampled.UnionWith(stratum.SelectedRecordIds);
+        }
+
         var candidatesOf = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         foreach (var pair in analysis.PairLinkages)
         {
-            Admit(candidatesOf, pair.RecordIdA, pair.RecordIdB);
-            Admit(candidatesOf, pair.RecordIdB, pair.RecordIdA);
+            if (sampled.Contains(pair.RecordIdA))
+            {
+                Admit(candidatesOf, pair.RecordIdA, pair.RecordIdB);
+            }
+
+            if (sampled.Contains(pair.RecordIdB))
+            {
+                Admit(candidatesOf, pair.RecordIdB, pair.RecordIdA);
+            }
         }
 
         var precision = new List<ReviewStratum>(sample.Strata.Count);

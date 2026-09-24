@@ -76,21 +76,51 @@ public class ClericalReviewEstimatorTests
     }
 
     // The boundary case the protocol names: when every reviewed record scores 1.0, resampling can
-    // only ever return 1.0, so the bootstrap reports a point and the normal interval reports
-    // nothing either. Both are honest about the sample and both understate the uncertainty -- the
-    // caveat is what says so.
+    // only ever return 1.0, so the bootstrap reports a point. The standard error does not: four
+    // identical scores bound the fraction that could differ at 1 - 0.025^(1/4) ~ 0.602, and the
+    // normal interval is as wide as that leaves the score. The caveat still says the sample saw no
+    // variation -- the value is fixed, the warning is not silenced.
     [Fact]
-    public void A_stratum_whose_scores_never_vary_is_flagged_rather_than_reported_as_certainty()
+    public void A_stratum_whose_scores_never_vary_keeps_the_uncertainty_its_sample_allows()
     {
         var estimate = ClericalReviewEstimator.Estimate(
             [new ReviewStratum("all-correct", 500, [1.0, 1.0, 1.0, 1.0])],
             Seed);
 
+        var p = 1.0 - Math.Pow(0.025, 0.25);
+        var expectedSe = Math.Sqrt((1.0 - (4.0 / 500)) * p * (1.0 - p) / 4);
         Assert.Equal(1.0, estimate.Estimate, 12);
+        Assert.Equal(expectedSe, estimate.StandardError, 12);
+        Assert.Equal(1.0 - (1.96 * expectedSe), estimate.Normal.Low, 12);
+        Assert.True(estimate.Normal.High > 1.0);
         Assert.Equal(1.0, estimate.Bootstrap.Low, 12);
         Assert.Equal(1.0, estimate.Bootstrap.High, 12);
         Assert.Equal(ClericalReviewCaveat.NoVariationInStratum, estimate.Caveats);
         Assert.False(estimate.IsReliable);
+    }
+
+    // The bound shrinks as the sample grows -- thirty identical scores leave fewer than about one
+    // record in eight possibly different -- and it is the bound that is used, not a fixed floor.
+    [Theory]
+    [InlineData(1, 0.975)]
+    [InlineData(30, 0.11570)]
+    [InlineData(300, 0.01222)]
+    public void The_unobserved_variation_bound_is_the_exact_upper_bound_on_a_differing_fraction(int reviewed, double fraction)
+    {
+        Assert.Equal(fraction * (1 - fraction), ClericalReviewEstimator.UnobservedVariationBound(reviewed), 4);
+    }
+
+    // A stratum reviewed in full keeps contributing nothing even when its scores are all alike:
+    // the bound is about what was not looked at, and in a census nothing was left.
+    [Fact]
+    public void A_census_stratum_contributes_no_variance_even_when_its_scores_never_vary()
+    {
+        var estimate = ClericalReviewEstimator.Estimate(
+            [new ReviewStratum("census", 4, [1.0, 1.0, 1.0, 1.0])],
+            Seed);
+
+        Assert.Equal(0.0, estimate.StandardError, 12);
+        Assert.True(estimate.Caveats.HasFlag(ClericalReviewCaveat.StratumIsCensus));
     }
 
     // A stratum reviewed in full has no sampling variance left to estimate -- that is correct, not

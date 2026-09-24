@@ -12,6 +12,14 @@ every published version has a section here.
 
 ### Changed
 
+- A stratum of a clerical review whose reviewed scores are all alike no longer contributes zero
+  variance to `ClericalReviewEstimator.Estimate`. It contributes `p (1 − p)`, with `p` the exact
+  95% upper bound on the fraction of the stratum that could still differ when none of the `n_h`
+  reviewed records did (`UnobservedVariationBound`), so a pilot that happens to see no error
+  reports how uncertain that leaves the score instead of a zero-width interval. On a labeled
+  benchmark the old interval contained the true recall 4 times in 100. Normal intervals from such
+  samples are now wider, often past 1.0; the bootstrap still cannot resample an unvarying stratum,
+  and while `NoVariationInStratum` is set the normal interval is the one to read.
 - An entity now says which of the records it cites *are* it. `EntityProposal.DenotedBy` lists the
   cited records that denote the entity, and `MentionedIn` the rest — records that only refer to it,
   the way a work order names the machine it ran on; the claim's sources are still every record the

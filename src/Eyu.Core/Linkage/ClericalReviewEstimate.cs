@@ -43,9 +43,14 @@ public enum ClericalReviewCaveat
     StratumIsCensus = 1 << 1,
 
     /// <summary>
-    /// Every reviewed score in some stratum is identical, so resampling that stratum always
-    /// returns the same mean. The bootstrap interval is then narrower than the uncertainty
-    /// warrants — exactly the boundary case the protocol warns about, where most records score 1.0.
+    /// Every reviewed score in some stratum is identical — the boundary case the protocol warns
+    /// about, where most records score 1.0 and a small sample sees no error at all. That is not
+    /// evidence of no variance, only of little: the standard error then takes the stratum's variance
+    /// from the most that <c>n_h</c> identical observations still allow
+    /// (<see cref="ClericalReviewEstimator.UnobservedVariationBound"/>), so the normal interval
+    /// stays as wide as the sample leaves the score uncertain. Resampling that stratum can only
+    /// return the same mean, so the bootstrap interval is narrower than the uncertainty warrants —
+    /// read <see cref="ClericalReviewEstimate.Normal"/> when this is set.
     /// </summary>
     NoVariationInStratum = 1 << 2,
 }
@@ -59,7 +64,10 @@ public enum ClericalReviewCaveat
 /// bounded in [0, 1] and pile up at 1.0, so the normal approximation runs past the boundary while
 /// the bootstrap does not. Neither is clamped into range — a normal interval reaching above 1.0 is
 /// the signal that it should not be trusted here, and clamping would hide it. Prefer
-/// <paramref name="Bootstrap"/> when the two disagree. Both are built on the same design: the
+/// <paramref name="Bootstrap"/> when the two disagree — unless the caveats include
+/// <see cref="ClericalReviewCaveat.NoVariationInStratum"/>: a stratum whose reviewed scores are all
+/// alike has nothing to resample, so its bootstrap collapses to a point, while the standard error
+/// carries the bound that stratum's sample still allows. Both are built on the same design: the
 /// bootstrap is the Rao–Wu rescaling bootstrap, which carries the finite-population correction the
 /// standard error carries, so where they differ it is the skew talking and not the method.
 /// </para>
@@ -99,6 +107,29 @@ public static class ClericalReviewEstimator
 
     /// <summary>Below this many reviewed records a stratum has no sample variance to contribute.</summary>
     public const int MinimumReviewedPerStratum = 2;
+
+    /// <summary>
+    /// The variance a stratum is given when every one of its <paramref name="reviewed"/> scores is
+    /// the same: <c>p (1 − p)</c> with <c>p = 1 − 0.025^(1/n_h)</c>, the exact (Clopper–Pearson)
+    /// upper bound, at the interval's two-sided 95% level, on the fraction of the stratum that
+    /// could score differently when none of <c>n_h</c> reviewed records did. A score in [0, 1]
+    /// whose values differ on a fraction <c>p</c> of records has variance at most <c>p (1 − p)</c>
+    /// (Popoviciu's inequality on a two-valued split), so the bound holds for fractional B-cubed
+    /// scores without treating them as right-or-wrong.
+    /// <para>
+    /// Without it a stratum that happened to show no error contributed a variance of exactly zero,
+    /// and the "95%" interval collapsed onto the observed score: on a labeled benchmark, where rare
+    /// errors in a large stratum were missed by a 30-record pilot, that interval contained the
+    /// census recall 4 times in 100. Thirty identical scores do not say the stratum has no errors;
+    /// they say it has fewer than about one in eight.
+    /// </para>
+    /// </summary>
+    public static double UnobservedVariationBound(int reviewed)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(reviewed, 1);
+        var fraction = 1.0 - Math.Pow(0.025, 1.0 / reviewed);
+        return fraction * (1.0 - fraction);
+    }
 
     /// <summary>
     /// <paramref name="seed"/> is required rather than optional: the protocol's report names the
@@ -176,9 +207,13 @@ public static class ClericalReviewEstimator
             }
 
             // Finite-population correction: a stratum reviewed in full contributes no sampling
-            // variance, because nothing was left in it that was not looked at.
+            // variance, because nothing was left in it that was not looked at. A stratum whose
+            // scores never varied contributes the most variance its sample still allows, not zero.
             var correction = 1.0 - ((double)reviewed / stratum.PopulationSize);
-            varianceSum += weight * weight * correction * SampleVariance(stratum.ReviewedScores, mean) / reviewed;
+            var variance = IsConstant(stratum.ReviewedScores)
+                ? UnobservedVariationBound(reviewed)
+                : SampleVariance(stratum.ReviewedScores, mean);
+            varianceSum += weight * weight * correction * variance / reviewed;
         }
 
         var standardError = Math.Sqrt(varianceSum);

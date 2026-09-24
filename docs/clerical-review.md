@@ -115,13 +115,26 @@ Two cautions that decide whether the interval means anything:
 
 - **The scores are bounded and skewed.** In S1 and S2 most records score exactly 1.0, so the
   normal approximation is poor near the boundary. Report a **bootstrap percentile interval**
-  alongside it, and prefer the bootstrap when the two disagree. The bootstrap is the rescaling
+  alongside it, and prefer the bootstrap when the two disagree — except in the next case. The bootstrap is the rescaling
   bootstrap of Rao and Wu (1988) for stratified sampling without replacement: within each stratum,
   `n_h − 1` draws with replacement, the resampled mean pulled toward the observed one by
   `sqrt(1 − n_h/N_h)`, 2000 replicates of `x̄`. That rescaling is what makes the two intervals
   comparable — it carries the same finite-population correction the standard error carries, so a
   stratum reviewed in full contributes no spread to either, and where the intervals still differ
   it is the skew, not the method.
+- **A stratum that shows no error has not shown it has none.** When every reviewed score in a
+  stratum is the same, `s²_h` is zero and the stratum would add nothing to the standard error —
+  the interval would collapse onto a perfect score. Its variance is taken instead as `p (1 − p)`
+  with `p = 1 − 0.025^(1/n_h)`, the exact upper bound, at the interval's 95% level, on the fraction
+  of the stratum that could still score differently when none of `n_h` reviewed records did
+  (`ClericalReviewEstimator.UnobservedVariationBound`; for a score in [0, 1], `p (1 − p)` bounds the
+  variance of any split that differs on that fraction). Thirty identical scores leave about one
+  record in eight possibly different, so a pilot's normal interval is wide there — often past 1.0,
+  unclamped — and that width is the answer: a pilot bounds such a stratum, the round after it
+  estimates it. The bootstrap has nothing to resample in that stratum and still collapses; the
+  caveat `NoVariationInStratum` is set, and while it is, read the normal interval. On a labeled
+  benchmark ([linkage-benchmark.md](linkage-benchmark.md)) the collapsed interval contained the
+  census recall 4 times in 100.
 - **The weights are design weights, not fit weights.** `N_h / N` comes from the population the
   sample was drawn from — the corpus as the system clustered it. Re-running the pipeline with
   different thresholds changes the strata, which invalidates the weights; a new configuration

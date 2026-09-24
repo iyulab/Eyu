@@ -43,22 +43,36 @@ recovers nearly all of it.
 For each configuration the protocol was run as written — a pilot of 30 records per stratum
 (`ClericalReviewSampler.DrawPilot`), per-record scoring (`ClericalReviewScoring.Score`), the
 stratified estimate (`ClericalReviewEstimator.Estimate`) — with the labels as the reviewer, over
-100 seeds, counting how often the 95% interval contains the census value:
+100 seeds, counting how often the 95% interval contains the census value. Where the census is
+1.000 in both measures every interval did, before and after; the rows below are the ones where
+errors occur:
 
-| configuration | set | precision covered | recall covered |
+| configuration | set | precision: normal / bootstrap | recall: normal / bootstrap |
 |---|---|---|---|
-| exact, without identifiers | `dataset1` | 81/100 | 57/100 |
-| exact, without identifiers | `dataset3` subset | 85/100 | 77–79/100 |
-| Jaro-Winkler, without identifiers | `dataset3` subset | 100/100 | **4/100** |
-| every other configuration | both | 100/100 | 100/100 |
+| exact, without identifiers | `dataset1` | **100** / 81 (was 81 / 81) | **100** / 57 (was 57 / 57) |
+| exact, without identifiers | `dataset3` subset | **100** / 85 (was 85 / 85) | **100** / 79 (was 77 / 79) |
+| Jaro-Winkler, without identifiers | `dataset3` subset | 100 / 100 | **100** / 4 (was 4 / 4) |
 
-**A pilot's interval is not a 95% interval where errors are rare.** When no sampled record in a
-stratum is wrong, that stratum's spread is zero and the interval collapses around a perfect
-score — the Jaro-Winkler row above misses a recall of 0.9987 ninety-six times in a hundred with an
-interval of zero width. Every one of these estimates carried a caveat
-(`NoVariationInStratum`, `StratumIsCensus`) and none was `IsReliable`: the estimator says it is
-not to be trusted, and this table is what that warning costs when it is ignored. The protocol's
-remedy is the round after the pilot (clerical-review.md §2), not a wider reading of the pilot.
+**What was wrong, and what changed.** Errors here are rare, and a 30-record pilot from a stratum of
+several hundred usually sees none. A stratum whose reviewed scores were all alike used to add zero
+variance, so the interval collapsed onto a perfect score — the Jaro-Winkler row missed a recall of
+0.9987 ninety-six times in a hundred with an interval of zero width. The estimator now gives such a
+stratum the most variance its sample still allows (clerical-review.md §3), and every row's normal
+interval contains the census. That coverage is conservative by construction: the bound is an upper
+one. The bootstrap cannot resample a stratum with nothing in it to resample and still collapses,
+which is why, while `NoVariationInStratum` is set, the normal interval is the one to read.
+
+**What a pilot then says.** One pilot (seed 1) on `dataset1`, exact comparison, without identifiers:
+
+| measure | census | pilot estimate | normal 95% interval | bootstrap | reviewed |
+|---|---|---|---|---|---|
+| precision | 0.9920 | 0.9800 | [0.9496, 1.0104] | [0.9462, 0.9971] | 65 of 1,000 |
+| recall | 0.9970 | 0.9967 | [0.8903, 1.1030] | [0.9955, 0.9972] | 65 of 1,000 |
+
+Recall's interval runs from 0.89 past 1.0: no reviewed record in the largest stratum was split
+from its duplicate, and 30 records cannot say more than that fewer than about one in eight might
+be. That is the pilot doing its job — bounding the strata and sizing the next round
+(clerical-review.md §2) — not the review's final number.
 
 ## The unlabeled estimate, checked against the labels
 

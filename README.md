@@ -47,7 +47,8 @@ review will be scored on is already fixed as B-cubed per record, not per pair,
 `ClericalReviewEstimator`, and the path from a reviewer's verdicts to the per-record scores it
 consumes is `ClericalReviewScoring` — the arithmetic that turns a reviewed sample into a
 population score with an interval exists end to end and has been run with a benchmark's labels as
-the reviewer, which showed a pilot's interval covering far less than 95% where errors are rare;
+the reviewer — which showed a pilot's interval collapsing where errors are rare, since fixed so a
+stratum that shows no error keeps the uncertainty its sample allows;
 what is still missing is a review by people on a corpus of the domains above) — or whether
 the proposer's self-reported
 confidence is informative on its own, which it was not in an earlier measurement (see

@@ -10,6 +10,10 @@ every published version has a section here.
 
 ## Unreleased
 
+### Added
+
+- The packages carry their XML documentation, so an IDE shows each member's comment from the package.
+
 ### Changed
 
 - A model call answered outside the success range now throws `HttpRequestException` whose message

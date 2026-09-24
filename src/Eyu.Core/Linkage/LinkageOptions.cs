@@ -20,6 +20,23 @@ namespace Eyu.Core.Linkage;
 /// The log-likelihood ratio at or below which a pair is a NonMatch; between the two a pair is put
 /// to the model. Same scale as <paramref name="MatchThreshold"/>.
 /// </param>
+/// <param name="MaxIterations">
+/// The most expectation-maximization rounds the estimator runs when fitting the match and non-match
+/// field probabilities; it stops earlier once they converge.
+/// </param>
+/// <param name="ConvergenceTolerance">
+/// The fit is converged once no field's match or non-match agreement probability moves by this much
+/// or more between two rounds. Must be positive.
+/// </param>
+/// <param name="UseStringSimilarityComparator">
+/// Compare field values by Jaro-Winkler similarity instead of exact match (case- and
+/// whitespace-insensitive), so notation variants that are not literal duplicates still agree. Defaults
+/// to <see langword="false"/>.
+/// </param>
+/// <param name="StringSimilarityAgreementThreshold">
+/// The Jaro-Winkler similarity at or above which two values agree, when
+/// <paramref name="UseStringSimilarityComparator"/> is set; ignored otherwise.
+/// </param>
 /// <param name="RecordsDenoteEntities">
 /// The pre-filter's premise: each record is one mention of one real-world entity, so two records
 /// agreeing on their fields is evidence that they denote the same thing. That holds for a row, a

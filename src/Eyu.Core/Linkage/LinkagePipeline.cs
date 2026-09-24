@@ -10,7 +10,7 @@ namespace Eyu.Core.Linkage;
 /// so the pipeline is skipped entirely and every record becomes its own singleton cluster — and so
 /// is a batch whose records do not denote entities (<see cref="LinkageOptions.RecordsDenoteEntities"/>),
 /// where comparing them would answer a question the records never posed.
-/// <paramref name="options"/> defaults to <see cref="LinkageOptions.Default"/> — matching every
+/// <c>options</c> defaults to <see cref="LinkageOptions.Default"/> — matching every
 /// tuning value <see cref="LinkageClassifier"/> and <see cref="FellegiSunterEstimator"/> already
 /// used, so a caller that never supplies options sees no behavior change. Every pair of records
 /// is compared — there is no blocking or indexing — so the cost is quadratic in the batch size;

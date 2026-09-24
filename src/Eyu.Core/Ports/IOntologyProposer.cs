@@ -7,9 +7,9 @@ namespace Eyu.Core.Ports;
 /// <summary>
 /// The core judgment: entities, relations, confidence, and entity resolution (merging records
 /// that denote the same entity), from declared structure and/or sampled records. At least one of
-/// a non-empty <paramref name="declaredStructures"/> or a non-empty <paramref name="records"/> must
+/// a non-empty <c>declaredStructures</c> or a non-empty <c>records</c> must
 /// be supplied — see design rationale §A on why judgment always requires some prior structure.
-/// <paramref name="declaredStructures"/> holds one declaration per subject: a caller that knows the
+/// <c>declaredStructures</c> holds one declaration per subject: a caller that knows the
 /// entity types and typed relations its records use declares each type as a subject — with fields
 /// when it knows them, without when it knows only the name — and an empty list declares nothing.
 /// Two declarations of the same subject are a caller error, since neither could be the authority.

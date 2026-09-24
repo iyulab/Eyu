@@ -8,7 +8,7 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.5.0
 
 A minor with three breaking changes: the IRIs of acquired classes and properties in `Eyu.Rdf`, clerical-review strata named rather than kinded in `Eyu.Core`, and text compared in one Unicode form across both.
 
@@ -70,6 +70,10 @@ A minor with three breaking changes: the IRIs of acquired classes and properties
 - The README has a quick start: records in, a proposal and its Turtle out, including the base-address
   rule and the timeout a thinking model needs. CI compiles it against freshly packed packages and
   exactly the packages the README installs.
+
+### Dependencies
+
+- `Eyu.Formbase` now takes `Formbase.Core` 0.11.1 (was 0.11.0), a patch with no surface change.
 
 ## 0.4.0
 

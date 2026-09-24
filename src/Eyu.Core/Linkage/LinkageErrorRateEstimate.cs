@@ -38,6 +38,15 @@ public enum LinkageErrorRateCaveat
     /// posterior, so the expected counts the rates are built from are mostly guesswork.
     /// </summary>
     PoorSeparation = 1 << 4,
+
+    /// <summary>
+    /// Fewer than <see cref="FellegiSunterEstimator.MinimumFieldsForIdentification"/> fields were
+    /// compared, so the mixture was not identifiable: the fitted prior, <c>m</c> and <c>u</c> are one
+    /// fit among many that explain the pairs equally well, and the posteriors and rates built on them
+    /// are arbitrary rather than estimated. Records of one short text field are the usual case —
+    /// measured, such a batch "converged" with every pair left to the model and both rates 0.
+    /// </summary>
+    TooFewFields = 1 << 5,
 }
 
 /// <summary>
@@ -174,6 +183,11 @@ public static class LinkageErrorRateEstimator
         if (pairs.Count > 0 && (double)ambiguous / pairs.Count >= MaxAmbiguousShare)
         {
             caveats |= LinkageErrorRateCaveat.PoorSeparation;
+        }
+
+        if (parameters.MAgreeProbability.Count < FellegiSunterEstimator.MinimumFieldsForIdentification)
+        {
+            caveats |= LinkageErrorRateCaveat.TooFewFields;
         }
 
         return new LinkageErrorRateEstimate(

@@ -32,6 +32,12 @@ A minor with one breaking change in `Eyu.Rdf`: the IRIs of acquired classes and 
 
 ### Added
 
+- `LinkageErrorRateCaveat.TooFewFields`: an unlabeled error-rate estimate over fewer than three
+  compared fields (`FellegiSunterEstimator.MinimumFieldsForIdentification`) is no longer reported as
+  reliable. A two-class mixture of independent binary agreements is not identifiable from fewer than
+  three; on records of one short text field the fit converged to an arbitrary prior, left every pair
+  to the model, and reported both rates as 0 with no caveat. `docs/clerical-review.md` §6 says how to
+  stratify a review when the model cannot.
 - The packages carry their XML documentation, so an IDE shows each member's comment from the package.
 
 ### Documentation

@@ -6,10 +6,12 @@ namespace Eyu.Core.Tests.Linkage;
 
 public class LinkageErrorRateEstimatorTests
 {
-    private static FieldLinkageParameters Parameters(EstimationStatus status, double prior = 0.5, bool swapped = false) =>
+    // Three fields: the fewest from which the mixture is identifiable, so a caveat these tests expect
+    // is the one they set up and not TooFewFields.
+    private static FieldLinkageParameters Parameters(EstimationStatus status, double prior = 0.5, bool swapped = false, int fields = 3) =>
         new(
-            new Dictionary<string, double> { ["name"] = 0.9 },
-            new Dictionary<string, double> { ["name"] = 0.1 },
+            Enumerable.Range(0, fields).ToDictionary(i => $"field{i}", _ => 0.9),
+            Enumerable.Range(0, fields).ToDictionary(i => $"field{i}", _ => 0.1),
             prior,
             status)
         { LabelsSwapped = swapped };
@@ -123,6 +125,39 @@ public class LinkageErrorRateEstimatorTests
 
         Assert.True(estimate.Caveats.HasFlag(expected));
         Assert.False(estimate.IsReliable);
+    }
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    public void A_model_over_fewer_than_three_fields_is_reported_as_not_identifiable(int fields, bool expected)
+    {
+        var pairs = Enumerable.Range(0, 5).Select(i => Pair(i, LinkageClassification.Match, 12.0))
+            .Concat(Enumerable.Range(5, 5).Select(i => Pair(i, LinkageClassification.NonMatch, -12.0)))
+            .ToList();
+
+        var estimate = LinkageErrorRateEstimator.Estimate(pairs, Parameters(EstimationStatus.Converged, fields: fields));
+
+        Assert.Equal(expected, estimate.Caveats.HasFlag(LinkageErrorRateCaveat.TooFewFields));
+        Assert.Equal(!expected, estimate.IsReliable);
+    }
+
+    // Records of one short text field, repeated answers among them: EM "converges", no pair is decided,
+    // and before this caveat the estimate called that reliable with both rates at 0.
+    [Fact]
+    public void A_single_field_batch_converges_to_an_arbitrary_fit_and_says_so()
+    {
+        var records = Enumerable.Range(0, 40)
+            .SelectMany(d => Enumerable.Range(0, 5).Select(k => $"answer text number {d}"))
+            .Select((text, i) => new RawRecord($"r{i}", new Dictionary<string, string?> { ["answer"] = text }))
+            .ToList();
+
+        var analysis = LinkagePipeline.Analyze(records);
+
+        Assert.Equal(EstimationStatus.Converged, analysis.Parameters!.Status);
+        Assert.True(analysis.ErrorRates!.Caveats.HasFlag(LinkageErrorRateCaveat.TooFewFields));
+        Assert.False(analysis.ErrorRates.IsReliable);
     }
 
     [Fact]

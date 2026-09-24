@@ -11,6 +11,17 @@ namespace Eyu.Core.Linkage;
 public static class FellegiSunterEstimator
 {
     public const int MinimumPairsForEmEstimation = 5;
+
+    /// <summary>
+    /// The fewest compared fields from which EM can identify the mixture at all. A two-class model of
+    /// independent binary agreements is not identifiable from fewer than three indicators (Goodman
+    /// 1974): with one field every pair reports a single agree/disagree bit, which fixes one
+    /// proportion and leaves the match prior and the field's <c>m</c> and <c>u</c> free, so EM
+    /// converges to one of the many fits that explain it equally well. The fit is still returned —
+    /// the pipeline needs parameters to run — and <see cref="LinkageErrorRateEstimator.Estimate"/>
+    /// reports it as <see cref="LinkageErrorRateCaveat.TooFewFields"/>.
+    /// </summary>
+    public const int MinimumFieldsForIdentification = 3;
     public const double HeuristicDefaultMAgreeProbability = 0.9;
     public const double HeuristicDefaultUAgreeProbability = 0.1;
     public const double HeuristicDefaultMatchPrior = 0.5;

@@ -241,6 +241,14 @@ can be trusted on this kind of data, which is what every future run without a re
 - **The estimate is unreliable for a reason a sample will not fix.** If the caveats report too
   few pairs or a failed EM fit, the clustering itself is not in a state worth measuring — fix the
   input, then sample.
+- **Fewer than three fields are compared.** The mixture is then not identifiable (caveat
+  `TooFewFields`): records of one short text field give every pair a single agree/disagree bit, EM
+  settles on one of the many fits that explain it, and the posteriors are arbitrary — measured,
+  such a batch reported convergence with every pair left to the model and both unlabeled rates at 0.
+  The posterior band that defines S3, and the comparison line of §5, then stand on nothing. A review
+  is still the only way to a number here, but its strata cannot come from the model: form them from
+  what the system actually decided (cluster size) and from a similarity band computed outside the
+  mixture, and say so in the specification line.
 - **The configuration is still moving.** Every threshold change costs the whole sample (§3).
 - **The corpus is not the one you care about.** These numbers are properties of a dataset and a
   configuration together, not of the library. A review on one corpus says nothing about another;

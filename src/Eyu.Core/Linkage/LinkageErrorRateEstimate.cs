@@ -51,9 +51,12 @@ public enum LinkageErrorRateCaveat
 /// expected share of true matches classified <see cref="LinkageClassification.NonMatch"/>;
 /// <paramref name="GrayZoneShare"/> the share of pairs deferred to the model. These are model-based
 /// expectations, not observed counts — they are exactly as good as the mixture fit, which is what
-/// <paramref name="Caveats"/> reports. Entity-resolution accuracy is still not <em>measured</em>;
-/// measuring it takes a clerical review of a sample, and this estimate is what says whether that
-/// review is worth running and where to point it.
+/// <paramref name="Caveats"/> reports. It does not <em>measure</em> the batch's accuracy; measuring
+/// it takes a clerical review of a sample, and this estimate is what says whether that review is
+/// worth running and where to point it. One limit the caveats cannot see: the mixture assumes the
+/// compared fields are independent, and a caveat-free fit on fields that move together (a suburb
+/// and its postcode) was measured against a labeled benchmark off by a factor of five or more in
+/// both rates (<c>docs/linkage-benchmark.md</c>) — read it as an order of magnitude.
 /// </para>
 /// </summary>
 public sealed record LinkageErrorRateEstimate(

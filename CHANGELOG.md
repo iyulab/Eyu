@@ -10,7 +10,7 @@ every published version has a section here.
 
 ## Unreleased
 
-A minor with one breaking change in `Eyu.Rdf`: the IRIs of acquired classes and properties.
+A minor with two breaking changes: the IRIs of acquired classes and properties in `Eyu.Rdf`, and clerical-review strata named rather than kinded in `Eyu.Core`.
 
 ### Changed
 
@@ -23,6 +23,10 @@ A minor with one breaking change in `Eyu.Rdf`: the IRIs of acquired classes and 
   spelling a proposal used stays as the term's `rdfs:label`. A graph holding 0.4.0 exports keeps the
   old class and property IRIs; re-export to replace them. Innate terms and individual IRIs are
   unchanged.
+- **Breaking (`Eyu.Core`)**: a clerical-review stratum is named, not kinded. `SampledStratum.Kind`
+  and `StratumExclusion.Kind` are now `Name` (a string); the pre-filter's three strata are named
+  after their `ReviewStratumKind` (`Singleton`, `CleanMerge`, `Contested`), and a seeded pilot over
+  them draws exactly the records it drew before.
 - A model call answered outside the success range now throws `HttpRequestException` whose message
   names the status, the request URI (without its query) and an excerpt of the body the server
   answered, with the status on `StatusCode`. It used to say only the status, so the usual cause — a
@@ -32,6 +36,12 @@ A minor with one breaking change in `Eyu.Rdf`: the IRIs of acquired classes and 
 
 ### Added
 
+- Clerical review over clusters and strata that do not come from the pre-filter:
+  `ClericalReviewSampler.DrawPilot(IReadOnlyList<PopulationStratum>, …)` draws over named strata the
+  caller formed (they must partition the population), and `ClericalReviewScoring.Score(clusters,
+  candidates, …)` scores against predicted clusters and per-record candidates given directly — for
+  clusters a model made, or strata from a similarity band when the pre-filter's posteriors are not
+  identified. The `LinkageAnalysis` forms are now written on top of them.
 - `LinkageErrorRateCaveat.TooFewFields`: an unlabeled error-rate estimate over fewer than three
   compared fields (`FellegiSunterEstimator.MinimumFieldsForIdentification`) is no longer reported as
   reliable. A two-class mixture of independent binary agreements is not identifiable from fewer than

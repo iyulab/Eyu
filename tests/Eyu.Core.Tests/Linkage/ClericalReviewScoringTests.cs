@@ -219,7 +219,7 @@ public class ClericalReviewScoringTests
             Reviewer);
 
         var singleton = Assert.Single(scoring.Exclusions);
-        Assert.Equal(ReviewStratumKind.Singleton, singleton.Kind);
+        Assert.Equal(nameof(ReviewStratumKind.Singleton), singleton.Name);
         Assert.Equal(2, singleton.Reviewed);
         Assert.Equal(1, singleton.Excluded);
         Assert.Equal(0.5, singleton.Rate, 12);

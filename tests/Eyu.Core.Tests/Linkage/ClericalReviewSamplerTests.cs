@@ -73,7 +73,7 @@ public class ClericalReviewSamplerTests
 
         Assert.True(sample.Caveats.HasFlag(ReviewSampleCaveat.NoParameters));
         Assert.False(sample.IsReliable);
-        Assert.Equal(ReviewStratumKind.Singleton, Assert.Single(sample.Strata).Kind);
+        Assert.Equal(nameof(ReviewStratumKind.Singleton), Assert.Single(sample.Strata).Name);
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class ClericalReviewSamplerTests
         var sample = ClericalReviewSampler.DrawPilot(ManySingletons(10), 2, Seed);
 
         Assert.True(sample.Caveats.HasFlag(ReviewSampleCaveat.StratumEmpty));
-        Assert.DoesNotContain(sample.Strata, s => s.Kind == ReviewStratumKind.Contested);
+        Assert.DoesNotContain(sample.Strata, s => s.Name == nameof(ReviewStratumKind.Contested));
     }
 
     [Fact]

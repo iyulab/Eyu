@@ -30,7 +30,7 @@ public enum ReviewSampleCaveat
     /// <summary>
     /// A stratum holds no records in this batch, so it is absent from the draw. Not the protocol's
     /// "never let a stratum go unsampled" — there was nothing in it to sample — but the design
-    /// degenerated to fewer than three strata and a reader comparing two samples should see that.
+    /// degenerated to fewer strata than it was designed with and a reader comparing two samples should see that.
     /// </summary>
     StratumEmpty = 1 << 0,
 
@@ -50,12 +50,23 @@ public enum ReviewSampleCaveat
 }
 
 /// <summary>
+/// One stratum of the population a review is drawn from: its name and every record in it. The
+/// three strata of <see cref="ReviewStratumKind"/> are one way to form them, from what the
+/// pre-filter knows; a caller whose clusters or strata come from elsewhere — a model that made the
+/// clusters, a similarity band computed outside the pre-filter's mixture — forms its own
+/// (<c>docs/clerical-review.md</c> section 6).
+/// </summary>
+public sealed record PopulationStratum(string Name, IReadOnlyCollection<string> RecordIds);
+
+/// <summary>
 /// One stratum as drawn: how many records it holds in this batch, and which of them were selected
 /// for review. <paramref name="PopulationSize"/> is the stratum's whole membership, not the
 /// selection — it is the <c>N_h</c> the estimate is weighted by, so it must survive the draw.
+/// <paramref name="Name"/> is the stratum's name as the population gave it — for the pre-filter's
+/// strata, the <see cref="ReviewStratumKind"/> name.
 /// </summary>
 public sealed record SampledStratum(
-    ReviewStratumKind Kind,
+    string Name,
     long PopulationSize,
     IReadOnlyList<string> SelectedRecordIds);
 
@@ -70,7 +81,7 @@ public sealed record ReviewSample(
     int Seed,
     ReviewSampleCaveat Caveats)
 {
-    /// <summary>True when all three strata existed and each gave up as many records as were asked for.</summary>
+    /// <summary>True when every stratum held records and each gave up as many as were asked for.</summary>
     public bool IsReliable => Caveats == ReviewSampleCaveat.None;
 
     /// <summary>How many records a reviewer actually has to look at.</summary>
@@ -112,7 +123,7 @@ public static class ClericalReviewSampler
 
     /// <summary>
     /// Which stratum each record of the batch falls in. Exposed separately from
-    /// <see cref="DrawPilot"/> because the strata are a property of the run, not of a draw: a
+    /// <see cref="DrawPilot(LinkageAnalysis, int, int)"/> because the strata are a property of the run, not of a draw: a
     /// caller reporting the population line of the protocol's table needs <c>N_h</c> without
     /// sampling anything.
     /// <para>
@@ -173,20 +184,62 @@ public static class ClericalReviewSampler
         ArgumentNullException.ThrowIfNull(analysis);
         ArgumentOutOfRangeException.ThrowIfLessThan(perStratum, 1);
 
+        // In declaration order so the report reads S1, S2, S3 and the seeded draws are consumed in
+        // a fixed order -- a dictionary's order would make the seed meaningless.
         var strata = StratifyRecords(analysis);
-        var caveats = analysis.Parameters is null ? ReviewSampleCaveat.NoParameters : ReviewSampleCaveat.None;
+        var population = Enum.GetValues<ReviewStratumKind>()
+            .Select(kind => new PopulationStratum(
+                kind.ToString(),
+                strata.Where(entry => entry.Value == kind).Select(entry => entry.Key).ToList()))
+            .ToList();
+
+        var sample = DrawPilot(population, perStratum, seed);
+        return analysis.Parameters is null
+            ? sample with { Caveats = sample.Caveats | ReviewSampleCaveat.NoParameters }
+            : sample;
+    }
+
+    /// <summary>
+    /// A pilot draw over strata the caller formed — the same draw as the pre-filter's, for a
+    /// population whose clusters or strata do not come from <see cref="LinkageAnalysis"/>. The
+    /// strata are drawn in the order given, which with <paramref name="seed"/> fixes the sample;
+    /// records are ordered within a stratum before the draw, so the order a stratum lists them in
+    /// does not.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// When a stratum has no name, two strata share one, or a record is in two strata — strata
+    /// partition the population, or their weights count a record twice.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">When fewer than one record per stratum is requested.</exception>
+    public static ReviewSample DrawPilot(IReadOnlyList<PopulationStratum> strata, int perStratum, int seed)
+    {
+        ArgumentNullException.ThrowIfNull(strata);
+        ArgumentOutOfRangeException.ThrowIfLessThan(perStratum, 1);
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var stratum in strata)
+        {
+            if (string.IsNullOrEmpty(stratum.Name) || !names.Add(stratum.Name))
+            {
+                throw new ArgumentException($"Every stratum needs a name of its own; '{stratum.Name}' is empty or given twice.", nameof(strata));
+            }
+
+            foreach (var id in stratum.RecordIds)
+            {
+                if (!seen.Add(id))
+                {
+                    throw new ArgumentException($"Record '{id}' is in more than one stratum; strata must partition the population.", nameof(strata));
+                }
+            }
+        }
+
+        var caveats = ReviewSampleCaveat.None;
         var random = new Random(seed);
         var drawn = new List<SampledStratum>();
-
-        // Iterated in declaration order so the report reads S1, S2, S3 and the seeded draws are
-        // consumed in a fixed order -- a dictionary's order would make the seed meaningless.
-        foreach (var kind in Enum.GetValues<ReviewStratumKind>())
+        foreach (var stratum in strata)
         {
-            var members = strata
-                .Where(entry => entry.Value == kind)
-                .Select(entry => entry.Key)
-                .Order(StringComparer.Ordinal)
-                .ToList();
+            var members = stratum.RecordIds.Order(StringComparer.Ordinal).ToList();
 
             if (members.Count == 0)
             {
@@ -197,11 +250,11 @@ public static class ClericalReviewSampler
             if (members.Count <= perStratum)
             {
                 caveats |= ReviewSampleCaveat.StratumTakenWhole;
-                drawn.Add(new SampledStratum(kind, members.Count, members));
+                drawn.Add(new SampledStratum(stratum.Name, members.Count, members));
                 continue;
             }
 
-            drawn.Add(new SampledStratum(kind, members.Count, SelectWithoutReplacement(members, perStratum, random)));
+            drawn.Add(new SampledStratum(stratum.Name, members.Count, SelectWithoutReplacement(members, perStratum, random)));
         }
 
         return new ReviewSample(drawn, perStratum, seed, caveats);

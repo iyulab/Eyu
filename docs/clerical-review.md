@@ -248,7 +248,10 @@ can be trusted on this kind of data, which is what every future run without a re
   The posterior band that defines S3, and the comparison line of §5, then stand on nothing. A review
   is still the only way to a number here, but its strata cannot come from the model: form them from
   what the system actually decided (cluster size) and from a similarity band computed outside the
-  mixture, and say so in the specification line.
+  mixture, and say so in the specification line. `ClericalReviewSampler.DrawPilot` takes such
+  strata as a list of named `PopulationStratum` values, and `ClericalReviewScoring.Score` takes the
+  predicted clusters and each sampled record's candidates directly — so clusters a model made, over
+  records blocked the caller's way, are drawn and scored by the same arithmetic.
 - **The configuration is still moving.** Every threshold change costs the whole sample (§3).
 - **The corpus is not the one you care about.** These numbers are properties of a dataset and a
   configuration together, not of the library. A review on one corpus says nothing about another;

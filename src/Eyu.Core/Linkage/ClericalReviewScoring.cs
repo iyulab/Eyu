@@ -76,7 +76,7 @@ public sealed record StrataBounds(IReadOnlyList<ReviewStratum> Lower, IReadOnlyL
 /// protocol, because a stratum that lost half its sample to <see cref="ReviewOutcome.CannotTell"/>
 /// has an interval that describes the other half.
 /// </summary>
-public sealed record StratumExclusion(ReviewStratumKind Kind, int Reviewed, int Excluded)
+public sealed record StratumExclusion(string Name, int Reviewed, int Excluded)
 {
     /// <summary>Excluded as a fraction of reviewed; zero when nothing was reviewed.</summary>
     public double Rate => Reviewed == 0 ? 0.0 : (double)Excluded / Reviewed;
@@ -148,6 +148,61 @@ public static class ClericalReviewScoring
     {
         ArgumentNullException.ThrowIfNull(analysis);
         ArgumentNullException.ThrowIfNull(sample);
+
+        // Candidates are gathered for the sampled records only: a batch compares every pair, so
+        // building every record's candidate set allocates the square of the batch to use a
+        // pilot's worth of it.
+        var sampled = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var stratum in sample.Strata)
+        {
+            sampled.UnionWith(stratum.SelectedRecordIds);
+        }
+
+        var candidatesOf = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var pair in analysis.PairLinkages)
+        {
+            if (sampled.Contains(pair.RecordIdA))
+            {
+                Admit(candidatesOf, pair.RecordIdA, pair.RecordIdB);
+            }
+
+            if (sampled.Contains(pair.RecordIdB))
+            {
+                Admit(candidatesOf, pair.RecordIdB, pair.RecordIdA);
+            }
+        }
+
+        return Score(
+            analysis.Clustering.Clusters,
+            candidatesOf.ToDictionary(entry => entry.Key, IReadOnlyCollection<string> (entry) => entry.Value, StringComparer.Ordinal),
+            sample,
+            verdicts,
+            reviewerId);
+    }
+
+    /// <summary>
+    /// The same scoring for a population whose clusters do not come from <see cref="LinkageAnalysis"/>
+    /// — clusters a model made, say, over records a caller blocked its own way.
+    /// <paramref name="clusters"/> is the predicted clustering and must place every sampled record;
+    /// <paramref name="candidates"/> holds, for a sampled record, the records outside its predicted
+    /// cluster that the reviewer was shown (the blocking step's admissions), and a sampled record
+    /// absent from it was shown none. Recall is measured within those candidates, as section 3 of
+    /// <c>docs/clerical-review.md</c> says.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// When the reviewer has no verdicts, a sampled record is in no cluster, or a record's verdicts
+    /// fail <see cref="ScoreRecord"/>.
+    /// </exception>
+    public static ReviewScoring Score(
+        IReadOnlyList<RecordCluster> clusters,
+        IReadOnlyDictionary<string, IReadOnlyCollection<string>> candidates,
+        ReviewSample sample,
+        IReadOnlyList<ReviewVerdict> verdicts,
+        string reviewerId)
+    {
+        ArgumentNullException.ThrowIfNull(clusters);
+        ArgumentNullException.ThrowIfNull(candidates);
+        ArgumentNullException.ThrowIfNull(sample);
         ArgumentNullException.ThrowIfNull(verdicts);
         ArgumentException.ThrowIfNullOrEmpty(reviewerId);
 
@@ -173,34 +228,11 @@ public static class ClericalReviewScoring
         }
 
         var clusterOf = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
-        foreach (var cluster in analysis.Clustering.Clusters)
+        foreach (var cluster in clusters)
         {
             foreach (var id in cluster.RecordIds)
             {
                 clusterOf[id] = cluster.RecordIds;
-            }
-        }
-
-        // Candidates are gathered for the sampled records only: a batch compares every pair, so
-        // building every record's candidate set allocates the square of the batch to use a
-        // pilot's worth of it.
-        var sampled = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var stratum in sample.Strata)
-        {
-            sampled.UnionWith(stratum.SelectedRecordIds);
-        }
-
-        var candidatesOf = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        foreach (var pair in analysis.PairLinkages)
-        {
-            if (sampled.Contains(pair.RecordIdA))
-            {
-                Admit(candidatesOf, pair.RecordIdA, pair.RecordIdB);
-            }
-
-            if (sampled.Contains(pair.RecordIdB))
-            {
-                Admit(candidatesOf, pair.RecordIdB, pair.RecordIdA);
             }
         }
 
@@ -226,11 +258,11 @@ public static class ClericalReviewScoring
             {
                 if (!clusterOf.TryGetValue(id, out var predicted))
                 {
-                    throw new ArgumentException($"Sampled record '{id}' is not in any cluster of the analysis.", nameof(sample));
+                    throw new ArgumentException($"Sampled record '{id}' is not in any predicted cluster.", nameof(sample));
                 }
 
-                var candidates = candidatesOf.TryGetValue(id, out var admitted) ? admitted : [];
-                var scored = ScoreRecord(id, predicted, candidates, byRecord.TryGetValue(id, out var own) ? own : []);
+                var shown = candidates.TryGetValue(id, out var admitted) ? admitted : [];
+                var scored = ScoreRecord(id, predicted, shown, byRecord.TryGetValue(id, out var own) ? own : []);
                 records.Add(scored);
                 if (scored.Score is { } score)
                 {
@@ -248,14 +280,14 @@ public static class ClericalReviewScoring
                 rHigh.Add(scored.UpperBound.Recall);
             }
 
-            var name = stratum.Kind.ToString();
+            var name = stratum.Name;
             precision.Add(new ReviewStratum(name, stratum.PopulationSize, precisions));
             recall.Add(new ReviewStratum(name, stratum.PopulationSize, recalls));
             precisionLower.Add(new ReviewStratum(name, stratum.PopulationSize, pLow));
             precisionUpper.Add(new ReviewStratum(name, stratum.PopulationSize, pHigh));
             recallLower.Add(new ReviewStratum(name, stratum.PopulationSize, rLow));
             recallUpper.Add(new ReviewStratum(name, stratum.PopulationSize, rHigh));
-            exclusions.Add(new StratumExclusion(stratum.Kind, count, excluded));
+            exclusions.Add(new StratumExclusion(stratum.Name, count, excluded));
         }
 
         return new ReviewScoring(

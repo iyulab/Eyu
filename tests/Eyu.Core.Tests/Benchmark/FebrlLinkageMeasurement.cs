@@ -250,7 +250,7 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
         var clusterOf = ClusterIndex(truth);
 
         var first = RunPilot(analysis, clusterOf, seed: 1);
-        report.AppendLine(CultureInfo.InvariantCulture, $"| Sample | pilot, {PilotPerStratum} per stratum, simple random without replacement, seed 1: {string.Join(" · ", first.Sample.Strata.Select(s => $"{s.Kind} {s.SelectedRecordIds.Count}/{s.PopulationSize}"))} (caveats: {first.Sample.Caveats}) |");
+        report.AppendLine(CultureInfo.InvariantCulture, $"| Sample | pilot, {PilotPerStratum} per stratum, simple random without replacement, seed 1: {string.Join(" · ", first.Sample.Strata.Select(s => $"{s.Name} {s.SelectedRecordIds.Count}/{s.PopulationSize}"))} (caveats: {first.Sample.Caveats}) |");
         report.AppendLine(CultureInfo.InvariantCulture, $"| Scores (pilot estimate, seed 1) | precision {Describe(first.Precision)} · recall {Describe(first.Recall)} |");
         report.AppendLine(CultureInfo.InvariantCulture, $"| Exclusions | {first.Excluded} (the labels never answer *cannot tell*) |");
 

@@ -98,10 +98,10 @@ public class ClericalReviewWalkthroughTests
         var analysis = SixteenRecordBatch();
         var sample = ClericalReviewSampler.DrawPilot(analysis, perStratum: 3, seed: Seed);
 
-        var contested = sample.Strata.Single(s => s.Kind == ReviewStratumKind.Contested);
+        var contested = sample.Strata.Single(s => s.Name == nameof(ReviewStratumKind.Contested));
         Assert.Equal(5, contested.PopulationSize);
         Assert.Equal(["a1", "a3", "j1"], contested.SelectedRecordIds.Order(StringComparer.Ordinal));
-        Assert.Equal(3, sample.Strata.Single(s => s.Kind == ReviewStratumKind.Singleton).SelectedRecordIds.Count);
+        Assert.Equal(3, sample.Strata.Single(s => s.Name == nameof(ReviewStratumKind.Singleton)).SelectedRecordIds.Count);
         Assert.True(sample.Caveats.HasFlag(ReviewSampleCaveat.StratumTakenWhole));
 
         var verdicts = sample.Strata

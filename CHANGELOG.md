@@ -8,7 +8,12 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.4.0
+
+A minor that carries breaking changes, as 0.x minors may. An entity now says which of the records it
+cites are it (`DenotedBy`), which changes the response schema and the prompt fingerprint; the
+record-linkage EM fits its own match prior; and a clerical review's interval no longer collapses on a
+stratum that showed no error. A third package, `Eyu.Rdf`, writes a proposal as OWL in Turtle.
 
 ### Changed
 
@@ -79,8 +84,9 @@ every published version has a section here.
 
 ### Dependencies
 
-- `Formbase.Core` to 0.10.1. The release is a patch carrying its own dependency round; the surface
-  the coupling smoke test consumes is unchanged.
+- `Formbase.Core` to 0.11.0. The release adds a raw-stream read and changes the public
+  `NotProjectedException` constructor, neither of which the adapter or the coupling smoke test
+  touches; the surface they consume is unchanged.
 - `Microsoft.NET.Test.Sdk` to 18.10.1 (tests only).
 
 ## 0.3.0

@@ -68,16 +68,18 @@ references `Formbase.Core` the same way, as a package.
 
 ## Install
 
-Current release: **0.3.0**. Both packages ship from this repository and move together:
+Current release: **0.4.0**. All three packages ship from this repository and move together:
 
 ```bash
-dotnet add package Eyu.Core --version 0.3.0
-dotnet add package Eyu.Formbase --version 0.3.0
+dotnet add package Eyu.Core --version 0.4.0
+dotnet add package Eyu.Formbase --version 0.4.0
+dotnet add package Eyu.Rdf --version 0.4.0
 ```
 
 `Eyu.Core` alone is enough to implement the five ports against your own source; `Eyu.Formbase` is
 the adapter for one of them and reads `Formbase.Core` as a package, so it pairs with a Formbase
-release — this one is built against `Formbase.* 0.10.1`.
+release — this one is built against `Formbase.* 0.11.0`. `Eyu.Rdf` writes a proposal as OWL in Turtle
+(see [Exporting as RDF/OWL](#exporting-as-rdfowl)).
 
 ---
 
@@ -328,8 +330,6 @@ denoting records share one — within one proposal too, where a model reading a 
 proposes the same company once per chunk: those entities are one individual carrying every claim.
 `OntologyTurtle.IndividualIris` returns the IRI each entity is written under, for linking your own
 triples to them.
-
-Not published yet: it ships with the next release, alongside the two packages above.
 
 ## Further reading
 

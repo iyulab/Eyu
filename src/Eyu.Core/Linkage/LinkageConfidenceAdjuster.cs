@@ -7,9 +7,12 @@ namespace Eyu.Core.Linkage;
 /// whole point of the pre-filter is that clear cases don't depend on self-reported confidence
 /// (design rationale §D). A claim touching a <see cref="LinkageClassification.GrayZone"/> or
 /// <see cref="LinkageClassification.NonMatch"/> pair combines the Fellegi-Sunter prior log-odds
-/// with the model's confidence via a Bayesian update. Every posterior computed here folds in
-/// <see cref="FieldLinkageParameters.MatchPrior"/> (via <c>Logit</c>) rather than treating the raw
-/// log-likelihood ratio as if match and non-match were equally likely a priori.
+/// with the model's confidence via a Bayesian update. Every confidence computed here is a
+/// probability, so it folds <see cref="FieldLinkageParameters.MatchPrior"/> (via <c>Logit</c>) into
+/// the log-likelihood ratio. The classification that decided the pair did not — its thresholds are
+/// on the prior-free ratio (see <see cref="LinkageClassifier"/>) — so a Match on a large batch can
+/// carry a low confidence: the pair was decided by its field evidence, and the confidence says how
+/// likely that evidence makes a match among this many candidates.
 /// </summary>
 public static class LinkageConfidenceAdjuster
 {

@@ -97,6 +97,38 @@ its postcode, or a street and its suburb, are not, and the per-field evidence ca
 outvoting everything else is itself a departure from the fitted mixture. Read it as the order of
 magnitude, and as a reason to review, not as the rate.
 
+## Which scale the thresholds are on
+
+`LinkageOptions.MatchThreshold` and `NonMatchThreshold` (±4 by default) are compared against the
+log-likelihood ratio alone, while a claim's confidence, the unlabeled error-rate estimate and the
+review strata all read the posterior, which adds the logit of the fitted match prior (about −6 to
+−7 on these sets). The same fitted pairs, classified once on each scale at the default ±4
+(`Compare_threshold_scales_on_febrl_benchmarks`):
+
+| configuration | set | scale | false match | false non-match | gray-zone pairs (true match / not) | F1 before adjudication | F1 with every gray-zone pair adjudicated correctly |
+|---|---|---|---|---|---|---|---|
+| exact | `dataset1` | ratio | 0 | 0 | 173 (2 / 171) | 0.9990 | 1.0000 |
+| exact | `dataset1` | posterior | 0 | 2 | 7 (7 / 0) | 0.9955 | 0.9990 |
+| exact, without identifiers | `dataset1` | ratio | 6 | 0 | 3036 (6 / 3030) | 0.9940 | 0.9970 |
+| exact, without identifiers | `dataset1` | posterior | 0 | 3 | 74 (53 / 21) | 0.9712 | 0.9985 |
+| exact | `dataset3` subset | ratio | 0 | 0 | 853 (18 / 835) | 1.0000 | 1.0000 |
+| exact | `dataset3` subset | posterior | 0 | 7 | 76 (75 / 1) | 0.9993 | 1.0000 |
+| exact, without identifiers | `dataset3` subset | ratio | 11 | 6 | 7558 (52 / 7506) | 0.9910 | 0.9950 |
+| exact, without identifiers | `dataset3` subset | posterior | 0 | 41 | 272 (246 / 26) | 0.9808 | 0.9981 |
+| Jaro-Winkler, without identifiers | `dataset3` subset | ratio | 0 | 0 | 607 (6 / 601) | 0.9994 | 1.0000 |
+| Jaro-Winkler, without identifiers | `dataset3` subset | posterior | 0 | 3 | 77 (64 / 13) | 0.9964 | 1.0000 |
+
+The other three configurations (Jaro-Winkler with identifiers, and on `dataset1` without) differ by
+at most one pair in errors outside the gray zone. Over all eight, the ratio scale makes 23 errors outside the gray zone (17 false
+matches, 6 false non-matches) and the posterior scale 57 (all false non-matches) — errors that no
+adjudication can undo, because only gray-zone pairs reach the model. What the posterior scale buys
+is the gray zone: 4 to 40 times fewer pairs (25 or more in half the configurations) put to the model, most of them true matches rather than
+obvious non-matches. Two limits on reading this: at a fixed ±4 the posterior scale is the same
+evidence held to a higher bar (roughly +3 to +11 on the ratio here), so the table compares two
+operating points as much as two scales; and every pair past the ratio threshold with a posterior
+near 5% was still correct here, because the true matches' ratios sit far above 4 and the per-field
+evidence cap keeps a single agreement from reaching it. The thresholds stay on the ratio.
+
 ## Reproducing
 
 ```
@@ -107,3 +139,5 @@ dotnet test tests/Eyu.Core.Tests -p:IncludeEyuBenchmarks=true --filter-class Eyu
 rate, threshold sensitivity and pairwise figures per configuration. A run takes about twenty
 minutes, half of it re-fitting the model at neighbouring thresholds (each report ends with a
 "Run cost" line per configuration); it needs the network the first time (`EYU_BENCHMARK_CACHE` keeps the files).
+The scale comparison above is a separate test in the same class and takes under two minutes on its
+own (`--filter-method "*Compare_threshold_scales*"`).

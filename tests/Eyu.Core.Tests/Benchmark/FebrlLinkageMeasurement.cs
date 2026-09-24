@@ -120,6 +120,85 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
         }
     }
 
+    /// <summary>
+    /// The same thresholds read on two scales, over the same fitted pairs: the raw log-likelihood
+    /// ratio <see cref="LinkageClassifier"/> uses today, and the posterior log-odds (ratio plus the
+    /// logit of the fitted match prior) that <see cref="LinkageConfidenceAdjuster"/> reports. Per
+    /// scale: the errors the pre-filter makes outside the gray zone — which no adjudication can
+    /// undo — the gray-zone workload handed to the model, and the census the linkage would reach
+    /// if every gray-zone pair were adjudicated correctly.
+    /// </summary>
+    [Fact]
+    public async Task Compare_threshold_scales_on_febrl_benchmarks()
+    {
+        var report = new StringBuilder();
+        report.AppendLine("# Threshold scale — raw log-likelihood ratio vs. posterior log-odds (Febrl)");
+        report.AppendLine();
+        report.AppendLine("| configuration | prior logit | scale | false match | false non-match | gray pairs (true match / non-match) | census F1 before adjudication | census F1, gray adjudicated correctly |");
+        report.AppendLine("|---|---|---|---|---|---|---|---|");
+
+        string[] identifiers = ["date_of_birth", "soc_sec_id"];
+        var configurations = new (string Name, LinkageOptions Options, string[] Dropped)[]
+        {
+            ("exact", LinkageOptions.Default, []),
+            ("JW", LinkageOptions.Default with { UseStringSimilarityComparator = true }, []),
+            ("exact, no ids", LinkageOptions.Default, identifiers),
+            ("JW, no ids", LinkageOptions.Default with { UseStringSimilarityComparator = true }, identifiers),
+        };
+
+        foreach (var dataset in Datasets)
+        {
+            var (records, truth) = Parse(await LoadDatasetAsync(dataset), dataset.EntityModulus);
+            var clusterOf = ClusterIndex(truth);
+            var ids = records.Select(r => r.Id).ToList();
+            foreach (var (name, options, dropped) in configurations)
+            {
+                var compared = dropped.Length == 0
+                    ? records
+                    : records.Select(r => new RawRecord(r.Id, r.Fields.Where(f => !dropped.Contains(f.Key)).ToDictionary(f => f.Key, f => f.Value))).ToList();
+                var analysis = LinkagePipeline.Analyze(compared, options);
+                var priorLogit = Math.Log(analysis.Parameters!.MatchPrior / (1.0 - analysis.Parameters.MatchPrior));
+
+                foreach (var (scale, shift) in new[] { ("raw LLR", 0.0), ("posterior", priorLogit) })
+                {
+                    var pairs = analysis.PairLinkages
+                        .Select(p => p with { Classification = LinkageClassifier.Classify(p.LogLikelihoodRatio + shift, options.MatchThreshold, options.NonMatchThreshold) })
+                        .ToList();
+                    var clustering = EntityClusterer.Cluster(ids, pairs);
+                    long falseMatch = 0, falseNonMatch = 0, grayMatch = 0, grayNonMatch = 0;
+                    foreach (var pair in pairs)
+                    {
+                        var same = clusterOf[pair.RecordIdA] == clusterOf[pair.RecordIdB];
+                        switch (pair.Classification)
+                        {
+                            case LinkageClassification.Match when !same: falseMatch++; break;
+                            case LinkageClassification.NonMatch when same: falseNonMatch++; break;
+                            case LinkageClassification.GrayZone when same: grayMatch++; break;
+                            case LinkageClassification.GrayZone: grayNonMatch++; break;
+                        }
+                    }
+
+                    var before = ClusteringMetrics.BCubed(clustering.Clusters, truth);
+                    var adjudicated = EntityClusterer.Cluster(ids, pairs
+                        .Select(p => p.Classification == LinkageClassification.GrayZone
+                            ? p with { Classification = clusterOf[p.RecordIdA] == clusterOf[p.RecordIdB] ? LinkageClassification.Match : LinkageClassification.NonMatch }
+                            : p)
+                        .ToList());
+                    var after = ClusteringMetrics.BCubed(adjudicated.Clusters, truth);
+                    report.AppendLine(CultureInfo.InvariantCulture,
+                        $"| {dataset.File} — {name} | {priorLogit:0.00} | {scale} | {falseMatch} | {falseNonMatch} | {grayMatch + grayNonMatch} ({grayMatch} / {grayNonMatch}) | {before.F1:0.0000} (P {before.Precision:0.0000} R {before.Recall:0.0000}) | {after.F1:0.0000} (P {after.Precision:0.0000} R {after.Recall:0.0000}) |");
+                }
+            }
+        }
+
+        output.WriteLine(report.ToString());
+        var reportPath = Environment.GetEnvironmentVariable("EYU_BENCHMARK_REPORT");
+        if (!string.IsNullOrWhiteSpace(reportPath))
+        {
+            await File.WriteAllTextAsync(reportPath, report.ToString(), TestContext.Current.CancellationToken);
+        }
+    }
+
     private static void AppendConfiguration(
         StringBuilder report,
         string name,

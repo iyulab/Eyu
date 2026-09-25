@@ -44,4 +44,14 @@ public static class EyuVocabulary
 
     /// <summary><c>"innate"</c> or <c>"acquired"</c> — which vocabulary a class or property was drawn from.</summary>
     public const string Origin = Namespace + "origin";
+
+    /// <summary>
+    /// On the ontology: the rule its class, property and individual IRIs were minted under, named by
+    /// the Eyu release that introduced it (<c>"0.5.0"</c>). Individual IRIs are stable across a
+    /// change of rule and term IRIs are not, so a store holding exports made under two rules types
+    /// one individual into both the old term and the new; the triples an older rule wrote are the
+    /// ones to retire. An export with no value was written by 0.5.0 or earlier, before the
+    /// annotation existed. The value changes only when a minting rule does.
+    /// </summary>
+    public const string IriRule = Namespace + "iriRule";
 }

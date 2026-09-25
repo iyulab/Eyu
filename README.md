@@ -400,6 +400,13 @@ proposes the same company once per chunk: those entities are one individual carr
 `OntologyTurtle.IndividualIris` returns the IRI each entity is written under, for linking your own
 triples to them.
 
+The ontology names the rule its IRIs were minted under — `<ontology> eyu:iriRule "0.5.0"`, the
+release that introduced the rule. The value changes only in a release that changes how a class,
+property or individual IRI is minted, and says so in its changelog. Individual IRIs survive such a
+change and term IRIs may not, so a store that keeps exports from two rules types one individual into
+both the old class and the new one; `eyu:iriRule` is how to find the triples an older rule wrote. An
+export without it was written by 0.5.0 or earlier, whose rules differ (see the changelog).
+
 ## Further reading
 
 [Design rationale](docs/philosophy.md) — why judgment requires structure

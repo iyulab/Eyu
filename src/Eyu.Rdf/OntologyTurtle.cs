@@ -16,8 +16,8 @@ namespace Eyu.Rdf;
 /// from it rather than stated beside it — every distinct entity type becomes an <c>owl:Class</c>, every
 /// distinct relation name an <c>owl:ObjectProperty</c>, every entity an <c>owl:NamedIndividual</c> of
 /// its class, and every relation an assertion between two individuals. Names are grouped the way Eyu
-/// compares them, case and separators ignored, so <c>WorkOrder</c> and <c>work_order</c> are one class
-/// written under the first spelling seen. No domain or range is asserted: the proposal shows which
+/// compares them, case, separators and Unicode form ignored, so <c>WorkOrder</c> and <c>work_order</c>
+/// are one class, <c>:Workorder</c>, labelled with the first spelling seen. No domain or range is asserted: the proposal shows which
 /// types a relation was seen between, which is evidence, not the axiom a range would state.
 /// </para>
 /// <para>
@@ -42,6 +42,10 @@ namespace Eyu.Rdf;
 /// of the same records name one entity alike, and a triple store merging them merges its individuals.
 /// See <see cref="IndividualIris"/> for the rule and what it cannot tell apart.
 /// </para>
+/// <para>
+/// The ontology names the rule its IRIs were minted under (<see cref="EyuVocabulary.IriRule"/>), so a
+/// store holding exports from releases that minted differently can tell which triples came from which.
+/// </para>
 /// </summary>
 public static class OntologyTurtle
 {
@@ -49,6 +53,13 @@ public static class OntologyTurtle
     private const string Rdfs = "http://www.w3.org/2000/01/rdf-schema#";
     private const string Owl = "http://www.w3.org/2002/07/owl#";
     private const string Xsd = "http://www.w3.org/2001/XMLSchema#";
+
+    /// <summary>
+    /// The value of <see cref="EyuVocabulary.IriRule"/>: the release that introduced the rules this
+    /// writer mints class, property and individual IRIs under. Change it in the release that changes
+    /// any of them.
+    /// </summary>
+    private const string IriRule = "0.5.0";
 
     /// <summary>The proposal as a Turtle document.</summary>
     public static string ToTurtle(OntologyProposal proposal, RdfExportOptions options)
@@ -76,9 +87,10 @@ public static class OntologyTurtle
         writer.Write("@prefix eyu: <" + EyuVocabulary.Namespace + "> .\n");
         writer.Write("@prefix : <" + baseIri + "> .\n\n");
 
-        writer.Write(Iri(baseIri.TrimEnd('#')) + " a owl:Ontology .\n\n");
+        writer.Write(Iri(baseIri.TrimEnd('#')) + " a owl:Ontology ;\n");
+        writer.Write("    eyu:iriRule " + Literal(IriRule) + " .\n\n");
 
-        foreach (var property in new[] { "claim", "cites", "recordId", "fieldName", "denotedBy", "confidence", "basis", "origin" })
+        foreach (var property in new[] { "iriRule", "claim", "cites", "recordId", "fieldName", "denotedBy", "confidence", "basis", "origin" })
         {
             writer.Write("eyu:" + property + " a owl:AnnotationProperty .\n");
         }

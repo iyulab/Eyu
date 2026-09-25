@@ -8,6 +8,23 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Added
+
+- `Eyu.Rdf` names the rule an export's IRIs were minted under: the ontology carries
+  `eyu:iriRule "0.5.0"` (`EyuVocabulary.IriRule`), the release that introduced the current rule, and
+  the value changes only in a release that changes how a class, property or individual IRI is
+  minted. Individual IRIs survive such a change and term IRIs may not, so a triple store holding
+  exports from two rules typed one individual into both the old class and the new one — 0.5.0's
+  advice to re-export and replace gave no way to find which triples the older rule wrote. An export
+  without the annotation was written by 0.5.0 or earlier.
+
+### Documentation
+
+- `OntologyTurtle`'s summary said a class is written under the first spelling seen; since 0.5.0 it
+  is minted from the name as Eyu compares it (`:Workorder`), and the first spelling is its label.
+
 ## 0.5.0
 
 A minor with three breaking changes: the IRIs of acquired classes and properties in `Eyu.Rdf`, clerical-review strata named rather than kinded in `Eyu.Core`, and text compared in one Unicode form across both.

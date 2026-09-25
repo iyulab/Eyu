@@ -58,6 +58,23 @@ public class OntologyTurtleTests
         ],
         []);
 
+    // The rule that mints IRIs changed in 0.4.0 (individuals) and again in 0.5.0 (acquired terms,
+    // Unicode form). Individual IRIs survive such a change and term IRIs do not, so a store holding
+    // exports of both rules types one individual into the old class and the new one; the header
+    // says which rule an export used, so the old triples can be found and retired. A change to any
+    // minting rule changes this value — and this test with it.
+    [Fact]
+    public void The_ontology_header_names_the_iri_rule_its_terms_and_individuals_were_minted_under()
+    {
+        var g = Parse(Plant);
+
+        var ontology = Assert.Single(SubjectsOfType(g, Owl + "Ontology"));
+        Assert.Equal(U(g, "https://example.org/plant"), ontology);
+        var rule = Assert.Single(g.GetTriplesWithSubjectPredicate(ontology, U(g, EyuVocabulary.IriRule))).Object;
+        Assert.Equal("0.5.0", Assert.IsAssignableFrom<ILiteralNode>(rule).Value);
+        Assert.Contains(SubjectsOfType(g, Owl + "AnnotationProperty"), n => n.Equals(U(g, EyuVocabulary.IriRule)));
+    }
+
     [Fact]
     public void Types_become_classes_relation_names_object_properties_and_entities_individuals()
     {

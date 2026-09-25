@@ -252,6 +252,15 @@ can be trusted on this kind of data, which is what every future run without a re
   strata as a list of named `PopulationStratum` values, and `ClericalReviewScoring.Score` takes the
   predicted clusters and each sampled record's candidates directly — so clusters a model made, over
   records blocked the caller's way, are drawn and scored by the same arithmetic.
+  Two things the caller now owns. **The candidate set**: when a block is too large to show whole,
+  show each sampled record its nearest non-members by that outside similarity — a fixed number,
+  stated in the specification line — whether they are singletons or members of another predicted
+  cluster. A same-meaning record the model left in a *neighbouring* cluster lowers recall only if
+  the reviewer sees it; leave other clusters out of the candidates and a model that keeps
+  near-duplicates apart scores as if it had missed nothing. **The recall risk of merged clusters**:
+  a tight cluster can still have its twin next door, so split merged clusters by their nearest
+  non-member as well as by their farthest member, rather than treating recall as a singleton-only
+  risk the way S1 does.
 - **The configuration is still moving.** Every threshold change costs the whole sample (§3).
 - **The corpus is not the one you care about.** These numbers are properties of a dataset and a
   configuration together, not of the library. A review on one corpus says nothing about another;

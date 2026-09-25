@@ -25,6 +25,10 @@ every published version has a section here.
 
 - `OntologyTurtle`'s summary said a class is written under the first spelling seen; since 0.5.0 it
   is minted from the name as Eyu compares it (`:Workorder`), and the first spelling is its label.
+- The clerical-review guide now says what a caller scoring model-made clusters must supply: each
+  sampled record's candidates include its nearest members of *other* predicted clusters, not only
+  singletons, and merged clusters are stratified by recall risk as well as precision risk. Without
+  the first, a model that keeps near-duplicates in neighbouring clusters loses no measured recall.
 
 ## 0.5.0
 

@@ -17,8 +17,9 @@ every published version has a section here.
   the value changes only in a release that changes how a class, property or individual IRI is
   minted. Individual IRIs survive such a change and term IRIs may not, so a triple store holding
   exports from two rules typed one individual into both the old class and the new one — 0.5.0's
-  advice to re-export and replace gave no way to find which triples the older rule wrote. An export
-  without the annotation was written by 0.5.0 or earlier.
+  advice to re-export and replace gave no way to find which triples the older rule wrote. Kept one
+  export per named graph, the annotation says which graphs to drop; an export without it was written
+  by 0.5.0 or earlier.
 
 ### Documentation
 

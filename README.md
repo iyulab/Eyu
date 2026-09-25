@@ -407,8 +407,9 @@ change and term IRIs may not, so a store that keeps exports from two rules types
 both the old class and the new one. Load each export into its own named graph and `eyu:iriRule`
 tells which graphs an older rule wrote — drop those and re-export. (Every export names the same
 ontology node, so merged into one default graph the annotations merge too and no longer say which
-triple came from where.) An export without it was written by 0.5.0 or earlier, whose rules differ
-(see the changelog).
+triple came from where.) An export without it was written by 0.5.0, under the rule `"0.5.0"` names
+but before the annotation existed, or by 0.4.0 or earlier, whose rules differ (see the changelog) —
+so a graph without it is not by that alone one to drop.
 
 ## Further reading
 

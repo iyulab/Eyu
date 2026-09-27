@@ -368,6 +368,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         /// find can be told apart from a thing the model named some other way.
         /// </summary>
         public readonly List<List<string>> UnmatchedByAttempt = [];
+
+        /// <summary>Per parsed attempt: individuals whose name carries names of two or more things (<see cref="CrossSourceJoin.OverMerged"/>).</summary>
+        public readonly List<int> OverMergedByAttempt = [];
     }
 
     private sealed class CrossSourceStats(CrossSourceCase crossSource)
@@ -438,16 +441,20 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var iris = crossSource.Things.ToDictionary(t => t.Label, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
         var denoted = new HashSet<string>(StringComparer.Ordinal);
         var unmatched = new List<string>();
+        var overMerged = 0;
         foreach (var proposal in proposals)
         {
             var individualIris = OntologyTurtle.IndividualIris(proposal, IdentityExport);
             foreach (var entity in proposal.Entities)
             {
-                var name = LenientTypeName(entity.Name);
-                var things = crossSource.Things.Where(t => t.Names.Any(n => LenientTypeName(n) == name)).ToList();
+                var things = CrossSourceJoin.Match(crossSource, entity.Name);
                 if (things.Count == 0)
                 {
                     unmatched.Add($"{entity.Name} : {entity.EntityType}");
+                    if (CrossSourceJoin.OverMerged(crossSource, entity.Name).Count > 0)
+                    {
+                        overMerged++;
+                    }
                 }
 
                 foreach (var thing in things)
@@ -464,6 +471,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         mode.IrisByAttempt.Add(iris);
         mode.DenotedByAttempt.Add(denoted);
         mode.UnmatchedByAttempt.Add(unmatched);
+        mode.OverMergedByAttempt.Add(overMerged);
     }
 
     private static string RenderCrossSource(List<CrossSourceStats> stats)
@@ -479,11 +487,11 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             .AppendLine()
             .AppendLine("Each source's records are proposed in their own call — what a connector per source gives a caller — and then all of them in one call. " +
                 "A thing is joined to the individuals named by any of its names (case and separators ignored); «individuals per found thing» is how many IRIs " +
-                "`Eyu.Rdf` would write that one thing under, so 1.00 means a store merging the exports holds it once. «Same IRI in both modes» asks whether an " +
+                "`Eyu.Rdf` would write that one thing under, so 1.00 means a store merging the exports holds it once; «over-merged individuals» counts, per attempt, individuals whose name carries the names of two or more things — several things made one. «Same IRI in both modes» asks whether an " +
                 "individual from the separate calls and one from the combined call share an IRI — whether the two ways of calling could be merged at all.")
             .AppendLine()
-            .AppendLine("| case | mode | parsed | things found (per attempt) | things as one individual | individuals per found thing (mean) | denoting record kept |")
-            .AppendLine("|---|---|---|---|---|---|---|");
+            .AppendLine("| case | mode | parsed | things found (per attempt) | things as one individual | individuals per found thing (mean) | denoting record kept | over-merged individuals |")
+            .AppendLine("|---|---|---|---|---|---|---|---|");
         foreach (var s in stats)
         {
             foreach (var (label, mode) in new[] { ("separate", s.Separate), ("combined", s.Combined) })
@@ -495,7 +503,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                     $"{string.Join(" · ", mode.IrisByAttempt.Select(a => $"{a.Values.Count(v => v.Count > 0)}/{s.Case.Things.Length}"))} | " +
                     $"{found.Count(v => v.Count == 1)}/{found.Count} | " +
                     $"{(found.Count == 0 ? "-" : found.Average(v => v.Count).ToString("0.00", CultureInfo.InvariantCulture))} | " +
-                    $"{mode.DenotedByAttempt.Sum(d => d.Count)}/{denotable} |");
+                    $"{mode.DenotedByAttempt.Sum(d => d.Count)}/{denotable} | " +
+                    $"{string.Join(" · ", mode.OverMergedByAttempt)} |");
             }
 
             var shared = s.Separate.IrisByAttempt.Zip(s.Combined.IrisByAttempt)

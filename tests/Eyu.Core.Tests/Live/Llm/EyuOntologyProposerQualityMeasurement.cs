@@ -362,6 +362,12 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         /// <summary>Per parsed attempt: thing labels whose denoting record some matching individual claims.</summary>
         public readonly List<HashSet<string>> DenotedByAttempt = [];
+
+        /// <summary>
+        /// Per parsed attempt: names of individuals that matched no thing — so a thing the join did not
+        /// find can be told apart from a thing the model named some other way.
+        /// </summary>
+        public readonly List<List<string>> UnmatchedByAttempt = [];
     }
 
     private sealed class CrossSourceStats(CrossSourceCase crossSource)
@@ -431,13 +437,20 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         mode.Parsed++;
         var iris = crossSource.Things.ToDictionary(t => t.Label, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
         var denoted = new HashSet<string>(StringComparer.Ordinal);
+        var unmatched = new List<string>();
         foreach (var proposal in proposals)
         {
             var individualIris = OntologyTurtle.IndividualIris(proposal, IdentityExport);
             foreach (var entity in proposal.Entities)
             {
                 var name = LenientTypeName(entity.Name);
-                foreach (var thing in crossSource.Things.Where(t => t.Names.Any(n => LenientTypeName(n) == name)))
+                var things = crossSource.Things.Where(t => t.Names.Any(n => LenientTypeName(n) == name)).ToList();
+                if (things.Count == 0)
+                {
+                    unmatched.Add($"{entity.Name} : {entity.EntityType}");
+                }
+
+                foreach (var thing in things)
                 {
                     iris[thing.Label].Add(individualIris[entity.EntityId]);
                     if (thing.DenotingRecord is { } record && entity.DenotedBy.Contains(record))
@@ -450,6 +463,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         mode.IrisByAttempt.Add(iris);
         mode.DenotedByAttempt.Add(denoted);
+        mode.UnmatchedByAttempt.Add(unmatched);
     }
 
     private static string RenderCrossSource(List<CrossSourceStats> stats)
@@ -494,7 +508,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 for (var i = 0; i < mode.IrisByAttempt.Count; i++)
                 {
                     report.AppendLine(CultureInfo.InvariantCulture,
-                        $"  - {label}, parsed attempt {i + 1}: {string.Join("; ", mode.IrisByAttempt[i].Select(kv => $"{kv.Key} → {kv.Value.Count}"))}");
+                        $"  - {label}, parsed attempt {i + 1}: {string.Join("; ", mode.IrisByAttempt[i].Select(kv => $"{kv.Key} → {kv.Value.Count}"))}" +
+                        $" — unmatched: {string.Join(", ", mode.UnmatchedByAttempt[i])}");
                 }
 
                 foreach (var note in mode.FailureNotes)

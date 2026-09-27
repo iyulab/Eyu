@@ -30,6 +30,11 @@ every published version has a section here.
   singletons, and merged clusters are stratified by recall risk as well as precision risk. Without
   the first, a model that keeps near-duplicates in neighbouring clusters loses no measured recall.
 
+### Dependencies
+
+- `Eyu.Formbase` now takes `Formbase.Core` 0.12.0 (was 0.11.1). No type `Eyu.Formbase` uses moved;
+  `DocumentBody.From`/`Parse` now refuse JSON that names a property twice in one object.
+
 ## 0.5.0
 
 A minor with three breaking changes: the IRIs of acquired classes and properties in `Eyu.Rdf`, clerical-review strata named rather than kinded in `Eyu.Core`, and text compared in one Unicode form across both.

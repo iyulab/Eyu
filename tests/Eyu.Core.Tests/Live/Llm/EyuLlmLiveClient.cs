@@ -24,7 +24,10 @@ internal static class EyuLlmLiveClient
         var httpClient = new HttpClient
         {
             BaseAddress = new Uri(endpoint.TrimEnd('/') + "/v1/"),
-            Timeout = TimeSpan.FromMinutes(5),
+            // EYU_LLM_TIMEOUT_MINUTES raises it for a call that is large on purpose — every source of a
+            // cross-source case in one prompt outlasts five minutes of reasoning on a shared server.
+            Timeout = TimeSpan.FromMinutes(
+                int.TryParse(Environment.GetEnvironmentVariable("EYU_LLM_TIMEOUT_MINUTES"), out var minutes) && minutes > 0 ? minutes : 5),
         };
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 

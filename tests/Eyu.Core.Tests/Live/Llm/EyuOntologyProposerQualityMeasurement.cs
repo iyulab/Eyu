@@ -72,6 +72,13 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// how many entities were stamped declared, how many entity names came back under more than one
 /// type across attempts, and how many types were written in Hangul.
 /// </para>
+/// <para>
+/// The cross-source cases (<see cref="QualityCatalog.CrossSourceCases"/>) ask what the other
+/// sections cannot: when several sources name one real thing differently, how many individuals does
+/// it end up as? Each source is proposed in its own call — the shape a connector per source gives a
+/// caller — and every source in one call, and the report counts, per thing, the IRIs
+/// <c>Eyu.Rdf</c> would write it under in each mode and whether the two modes share one.
+/// </para>
 /// </summary>
 public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 {
@@ -221,7 +228,18 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             }
         }
 
-        var report = RenderReport(runs, linkageOptions, stats);
+        var crossSourceStats = new List<CrossSourceStats>();
+        foreach (var crossSource in QualityCatalog.CrossSourceCases.Where(c => selected is null || selected.Contains(c.Name)))
+        {
+            var caseStats = new CrossSourceStats(crossSource);
+            crossSourceStats.Add(caseStats);
+            for (var attempt = 0; attempt < runs; attempt++)
+            {
+                await RunCrossSourceAttemptAsync(proposer, crossSource, caseStats);
+            }
+        }
+
+        var report = RenderReport(runs, linkageOptions, stats) + RenderCrossSource(crossSourceStats);
         output.WriteLine(report);
         var reportPath = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_REPORT");
         if (!string.IsNullOrWhiteSpace(reportPath))
@@ -240,7 +258,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         // The instrument's own sanity floor, not a graduation gate: a run where nothing ever
         // parsed measured the transport, not the model.
-        Assert.True(stats.Values.Sum(s => s.Attempts - s.ParseFailures - s.ModelFailures) > 0,
+        Assert.True(stats.Values.Sum(s => s.Attempts - s.ParseFailures - s.ModelFailures) + crossSourceStats.Sum(c => c.Separate.Parsed + c.Combined.Parsed) > 0,
             "at least one proposal must survive parsing for the measurement to mean anything");
     }
 
@@ -327,6 +345,166 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// How one way of calling the proposer — each source on its own, or every source together — left
+    /// the case's things: per parsed attempt, each thing's individual IRIs.
+    /// </summary>
+    private sealed class CrossSourceMode
+    {
+        public int Attempts;
+        public int Parsed;
+        public readonly List<string> FailureNotes = [];
+
+        /// <summary>Per parsed attempt: thing label -> the IRIs of the individuals named by any of its names.</summary>
+        public readonly List<Dictionary<string, HashSet<string>>> IrisByAttempt = [];
+
+        /// <summary>Per parsed attempt: thing labels whose denoting record some matching individual claims.</summary>
+        public readonly List<HashSet<string>> DenotedByAttempt = [];
+    }
+
+    private sealed class CrossSourceStats(CrossSourceCase crossSource)
+    {
+        public CrossSourceCase Case { get; } = crossSource;
+        public CrossSourceMode Separate { get; } = new();
+        public CrossSourceMode Combined { get; } = new();
+    }
+
+    /// <summary>
+    /// One attempt of both modes. «Separate» proposes each source's records in its own call — what a
+    /// connector per source gives a caller — and pools the individuals the calls wrote; «combined» hands
+    /// every record to one call. A mode counts as parsed only if all of its calls parsed.
+    /// </summary>
+    private static async Task RunCrossSourceAttemptAsync(SinglePassOntologyProposer proposer, CrossSourceCase crossSource, CrossSourceStats stats)
+    {
+        var separate = new List<OntologyProposal>();
+        foreach (var source in crossSource.Sources)
+        {
+            if (await TryProposeAsync(proposer, source.Records, stats.Separate, source.Name) is not { } proposal)
+            {
+                separate.Clear();
+                break;
+            }
+
+            separate.Add(proposal);
+        }
+
+        stats.Separate.Attempts++;
+        if (separate.Count == crossSource.Sources.Length)
+        {
+            RecordThings(separate, crossSource, stats.Separate);
+        }
+
+        stats.Combined.Attempts++;
+        if (await TryProposeAsync(proposer, crossSource.Sources.SelectMany(s => s.Records).ToArray(), stats.Combined, "all sources") is { } combined)
+        {
+            RecordThings([combined], crossSource, stats.Combined);
+        }
+    }
+
+    private static async Task<OntologyProposal?> TryProposeAsync(SinglePassOntologyProposer proposer, RawRecord[] records, CrossSourceMode mode, string label)
+    {
+        try
+        {
+            return await proposer.ProposeAsync([], records);
+        }
+        catch (FormatException ex)
+        {
+            mode.FailureNotes.Add($"{label}: {ex.Message}");
+            return null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !TestContext.Current.CancellationToken.IsCancellationRequested)
+        {
+            mode.FailureNotes.Add($"{label}: model call failed: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Joins each individual to a thing by its name, compared the lenient way type names are (case
+    /// and separators ignored) — the join a consumer merging these exports by label would make, and a
+    /// generous one: an individual named some fourth way drops out rather than counting.
+    /// </summary>
+    private static void RecordThings(IReadOnlyList<OntologyProposal> proposals, CrossSourceCase crossSource, CrossSourceMode mode)
+    {
+        mode.Parsed++;
+        var iris = crossSource.Things.ToDictionary(t => t.Label, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
+        var denoted = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var proposal in proposals)
+        {
+            var individualIris = OntologyTurtle.IndividualIris(proposal, IdentityExport);
+            foreach (var entity in proposal.Entities)
+            {
+                var name = LenientTypeName(entity.Name);
+                foreach (var thing in crossSource.Things.Where(t => t.Names.Any(n => LenientTypeName(n) == name)))
+                {
+                    iris[thing.Label].Add(individualIris[entity.EntityId]);
+                    if (thing.DenotingRecord is { } record && entity.DenotedBy.Contains(record))
+                    {
+                        denoted.Add(thing.Label);
+                    }
+                }
+            }
+        }
+
+        mode.IrisByAttempt.Add(iris);
+        mode.DenotedByAttempt.Add(denoted);
+    }
+
+    private static string RenderCrossSource(List<CrossSourceStats> stats)
+    {
+        if (stats.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var report = new StringBuilder()
+            .AppendLine()
+            .AppendLine("## Cross-source identity (one real thing, named by several sources)")
+            .AppendLine()
+            .AppendLine("Each source's records are proposed in their own call — what a connector per source gives a caller — and then all of them in one call. " +
+                "A thing is joined to the individuals named by any of its names (case and separators ignored); «individuals per found thing» is how many IRIs " +
+                "`Eyu.Rdf` would write that one thing under, so 1.00 means a store merging the exports holds it once. «Same IRI in both modes» asks whether an " +
+                "individual from the separate calls and one from the combined call share an IRI — whether the two ways of calling could be merged at all.")
+            .AppendLine()
+            .AppendLine("| case | mode | parsed | things found (per attempt) | things as one individual | individuals per found thing (mean) | denoting record kept |")
+            .AppendLine("|---|---|---|---|---|---|---|");
+        foreach (var s in stats)
+        {
+            foreach (var (label, mode) in new[] { ("separate", s.Separate), ("combined", s.Combined) })
+            {
+                var found = mode.IrisByAttempt.SelectMany(a => a.Values).Where(v => v.Count > 0).ToList();
+                var denotable = s.Case.Things.Count(t => t.DenotingRecord is not null) * mode.Parsed;
+                report.AppendLine(CultureInfo.InvariantCulture,
+                    $"| {s.Case.Name} | {label} | {mode.Parsed}/{mode.Attempts} | " +
+                    $"{string.Join(" · ", mode.IrisByAttempt.Select(a => $"{a.Values.Count(v => v.Count > 0)}/{s.Case.Things.Length}"))} | " +
+                    $"{found.Count(v => v.Count == 1)}/{found.Count} | " +
+                    $"{(found.Count == 0 ? "-" : found.Average(v => v.Count).ToString("0.00", CultureInfo.InvariantCulture))} | " +
+                    $"{mode.DenotedByAttempt.Sum(d => d.Count)}/{denotable} |");
+            }
+
+            var shared = s.Separate.IrisByAttempt.Zip(s.Combined.IrisByAttempt)
+                .SelectMany(pair => s.Case.Things.Select(t => pair.First[t.Label].Overlaps(pair.Second[t.Label])))
+                .ToList();
+            report.AppendLine()
+                .AppendLine(CultureInfo.InvariantCulture, $"- {s.Case.Name}: same IRI in both modes for {shared.Count(x => x)}/{shared.Count} thing-attempts (attempts where both modes parsed).");
+            foreach (var (label, mode) in new[] { ("separate", s.Separate), ("combined", s.Combined) })
+            {
+                for (var i = 0; i < mode.IrisByAttempt.Count; i++)
+                {
+                    report.AppendLine(CultureInfo.InvariantCulture,
+                        $"  - {label}, parsed attempt {i + 1}: {string.Join("; ", mode.IrisByAttempt[i].Select(kv => $"{kv.Key} → {kv.Value.Count}"))}");
+                }
+
+                foreach (var note in mode.FailureNotes)
+                {
+                    report.AppendLine(CultureInfo.InvariantCulture, $"  - {label} failure: {note}");
+                }
+            }
+        }
+
+        return report.ToString();
     }
 
     internal sealed record IdentityKeys(string EntityId, string Iri, string DenotedBy, string Cited, string EntityType, int SharingDenotedBy)

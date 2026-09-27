@@ -35,6 +35,29 @@ internal sealed record DocumentCase(
     DeclaredStructure[] Vocabulary);
 
 /// <summary>
+/// Several sources that name the same real things differently — the shape a caller integrating
+/// systems has, where an ERP asset register and a maintenance log both mention one machine. Each
+/// source's records are proposed on their own (the way a connector per source feeds Eyu) and all of
+/// them together, and <paramref name="Things"/> says which names in the records are one thing, so the
+/// measurement can count how many individuals each thing ends up as. Kept apart from
+/// <see cref="QualityCase"/>: its question is identity across calls over different records, not the
+/// quality of one proposal.
+/// </summary>
+internal sealed record CrossSourceCase(
+    string Name,
+    SourceSample[] Sources,
+    SameThing[] Things);
+
+/// <summary>One source's records, as its own connector would hand them over.</summary>
+internal sealed record SourceSample(string Name, RawRecord[] Records);
+
+/// <summary>
+/// One real thing and every name the sources use for it. <paramref name="DenotingRecord"/> is the
+/// record that is this thing (an asset register row), when one is.
+/// </summary>
+internal sealed record SameThing(string Label, string[] Names, string? DenotingRecord);
+
+/// <summary>
 /// The fixed catalog every live measurement shares, so that two instruments run over the same
 /// records and questions and their numbers are comparable. The baseline quality measurement
 /// passes no declaration at all; the completeness ablation walks each case's ladder.
@@ -191,6 +214,38 @@ internal static class QualityCatalog
     ];
 
     /// <summary>
+    /// Cross-source identity cases, measured by the baseline only. The plant case is small on
+    /// purpose: three machines an asset register and a maintenance log both mention, one of them
+    /// under two different spellings inside the maintenance log itself.
+    /// </summary>
+    public static readonly CrossSourceCase[] CrossSourceCases =
+    [
+        new("plant-erp-and-cmms",
+        [
+            new("erp",
+            [
+                Row("erp-eq-1", ("asset_code", "PRS-004"), ("name", "프레스 4호기"), ("maker", "한성기계"), ("line", "A라인"), ("installed", "2019-03-11")),
+                Row("erp-eq-2", ("asset_code", "CNV-012"), ("name", "컨베이어 12"), ("maker", "대한오토"), ("line", "A라인"), ("installed", "2020-07-02")),
+                Row("erp-eq-3", ("asset_code", "CMP-002"), ("name", "공기압축기 2호"), ("maker", "한성기계"), ("line", "공용"), ("installed", "2018-11-20")),
+                Row("erp-po-1", ("po_no", "PO-24-0913"), ("item", "베어링 6205"), ("for_asset", "PRS-004"), ("qty", "4"), ("vendor", "KBS베어링")),
+                Row("erp-po-2", ("po_no", "PO-24-0921"), ("item", "벨트 B-1200"), ("for_asset", "CNV-012"), ("qty", "2"), ("vendor", "대한오토")),
+            ]),
+            new("cmms",
+            [
+                Row("cmms-wo-1", ("wo", "WO-5531"), ("equipment", "프레스#4"), ("symptom", "주축 베어링 소음"), ("action", "베어링 6205 교체"), ("tech", "박준호"), ("date", "2024-09-18")),
+                Row("cmms-wo-2", ("wo", "WO-5540"), ("equipment", "Press 04 (A line)"), ("symptom", "유압 누유"), ("action", "씰 교체"), ("tech", "이수진"), ("date", "2024-09-25")),
+                Row("cmms-wo-3", ("wo", "WO-5602"), ("equipment", "컨베이어#12"), ("symptom", "벨트 슬립"), ("action", "벨트 B-1200 교체"), ("tech", "박준호"), ("date", "2024-10-02")),
+                Row("cmms-wo-4", ("wo", "WO-5610"), ("equipment", "압축기2"), ("symptom", "토출압 저하"), ("action", "필터 청소"), ("tech", "김민지"), ("date", "2024-10-05")),
+            ]),
+        ],
+        [
+            new("press 4", ["프레스 4호기", "PRS-004", "프레스#4", "Press 04 (A line)"], "erp-eq-1"),
+            new("conveyor 12", ["컨베이어 12", "CNV-012", "컨베이어#12"], "erp-eq-2"),
+            new("compressor 2", ["공기압축기 2호", "CMP-002", "압축기2"], "erp-eq-3"),
+        ]),
+    ];
+
+    /// <summary>
     /// The catalog case names <c>EYU_LLM_QUALITY_CASES</c> selects (comma-separated), or
     /// <c>null</c> for all of them — read by every live instrument over this catalog, so one prompt
     /// change can be re-measured on the cases it touches. A name that matches no case fails the run rather than measuring
@@ -205,7 +260,7 @@ internal static class QualityCatalog
         }
 
         var names = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
-        var known = Cases.Select(c => c.Name).Concat(DocumentCases.Select(c => c.Name)).ToHashSet(StringComparer.Ordinal);
+        var known = Cases.Select(c => c.Name).Concat(DocumentCases.Select(c => c.Name)).Concat(CrossSourceCases.Select(c => c.Name)).ToHashSet(StringComparer.Ordinal);
         var unknown = names.Where(n => !known.Contains(n)).ToList();
         if (unknown.Count > 0)
         {
@@ -219,6 +274,10 @@ internal static class QualityCatalog
     private static CompetencyQuestion PartnersAndCustomers => new(
         "Which organizations are the company's partners, and which are its customers?",
         ["organization|organisation|company|firm|enterprise|business|corporation", "partner|alliance|collaborat", "customer|client|buyer"]);
+
+    // A record as a source system would hold it: an id and its fields.
+    private static RawRecord Row(string id, params (string Field, string Value)[] fields) =>
+        new(id, fields.ToDictionary(f => f.Field, f => (string?)f.Value));
 
     // A document chunk as a caller holding text would pass it: the text under one field.
     private static RawRecord Chunk(string id, string text) => new(id, new Dictionary<string, string?> { ["content"] = text });

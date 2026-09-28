@@ -171,6 +171,39 @@ public sealed class KnownEntityProposalTests
         Assert.NotEqual(SinglePassOntologyProposer.PromptFingerprint, SinglePassOntologyProposer.KnownEntitiesPromptFingerprint);
     }
 
+    [Fact]
+    public async Task A_record_linkage_decided_is_a_known_entity_reaches_the_prompt_and_the_confidence()
+    {
+        static RawRecord Equipment(string id, string code, string name, string plant, string maker) =>
+            new(id, new Dictionary<string, string?> { ["asset_code"] = code, ["name"] = name, ["plant"] = plant, ["maker"] = maker });
+
+        KnownEntity[] known =
+        [
+            new("key:press", "Press 4", "Equipment", [Equipment("old-1", "PRS-004", "Press 4", "Ansan", "Hanwha")]),
+            new("key:conveyor", "Conveyor 12", "Equipment", [Equipment("old-2", "CNV-012", "Conveyor 12", "Ansan", "Daifuku")]),
+            new("key:compressor", "Compressor 2", "Equipment", [Equipment("old-3", "CMP-002", "Compressor 2", "Siheung", "Atlas")]),
+        ];
+        RawRecord[] records =
+        [
+            Equipment("new-1", "PRS-004", "Press 4", "Ansan", "Hanwha"),
+            Equipment("new-2", "LFT-031", "Lift 31", "Pyeongtaek", "Otis"),
+            Equipment("new-3", "WLD-007", "Welder 7", "Siheung", "Lincoln"),
+        ];
+        const string response = """
+            {"entities": [
+              {"id": "e1", "name": "Press 4", "type": "Equipment", "claim": "new-1 is the press", "sources": ["new-1"], "denotedBy": ["new-1"], "knownEntityKey": "key:press", "confidence": 0.3}
+            ], "relations": []}
+            """;
+        var model = new StubModelClient(response);
+
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], records, known, TestContext.Current.CancellationToken);
+
+        Assert.Contains("Records pre-linked to known entities", model.LastPrompt!, StringComparison.Ordinal);
+        Assert.Contains("- new-1 -> key:press", model.LastPrompt!, StringComparison.Ordinal);
+        var press = Assert.Single(proposal.Entities);
+        Assert.True(press.Confidence > 0.9, $"the pre-filter's decision outweighs a hesitant model; got {press.Confidence}");
+    }
+
     private sealed class StubModelClient(string responseText) : IModelClient
     {
         public string? LastPrompt { get; private set; }

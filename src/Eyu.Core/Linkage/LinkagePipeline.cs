@@ -41,8 +41,20 @@ public static class LinkagePipeline
     }
 
     public static LinkageAnalysis Analyze(IReadOnlyList<RawRecord> records, LinkageOptions? options = null)
+        => Analyze(records, [], options);
+
+    /// <summary>
+    /// The same analysis, also comparing each record with the records of entities earlier calls
+    /// identified. A known entity's records are compared with the call's records and never with each
+    /// other — the caller already decided they are one entity — and they join the call's own pairs in one
+    /// parameter estimate, so the evidence against known records is on the same scale as the rest. The
+    /// clusters and pair linkages stay the call's own; the cross-call evidence is
+    /// <see cref="LinkageAnalysis.KnownCandidates"/>.
+    /// </summary>
+    public static LinkageAnalysis Analyze(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, LinkageOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(records);
+        ArgumentNullException.ThrowIfNull(knownEntities);
 
         var opts = options ?? LinkageOptions.Default;
         opts.Validate();
@@ -50,36 +62,54 @@ public static class LinkagePipeline
         var recordIds = records.Select(r => r.Id).ToList();
         ThrowIfDuplicateIds(recordIds);
 
-        if (records.Count < 2 || !opts.RecordsDenoteEntities)
+        // Where records do not each denote one entity, no record can be the same thing as a known one.
+        var knownRecords = opts.RecordsDenoteEntities
+            ? knownEntities.SelectMany(k => (k.DenotingRecords ?? []).Select(r => (Key: k.Key, Record: r))).ToList()
+            : [];
+
+        var ownPairs = new List<(RawRecord A, RawRecord B)>();
+        if (records.Count >= 2 && opts.RecordsDenoteEntities)
+        {
+            for (var i = 0; i < records.Count; i++)
+            {
+                for (var j = i + 1; j < records.Count; j++)
+                {
+                    ownPairs.Add((records[i], records[j]));
+                }
+            }
+        }
+
+        var crossPairs = records.SelectMany(r => knownRecords.Select(k => (Record: r, k.Key, Known: k.Record))).ToList();
+
+        if (ownPairs.Count == 0 && crossPairs.Count == 0)
         {
             var singletonClusters = recordIds.Select(id => new RecordCluster([id])).ToList();
             return new LinkageAnalysis(new ClusteringResult(singletonClusters, []), [], Parameters: null);
         }
 
-        var pairs = new List<(RawRecord A, RawRecord B)>();
-        var comparisonVectors = new List<IReadOnlyDictionary<string, FieldAgreementLevel>>();
+        var ownVectors = ownPairs.Select(p => FieldComparator.Compare(p.A, p.B, opts)).ToList();
+        var crossVectors = crossPairs.Select(p => FieldComparator.Compare(p.Record, p.Known, opts)).ToList();
+        var parameters = FellegiSunterEstimator.Estimate([.. ownVectors, .. crossVectors], opts.MaxIterations, opts.ConvergenceTolerance);
 
-        for (var i = 0; i < records.Count; i++)
+        var pairLinkages = new List<PairLinkage>(ownPairs.Count);
+        for (var i = 0; i < ownPairs.Count; i++)
         {
-            for (var j = i + 1; j < records.Count; j++)
-            {
-                pairs.Add((records[i], records[j]));
-                comparisonVectors.Add(FieldComparator.Compare(records[i], records[j], opts));
-            }
+            var llr = FellegiSunterEstimator.ComputeLogLikelihoodRatio(ownVectors[i], parameters);
+            pairLinkages.Add(new PairLinkage(ownPairs[i].A.Id, ownPairs[i].B.Id, LinkageClassifier.Classify(llr, opts.MatchThreshold, opts.NonMatchThreshold), llr));
         }
 
-        var parameters = FellegiSunterEstimator.Estimate(comparisonVectors, opts.MaxIterations, opts.ConvergenceTolerance);
-
-        var pairLinkages = new List<PairLinkage>(pairs.Count);
-        for (var i = 0; i < pairs.Count; i++)
-        {
-            var llr = FellegiSunterEstimator.ComputeLogLikelihoodRatio(comparisonVectors[i], parameters);
-            var classification = LinkageClassifier.Classify(llr, opts.MatchThreshold, opts.NonMatchThreshold);
-            pairLinkages.Add(new PairLinkage(pairs[i].A.Id, pairs[i].B.Id, classification, llr));
-        }
+        var knownCandidates = crossPairs
+            .Select((p, i) => (p.Record.Id, p.Key, Llr: FellegiSunterEstimator.ComputeLogLikelihoodRatio(crossVectors[i], parameters)))
+            .GroupBy(c => (c.Id, c.Key))
+            .Select(g => g.MaxBy(c => c.Llr))
+            .Select(c => new KnownEntityCandidate(c.Id, c.Key, LinkageClassifier.Classify(c.Llr, opts.MatchThreshold, opts.NonMatchThreshold), c.Llr))
+            .Where(c => c.Classification != LinkageClassification.NonMatch)
+            .OrderBy(c => c.RecordId, StringComparer.Ordinal)
+            .ThenBy(c => c.KnownEntityKey, StringComparer.Ordinal)
+            .ToList();
 
         var clustering = EntityClusterer.Cluster(recordIds, pairLinkages);
-        var errorRates = LinkageErrorRateEstimator.Estimate(pairLinkages, parameters);
-        return new LinkageAnalysis(clustering, pairLinkages, parameters, errorRates);
+        var errorRates = pairLinkages.Count > 0 ? LinkageErrorRateEstimator.Estimate(pairLinkages, parameters) : null;
+        return new LinkageAnalysis(clustering, pairLinkages, parameters, errorRates) { KnownCandidates = knownCandidates };
     }
 }

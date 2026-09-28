@@ -160,7 +160,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         ArgumentNullException.ThrowIfNull(knownEntities);
         DeclaredStructureMerge.EnsureDistinctSubjects(declaredStructures);
         KnownEntity.Validate(knownEntities, records);
-        var linkageAnalysis = LinkagePipeline.Analyze(records, options);
+        var linkageAnalysis = LinkagePipeline.Analyze(records, knownEntities, options);
         var prompt = BuildPrompt(declaredStructures, records, knownEntities, linkageAnalysis);
         var schema = knownEntities.Count > 0 ? ResponseSchemaWithKnownEntities : ResponseSchema;
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt, schema), cancellationToken).ConfigureAwait(false);
@@ -222,6 +222,28 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             foreach (var cluster in linkedClusters)
             {
                 text.AppendLine(CultureInfo.InvariantCulture, $"- {string.Join(", ", cluster.RecordIds)}");
+            }
+        }
+
+        var linkedToKnown = linkageAnalysis.KnownCandidates.Where(c => c.Classification == LinkageClassification.Match).ToList();
+        if (linkedToKnown.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine("Records pre-linked to known entities (record linkage already confirmed the record denotes that known entity -- use its key, do not re-decide):");
+            foreach (var candidate in linkedToKnown)
+            {
+                text.AppendLine(CultureInfo.InvariantCulture, $"- {candidate.RecordId} -> {candidate.KnownEntityKey}");
+            }
+        }
+
+        var maybeKnown = linkageAnalysis.KnownCandidates.Where(c => c.Classification == LinkageClassification.GrayZone).ToList();
+        if (maybeKnown.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine("Records that may denote a known entity, needing your judgment (prior evidence toward the same entity, in log-odds -- positive favors the same entity):");
+            foreach (var candidate in maybeKnown)
+            {
+                text.AppendLine(CultureInfo.InvariantCulture, $"- {candidate.RecordId} vs {candidate.KnownEntityKey}: prior log-odds {candidate.LogLikelihoodRatio:F2}");
             }
         }
 
@@ -366,8 +388,14 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             // an identity. Models fill the field for chunks anyway, and not the same way twice.
             var denotedBy = recordsDenoteEntities ? Denoting(e) : [];
             var claim = ToClaim(e.Claim!, EntitySources(e));
+            var knownKey = BlankToNull(e.KnownEntityKey);
             var confidence = LinkageConfidenceAdjuster.AdjustConfidence(denotedBy, e.Confidence!.Value, linkageAnalysis);
-            entities.Add(EntityProposal.Create(e.Id!, e.Name!.Trim(), e.Type!, claim, InnateVocabulary.OfEntityType(e.Type!), confidence, denotedBy: denotedBy, knownEntityKey: BlankToNull(e.KnownEntityKey)));
+            if (knownKey is not null)
+            {
+                confidence = LinkageConfidenceAdjuster.AdjustForKnownEntity(denotedBy, knownKey, confidence, linkageAnalysis);
+            }
+
+            entities.Add(EntityProposal.Create(e.Id!, e.Name!.Trim(), e.Type!, claim, InnateVocabulary.OfEntityType(e.Type!), confidence, denotedBy: denotedBy, knownEntityKey: knownKey));
         }
 
         var proposedIds = entityResponses.Where(e => !string.IsNullOrWhiteSpace(e.Id)).Select(e => e.Id!).ToHashSet(StringComparer.Ordinal);

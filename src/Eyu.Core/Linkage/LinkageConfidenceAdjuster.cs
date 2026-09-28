@@ -89,6 +89,36 @@ public static class LinkageConfidenceAdjuster
         return Math.Clamp(Sigmoid(priorLogOdds + llmLogOdds), ProbabilityFloor, ProbabilityCeiling);
     }
 
+    /// <summary>
+    /// The confidence of an entity the answer matched to a known entity, read against the linkage
+    /// evidence between the records that denote it and that known entity: a match the pre-filter decided
+    /// takes the linkage posterior, a gray-zone one blends it with the model's confidence the way a
+    /// gray-zone pair within the call does, and a match with no evidence either way keeps the model's.
+    /// </summary>
+    public static double AdjustForKnownEntity(IReadOnlyList<string> denotingRecordIds, string knownEntityKey, double confidence, LinkageAnalysis analysis)
+    {
+        ArgumentNullException.ThrowIfNull(denotingRecordIds);
+        ArgumentNullException.ThrowIfNull(analysis);
+
+        var evidence = analysis.KnownCandidates
+            .Where(c => string.Equals(c.KnownEntityKey, knownEntityKey, StringComparison.Ordinal) && denotingRecordIds.Contains(c.RecordId, StringComparer.Ordinal))
+            .ToList();
+        if (evidence.Count == 0)
+        {
+            return confidence;
+        }
+
+        var matchPriorLogOdds = analysis.Parameters is null ? 0.0 : Logit(analysis.Parameters.MatchPrior);
+        var strongest = evidence.MaxBy(c => c.LogLikelihoodRatio)!;
+        if (strongest.Classification == LinkageClassification.Match)
+        {
+            return Math.Clamp(Sigmoid(strongest.LogLikelihoodRatio + matchPriorLogOdds), ProbabilityFloor, ProbabilityCeiling);
+        }
+
+        var llmLogOdds = Logit(Math.Clamp(confidence, ProbabilityFloor, ProbabilityCeiling));
+        return Math.Clamp(Sigmoid(strongest.LogLikelihoodRatio + matchPriorLogOdds + llmLogOdds), ProbabilityFloor, ProbabilityCeiling);
+    }
+
     private static (string, string) PairKey(string a, string b) =>
         string.CompareOrdinal(a, b) <= 0 ? (a, b) : (b, a);
 

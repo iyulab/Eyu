@@ -46,7 +46,7 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// measurement with different thresholds to see the effect, rather than measuring a fixed
 /// heuristic. The chosen options and, per case, the resulting <see cref="LinkageAnalysis"/>
 /// (pair classifications, EM <see cref="EstimationStatus"/>, match prior) are recorded in the
-/// report — <see cref="LinkagePipeline.Analyze"/> depends only on records and options, not the
+/// report — <see cref="LinkagePipeline.Analyze(IReadOnlyList{RawRecord}, LinkageOptions)"/> depends only on records and options, not the
 /// model, so it is computed once per case rather than once per attempt.
 /// <para>
 /// A fourth axis (pilot): <b>competency-question answerability</b>. Each catalog case carries a

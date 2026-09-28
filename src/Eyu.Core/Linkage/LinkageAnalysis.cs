@@ -8,10 +8,17 @@ namespace Eyu.Core.Linkage;
 /// converged (<see cref="EstimationStatus"/>). Null only when the record batch had fewer than two
 /// records, so there was nothing to compare. <paramref name="ErrorRates"/> is the unlabeled
 /// estimate of the pre-filter's own error rates on this batch, built from the same parameters
-/// (see <see cref="LinkageErrorRateEstimate"/>); null exactly when <paramref name="Parameters"/> is.
+/// (see <see cref="LinkageErrorRateEstimate"/>); null when the batch had no pair of its own to compare.
 /// </summary>
 public sealed record LinkageAnalysis(
     ClusteringResult Clustering,
     IReadOnlyList<PairLinkage> PairLinkages,
     FieldLinkageParameters? Parameters,
-    LinkageErrorRateEstimate? ErrorRates = null);
+    LinkageErrorRateEstimate? ErrorRates = null)
+{
+    /// <summary>
+    /// Evidence that a record denotes a known entity from an earlier call, strongest per record and key;
+    /// empty when no known entities were given.
+    /// </summary>
+    public IReadOnlyList<KnownEntityCandidate> KnownCandidates { get; init; } = [];
+}

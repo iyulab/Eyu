@@ -3,7 +3,7 @@ namespace Eyu.Core.Linkage;
 /// <summary>
 /// Tuning values for the Fellegi-Sunter pre-filter, threaded from
 /// <see cref="Eyu.Core.Judgment.SinglePassOntologyProposer"/> through
-/// <see cref="LinkagePipeline.Analyze"/> to <see cref="FieldComparator.Compare"/>,
+/// <see cref="LinkagePipeline.Analyze(IReadOnlyList{Eyu.Core.Records.RawRecord}, LinkageOptions)"/> to <see cref="FieldComparator.Compare"/>,
 /// <see cref="LinkageClassifier.Classify"/> and <see cref="FellegiSunterEstimator.Estimate"/>. All
 /// defaults match what those methods already used, so passing no options changes nothing — a
 /// caller only needs this once observed precision/recall from a live validation cycle calls for
@@ -62,7 +62,7 @@ public sealed record LinkageOptions(
     /// <summary>
     /// Throws when a value could not be honoured: thresholds that do not order, an iteration
     /// count that would run EM zero times, a non-positive tolerance, or a similarity threshold
-    /// outside [0, 1]. <see cref="LinkagePipeline.Analyze"/> calls this before it looks at the
+    /// outside [0, 1]. <see cref="LinkagePipeline.Analyze(IReadOnlyList{Eyu.Core.Records.RawRecord}, LinkageOptions)"/> calls this before it looks at the
     /// batch, so a bad option fails the same way whether the batch has one record or a thousand.
     /// </summary>
     public void Validate()

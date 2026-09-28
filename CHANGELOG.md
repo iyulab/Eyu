@@ -25,6 +25,14 @@ every published version has a section here.
   unchanged); one with them adds a clause and a `knownEntityKey` field, fingerprinted separately
   (`KnownEntitiesPromptFingerprint`). Implementers of `IOntologyProposer` implement the new overload;
   the existing one forwards to it.
+- Record linkage compares a call's records with known entities' records too (`LinkagePipeline.Analyze`
+  overload; `LinkageAnalysis.KnownCandidates`). A known entity's records are compared with the call's
+  and never with each other, in the same parameter estimate as the call's own pairs, and never join the
+  call's clusters. A record the pre-filter matches to a known entity is told to the model as pre-linked
+  to that key, a gray-zone one as a candidate with its prior log-odds, and the confidence of an entity
+  matched to a known one reads that evidence (`LinkageConfidenceAdjuster.AdjustForKnownEntity`). Only
+  fields of the same name are compared, as within a call: sources that name the same thing under
+  different fields are left to the model.
 
 - `Eyu.Rdf` names the rule an export's IRIs were minted under: the ontology carries
   `eyu:iriRule "0.5.0"` (`EyuVocabulary.IriRule`), the release that introduced the current rule, and

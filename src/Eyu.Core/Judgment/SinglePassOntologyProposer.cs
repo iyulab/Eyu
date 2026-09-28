@@ -107,6 +107,13 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         }
         """);
 
+    // The base schema with the entity's "knownEntityKey" added — required, and null when the entity is
+    // new, so a strict provider still has to decide for every entity.
+    private static readonly JsonElement ResponseSchemaWithKnownEntities = JsonElement.Parse(
+        ResponseSchema.GetRawText()
+            .Replace("\"denotedBy\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },", "\"denotedBy\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n                  \"knownEntityKey\": { \"type\": [\"string\", \"null\"] },", StringComparison.Ordinal)
+            .Replace("\"required\": [\"id\", \"name\", \"type\", \"claim\", \"sources\", \"denotedBy\", \"confidence\"]", "\"required\": [\"id\", \"name\", \"type\", \"claim\", \"sources\", \"denotedBy\", \"knownEntityKey\", \"confidence\"]", StringComparison.Ordinal));
+
     // Two wordings of the floor sentence failed in measurement, each in one regime. With only
     // "beyond what is declared" after the request to use declared types, the model kept document
     // chunks to exactly the declared entity types. Saying the declared types are not the only ones
@@ -114,6 +121,12 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     // instead: a record the declared type already describes left nothing to propose beyond it. The
     // sentence keeps both halves that worked and names no kind of entity (that would be the
     // steering design rationale §E keeps out of the prompt).
+    // Only when known entities are supplied: the clause, and the schema sentence that names the field
+    // the answer fills. A call without them sends the request it always sent, so its fingerprint and
+    // every measurement taken under it stay comparable.
+    private const string PromptSchemaWithKnownEntities = "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"denotedBy\",\"knownEntityKey\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.";
+    private const string KnownEntitiesClause = "Known entities are ones earlier work already identified, each listed with its key, type, name and the records that denoted it. When an entity you propose is the same thing as a known entity, set its \"knownEntityKey\" to that key; otherwise set it to null. Known entities' records are shown for comparison only and cannot be cited as sources.";
+
     private const string DeclarationClause = "Declared structure is authoritative: a declared type, field or relation is fact, not a hypothesis. Where a declared type describes an entity, propose the entity under that type; where a declared relation describes a relation, propose it under that name; never contradict declared structure. A declaration is a floor, not a ceiling: the declared types and relations are not the only ones, so still propose every entity and relation the records show beyond what is declared, under types and names of your own.";
 
     /// <summary>
@@ -126,28 +139,40 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     /// </summary>
     public static string PromptFingerprint { get; } = ComputeFingerprint();
 
-    private static string ComputeFingerprint()
-    {
-        var fixedText = string.Join('\n', PromptInstruction, PromptSchema, PromptReferenceRule, DeclarationClause, ResponseSchema.GetRawText());
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(fixedText));
-        return Convert.ToHexString(hash).ToLowerInvariant()[..8];
-    }
+    /// <summary>
+    /// The fingerprint of the fixed part a call with known entities adds (the known-entities clause and
+    /// the response schema that carries <c>knownEntityKey</c>). A report of such a call stamps both;
+    /// <see cref="PromptFingerprint"/> alone is unchanged by this feature.
+    /// </summary>
+    public static string KnownEntitiesPromptFingerprint { get; } = Fingerprint(string.Join('\n', PromptSchemaWithKnownEntities, KnownEntitiesClause, ResponseSchemaWithKnownEntities.GetRawText()));
 
-    public async Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, CancellationToken cancellationToken = default)
+    private static string ComputeFingerprint() =>
+        Fingerprint(string.Join('\n', PromptInstruction, PromptSchema, PromptReferenceRule, DeclarationClause, ResponseSchema.GetRawText()));
+
+    private static string Fingerprint(string fixedText) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fixedText))).ToLowerInvariant()[..8];
+
+    public Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, CancellationToken cancellationToken = default)
+        => ProposeAsync(declaredStructures, records, [], cancellationToken);
+
+    public async Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(knownEntities);
         DeclaredStructureMerge.EnsureDistinctSubjects(declaredStructures);
+        KnownEntity.Validate(knownEntities, records);
         var linkageAnalysis = LinkagePipeline.Analyze(records, options);
-        var prompt = BuildPrompt(declaredStructures, records, linkageAnalysis);
-        var response = await modelClient.CompleteAsync(new ModelRequest(prompt, ResponseSchema), cancellationToken).ConfigureAwait(false);
-        var parsed = ParseResponse(response.Text, records, linkageAnalysis, options.RecordsDenoteEntities);
+        var prompt = BuildPrompt(declaredStructures, records, knownEntities, linkageAnalysis);
+        var schema = knownEntities.Count > 0 ? ResponseSchemaWithKnownEntities : ResponseSchema;
+        var response = await modelClient.CompleteAsync(new ModelRequest(prompt, schema), cancellationToken).ConfigureAwait(false);
+        var parsed = ParseResponse(response.Text, records, knownEntities, linkageAnalysis, options.RecordsDenoteEntities);
         return DeclaredStructureMerge.Apply(declaredStructures, parsed.Entities, parsed.Relations, parsed.Rejections);
     }
 
-    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, LinkageAnalysis linkageAnalysis)
+    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, LinkageAnalysis linkageAnalysis)
     {
         var text = new StringBuilder();
         text.AppendLine(PromptInstruction);
-        text.AppendLine(PromptSchema);
+        text.AppendLine(knownEntities.Count > 0 ? PromptSchemaWithKnownEntities : PromptSchema);
         text.AppendLine(PromptReferenceRule);
 
         if (declaredStructures.Count > 0)
@@ -168,12 +193,25 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             }
         }
 
+        if (knownEntities.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine(KnownEntitiesClause);
+            foreach (var known in knownEntities)
+            {
+                text.AppendLine(CultureInfo.InvariantCulture, $"Known entity: key={known.Key}, type={known.EntityType}, name={known.Name}");
+                foreach (var record in known.DenotingRecords ?? [])
+                {
+                    text.AppendLine(CultureInfo.InvariantCulture, $"  - {record.Id}: {DescribeFields(record)}");
+                }
+            }
+        }
+
         text.AppendLine();
         text.AppendLine("Records:");
         foreach (var record in records)
         {
-            var fields = string.Join(", ", record.Fields.Select(f => $"{f.Key}={f.Value}"));
-            text.AppendLine(CultureInfo.InvariantCulture, $"- {record.Id}: {fields}");
+            text.AppendLine(CultureInfo.InvariantCulture, $"- {record.Id}: {DescribeFields(record)}");
         }
 
         var linkedClusters = linkageAnalysis.Clustering.Clusters.Where(c => c.RecordIds.Count > 1).ToList();
@@ -277,8 +315,11 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     /// own and against the entities that survived. Origin is stamped from
     /// <see cref="InnateVocabulary"/>, not read from the model.
     /// </summary>
-    private static OntologyProposal ParseResponse(string responseText, IReadOnlyList<RawRecord> records, LinkageAnalysis linkageAnalysis, bool recordsDenoteEntities)
+    private static string DescribeFields(RawRecord record) => string.Join(", ", record.Fields.Select(f => $"{f.Key}={f.Value}"));
+
+    private static OntologyProposal ParseResponse(string responseText, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, LinkageAnalysis linkageAnalysis, bool recordsDenoteEntities)
     {
+        var knownKeys = knownEntities.Select(k => k.Key).ToHashSet(StringComparer.Ordinal);
         ProposalResponse parsed;
         try
         {
@@ -309,7 +350,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         {
             var defect = EntityDefect(e) ?? (duplicatedIds.Contains(e.Id!)
                 ? new Defect(RejectionReason.DuplicateEntityId, "more than one entity was proposed under this id — an entity id must name one entity")
-                : null);
+                : null) ?? KnownEntityDefect(e, knownKeys);
             if (defect is not null)
             {
                 rejections.Add(new ProposalRejection(ProposalElement.Entity, BlankToNull(e.Id), defect.Reason, $"entity {Describe(e.Id)}: {defect.Detail}"));
@@ -326,7 +367,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             var denotedBy = recordsDenoteEntities ? Denoting(e) : [];
             var claim = ToClaim(e.Claim!, EntitySources(e));
             var confidence = LinkageConfidenceAdjuster.AdjustConfidence(denotedBy, e.Confidence!.Value, linkageAnalysis);
-            entities.Add(EntityProposal.Create(e.Id!, e.Name!.Trim(), e.Type!, claim, InnateVocabulary.OfEntityType(e.Type!), confidence, denotedBy: denotedBy));
+            entities.Add(EntityProposal.Create(e.Id!, e.Name!.Trim(), e.Type!, claim, InnateVocabulary.OfEntityType(e.Type!), confidence, denotedBy: denotedBy, knownEntityKey: BlankToNull(e.KnownEntityKey)));
         }
 
         var proposedIds = entityResponses.Where(e => !string.IsNullOrWhiteSpace(e.Id)).Select(e => e.Id!).ToHashSet(StringComparer.Ordinal);
@@ -354,6 +395,19 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         MissingFields(("id", e.Id), ("name", e.Name), ("type", e.Type), ("claim", e.Claim)) is { } missing ? new Defect(RejectionReason.MissingField, missing)
         : !CitesSources(EntitySources(e)) ? new Defect(RejectionReason.MissingField, "cites no source")
         : ConfidenceDefect(e.Confidence);
+
+    /// <summary>
+    /// A match to a known entity names one the call supplied. A key the call never gave matches nothing
+    /// the caller can join, so the entity is left out — reported like any other defective element, not
+    /// a reason to distrust the rest of the answer, because the key is not evidence the way a cited
+    /// record is.
+    /// </summary>
+    private static Defect? KnownEntityDefect(EntityResponse e, HashSet<string> knownKeys) =>
+        BlankToNull(e.KnownEntityKey) is { } key && !knownKeys.Contains(key)
+            ? new Defect(RejectionReason.UnknownKnownEntity, knownKeys.Count == 0
+                ? $"matched to known entity '{key}', but the call supplied no known entities"
+                : $"matched to known entity '{key}', which is not one of the {knownKeys.Count} the call supplied")
+            : null;
 
     private static Defect? RelationDefect(RelationResponse r) =>
         MissingFields(("name", r.Name), ("from", r.From), ("to", r.To), ("claim", r.Claim)) is { } missing ? new Defect(RejectionReason.MissingField, missing)
@@ -467,7 +521,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
 
     // Every field is nullable: a model can omit any of them, and an omission is a per-element
     // rejection, not a deserialization failure of the whole answer.
-    private sealed record EntityResponse(string? Id, string? Name, string? Type, string? Claim, IReadOnlyList<string?>? Sources, IReadOnlyList<string?>? DenotedBy, double? Confidence);
+    private sealed record EntityResponse(string? Id, string? Name, string? Type, string? Claim, IReadOnlyList<string?>? Sources, IReadOnlyList<string?>? DenotedBy, double? Confidence, string? KnownEntityKey = null);
 
     private sealed record RelationResponse(string? Name, string? From, string? To, string? Claim, IReadOnlyList<string?>? Sources, double? Confidence);
 }

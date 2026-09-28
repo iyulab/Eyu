@@ -31,6 +31,9 @@ public enum RejectionReason
 
     /// <summary>A relation uses a declared relation's name for ends the declaration does not describe — "Declared always wins".</summary>
     ContradictsDeclaration,
+
+    /// <summary>An entity was matched to a known entity key the call did not supply.</summary>
+    UnknownKnownEntity,
 }
 
 /// <summary>

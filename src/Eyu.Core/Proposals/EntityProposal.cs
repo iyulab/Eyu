@@ -44,12 +44,20 @@ public sealed record EntityProposal
     /// </summary>
     public IReadOnlyList<string> DenotedBy { get; }
 
+    /// <summary>
+    /// The key of the known entity (<see cref="Records.KnownEntity"/>) this entity is the same thing as,
+    /// or <see langword="null"/> when it is not one the call was told about. A match carries the known
+    /// entity's identity, not its name or type: those stay as this call's records write them.
+    /// </summary>
+    public string? KnownEntityKey { get; }
+
     /// <summary>The cited records that only refer to this entity — <see cref="Claim"/>'s source records not in <see cref="DenotedBy"/>.</summary>
     public IReadOnlyList<string> MentionedIn => Claim.Sources.Select(s => s.RecordId).Distinct(StringComparer.Ordinal)
         .Where(id => !DenotedBy.Contains(id, StringComparer.Ordinal)).ToList();
 
-    private EntityProposal(string entityId, string name, string entityType, GroundedClaim claim, VocabularyOrigin origin, double confidence, ProposalBasis basis, IReadOnlyList<string> denotedBy)
+    private EntityProposal(string entityId, string name, string entityType, GroundedClaim claim, VocabularyOrigin origin, double confidence, ProposalBasis basis, IReadOnlyList<string> denotedBy, string? knownEntityKey)
     {
+        KnownEntityKey = knownEntityKey;
         EntityId = entityId;
         Name = name;
         EntityType = entityType;
@@ -73,8 +81,14 @@ public sealed record EntityProposal
     /// named here that the claim does not cite is refused: denoting an entity is the strongest way a
     /// record can be its evidence, so it cannot be absent from the evidence.
     /// </param>
-    public static EntityProposal Create(string entityId, string name, string entityType, GroundedClaim claim, VocabularyOrigin origin, double confidence, ProposalBasis basis = ProposalBasis.Inferred, IReadOnlyList<string>? denotedBy = null)
+    /// <param name="knownEntityKey">See <see cref="KnownEntityKey"/>.</param>
+    public static EntityProposal Create(string entityId, string name, string entityType, GroundedClaim claim, VocabularyOrigin origin, double confidence, ProposalBasis basis = ProposalBasis.Inferred, IReadOnlyList<string>? denotedBy = null, string? knownEntityKey = null)
     {
+        if (knownEntityKey is not null && string.IsNullOrWhiteSpace(knownEntityKey))
+        {
+            throw new ArgumentException("A known entity key, when given, must be non-blank.", nameof(knownEntityKey));
+        }
+
         if (string.IsNullOrWhiteSpace(entityId))
         {
             throw new ArgumentException("EntityId must be a non-empty identifier.", nameof(entityId));
@@ -106,9 +120,9 @@ public sealed record EntityProposal
                 nameof(denotedBy));
         }
 
-        return new EntityProposal(entityId, name, entityType, claim, origin, confidence, basis, denoting);
+        return new EntityProposal(entityId, name, entityType, claim, origin, confidence, basis, denoting, knownEntityKey);
     }
 
     /// <summary>The same proposal with <see cref="Basis"/> set — used by the declared-structure merge, never by a model.</summary>
-    internal EntityProposal WithBasis(ProposalBasis basis) => new(EntityId, Name, EntityType, Claim, Origin, Confidence, basis, DenotedBy);
+    internal EntityProposal WithBasis(ProposalBasis basis) => new(EntityId, Name, EntityType, Claim, Origin, Confidence, basis, DenotedBy, KnownEntityKey);
 }

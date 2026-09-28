@@ -12,6 +12,20 @@ every published version has a section here.
 
 ### Added
 
+- Known entities: `IOntologyProposer.ProposeAsync` gains an overload that takes the entities earlier
+  calls identified (`KnownEntity` — the caller's key, name, type and the records that denoted it). An
+  entity the new records show that is one of them comes back with `EntityProposal.KnownEntityKey` set
+  to its key — the known entity wins, as a declaration does, but only for identity: the name and type
+  stay as the new records write them. A key the call did not supply leaves that entity out
+  (`RejectionReason.UnknownKnownEntity`), and a claim still cites only the call's own records — a known
+  entity's records are for comparison. Eyu keeps nothing between calls; whoever keeps the proposals
+  decides which entities are known. Known entities that cannot mean one thing (a key given twice, a
+  record under two of them or also among the call's records) are refused before the model is asked.
+  A call without known entities sends exactly the request it sent before (`PromptFingerprint`
+  unchanged); one with them adds a clause and a `knownEntityKey` field, fingerprinted separately
+  (`KnownEntitiesPromptFingerprint`). Implementers of `IOntologyProposer` implement the new overload;
+  the existing one forwards to it.
+
 - `Eyu.Rdf` names the rule an export's IRIs were minted under: the ontology carries
   `eyu:iriRule "0.5.0"` (`EyuVocabulary.IriRule`), the release that introduced the current rule, and
   the value changes only in a release that changes how a class, property or individual IRI is

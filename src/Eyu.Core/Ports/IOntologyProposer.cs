@@ -27,5 +27,19 @@ public interface IOntologyProposer
     Task<OntologyProposal> ProposeAsync(
         IReadOnlyList<DeclaredStructure> declaredStructures,
         IReadOnlyList<RawRecord> records,
+        CancellationToken cancellationToken = default)
+        => ProposeAsync(declaredStructures, records, [], cancellationToken);
+
+    /// <summary>
+    /// The same judgment, told which entities earlier calls already identified. An entity the records
+    /// show that is one of <paramref name="knownEntities"/> is proposed with that entity's key in
+    /// <see cref="EntityProposal.KnownEntityKey"/> — the known entity wins, as a declaration does — so
+    /// a caller that keeps proposals across calls (Eyu keeps none) can join them. A known entity's
+    /// records are compared, never cited: a claim still cites only this call's records.
+    /// </summary>
+    Task<OntologyProposal> ProposeAsync(
+        IReadOnlyList<DeclaredStructure> declaredStructures,
+        IReadOnlyList<RawRecord> records,
+        IReadOnlyList<KnownEntity> knownEntities,
         CancellationToken cancellationToken = default);
 }

@@ -174,6 +174,13 @@ system" as the target the architecture is built toward, not as a track record.
 - **Input, not fetch.** Eyu never pulls data. A caller hands it declared
   structure (field hints, a schema, an M3L-style declaration) and/or raw
   records to look at. What the caller doesn't supply, Eyu doesn't know.
+  That includes its own earlier answers: a caller that keeps proposals can
+  hand back the entities they identified as known entities (`KnownEntity` —
+  a key of the caller's choosing, the name and type, and the records that
+  denoted it), and an entity the new records show that is one of them comes
+  back with that key in `KnownEntityKey` instead of as a new entity. Eyu
+  keeps nothing between calls; the known entity's records are compared,
+  never cited.
 - **Declared always wins.** Where structure is explicitly declared, the
   declaration is the answer. Inference only fills what nothing declared.
   A call takes one declaration per subject, so a caller whose records name

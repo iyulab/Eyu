@@ -19,8 +19,9 @@ every published version has a section here.
   stay as the new records write them. A key the call did not supply leaves that entity out
   (`RejectionReason.UnknownKnownEntity`), and a claim still cites only the call's own records — a known
   entity's records are for comparison. Eyu keeps nothing between calls; whoever keeps the proposals
-  decides which entities are known. Known entities that cannot mean one thing (a key given twice, a
-  record under two of them or also among the call's records) are refused before the model is asked.
+  decides which entities are known. Known entities that cannot mean one thing (a key given twice, or a
+  record that is also among the call's records) are refused before the model is asked; one record may
+  denote several known entities, as one row can denote an event and the machine it happened to.
   A call without known entities sends exactly the request it sent before (`PromptFingerprint`
   unchanged); one with them adds a clause and a `knownEntityKey` field, fingerprinted separately
   (`KnownEntitiesPromptFingerprint`). Implementers of `IOntologyProposer` implement the new overload;

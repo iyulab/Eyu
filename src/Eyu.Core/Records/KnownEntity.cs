@@ -20,8 +20,9 @@ public sealed record KnownEntity(string Key, string Name, string EntityType, IRe
 {
     /// <summary>
     /// Refuses a list of known entities that cannot mean one thing: a blank key, name or type, a key
-    /// given twice, a record given under two known entities, or a known record that is also one of the
-    /// call's own records — a record cannot be both what is already known and what is new.
+    /// given twice, or a known record that is also one of the call's own records — a record cannot be
+    /// both what is already known and what is new. One record may denote several known entities: a row
+    /// that reports an event denotes the event and the machine it happened to alike.
     /// </summary>
     internal static void Validate(IReadOnlyList<KnownEntity> knownEntities, IReadOnlyList<RawRecord> records)
     {
@@ -42,10 +43,7 @@ public sealed record KnownEntity(string Key, string Name, string EntityType, IRe
 
             foreach (var record in known.DenotingRecords ?? [])
             {
-                if (!knownRecordIds.Add(record.Id))
-                {
-                    throw new ArgumentException($"The record '{record.Id}' denotes more than one known entity.", nameof(knownEntities));
-                }
+                knownRecordIds.Add(record.Id);
             }
         }
 

@@ -124,7 +124,6 @@ public sealed class KnownEntityProposalTests
     public static TheoryData<string, KnownEntity[]> Contradictory => new()
     {
         { "a key given twice", [Press, Press with { Name = "other" }] },
-        { "a record under two known entities", [Press, Conveyor with { DenotingRecords = [ErpPress] }] },
         { "a blank key", [Press with { Key = " " }] },
         { "a known record that is also a new one", [Press with { DenotingRecords = [WorkOrders[0]] }] },
     };
@@ -139,6 +138,19 @@ public sealed class KnownEntityProposalTests
             .ProposeAsync([], WorkOrders, known, TestContext.Current.CancellationToken));
 
         Assert.True(model.LastPrompt is null, because);
+    }
+
+    [Fact]
+    public async Task One_record_may_denote_several_known_entities()
+    {
+        // A row can denote more than one thing — the machine and the event it reports — so an entity
+        // list built from earlier proposals names the same record under several keys.
+        var incident = new KnownEntity("key:incident-7", "Hydraulic leak", "Incident", [ErpPress]);
+
+        var proposal = await new SinglePassOntologyProposer(new StubModelClient(MatchedResponse))
+            .ProposeAsync([], WorkOrders, [Press, incident], TestContext.Current.CancellationToken);
+
+        Assert.Contains(proposal.Entities, e => e.KnownEntityKey == Press.Key);
     }
 
     [Fact]

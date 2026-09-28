@@ -371,6 +371,12 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         /// <summary>Per parsed attempt: individuals whose name carries names of two or more things (<see cref="CrossSourceJoin.OverMerged"/>).</summary>
         public readonly List<int> OverMergedByAttempt = [];
+
+        /// <summary>
+        /// Per parsed attempt («known» mode only): entities matched to a known entity whose name joins a
+        /// different thing than the known entity's did — a match to the wrong thing.
+        /// </summary>
+        public readonly List<int> WrongKnownByAttempt = [];
     }
 
     private sealed class CrossSourceStats(CrossSourceCase crossSource)
@@ -378,6 +384,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         public CrossSourceCase Case { get; } = crossSource;
         public CrossSourceMode Separate { get; } = new();
         public CrossSourceMode Combined { get; } = new();
+        public CrossSourceMode Known { get; } = new();
     }
 
     /// <summary>
@@ -410,13 +417,79 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         {
             RecordThings([combined], crossSource, stats.Combined);
         }
+
+        // «Known»: what a caller that keeps proposals does — the first source's call (reused from the
+        // separate mode) makes its denoted entities known, under the IRIs its export wrote, and each later
+        // source is proposed with every entity known so far.
+        stats.Known.Attempts++;
+        if (separate.Count == crossSource.Sources.Length)
+        {
+            var chained = new List<OntologyProposal> { separate[0] };
+            var known = KnownEntityChain.FromProposal(separate[0], crossSource.Sources[0].Records, KeyOf(separate[0])).ToList();
+            foreach (var source in crossSource.Sources.Skip(1))
+            {
+                if (await TryProposeAsync(proposer, source.Records, stats.Known, source.Name, known) is not { } next)
+                {
+                    chained.Clear();
+                    break;
+                }
+
+                chained.Add(next);
+                known.AddRange(KnownEntityChain.FromProposal(next, source.Records, KeyOf(next)).Where(k => known.All(existing => existing.Key != k.Key)));
+            }
+
+            if (chained.Count == crossSource.Sources.Length)
+            {
+                RecordThings(chained, crossSource, stats.Known);
+                stats.Known.WrongKnownByAttempt.Add(WrongKnownMatches(chained, crossSource));
+            }
+        }
+        else
+        {
+            stats.Known.FailureNotes.Add("separate mode did not parse, so there was no earlier call to know entities from");
+        }
     }
 
-    private static async Task<OntologyProposal?> TryProposeAsync(SinglePassOntologyProposer proposer, RawRecord[] records, CrossSourceMode mode, string label)
+    // The key a caller keeps an entity by: the IRI the export wrote it under, unless that IRI is
+    // proposal-local and so means nothing outside the proposal.
+    private static Func<EntityProposal, string?> KeyOf(OntologyProposal proposal)
+    {
+        var iris = OntologyTurtle.IndividualIris(proposal, IdentityExport);
+        return e => iris[e.EntityId] is var iri && iri.Contains("/local/", StringComparison.Ordinal) ? null : iri;
+    }
+
+    private static int WrongKnownMatches(IReadOnlyList<OntologyProposal> chained, CrossSourceCase crossSource)
+    {
+        var thingsByIri = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var proposal in chained)
+        {
+            var iris = OntologyTurtle.IndividualIris(proposal, IdentityExport);
+            foreach (var entity in proposal.Entities.Where(e => e.KnownEntityKey is null))
+            {
+                var things = CrossSourceJoin.Match(crossSource, entity.Name).Select(t => t.Label);
+                if (!thingsByIri.TryGetValue(iris[entity.EntityId], out var set))
+                {
+                    thingsByIri[iris[entity.EntityId]] = set = new HashSet<string>(StringComparer.Ordinal);
+                }
+
+                set.UnionWith(things);
+            }
+        }
+
+        return chained.SelectMany(p => p.Entities)
+            .Where(e => e.KnownEntityKey is { } key && thingsByIri.TryGetValue(key, out var knownThings) && knownThings.Count > 0)
+            .Count(e =>
+            {
+                var own = CrossSourceJoin.Match(crossSource, e.Name).Select(t => t.Label).ToHashSet(StringComparer.Ordinal);
+                return own.Count > 0 && !own.Overlaps(thingsByIri[e.KnownEntityKey!]);
+            });
+    }
+
+    private static async Task<OntologyProposal?> TryProposeAsync(SinglePassOntologyProposer proposer, RawRecord[] records, CrossSourceMode mode, string label, IReadOnlyList<KnownEntity>? known = null)
     {
         try
         {
-            return await proposer.ProposeAsync([], records);
+            return await proposer.ProposeAsync([], records, known ?? []);
         }
         catch (FormatException ex)
         {
@@ -490,11 +563,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 "`Eyu.Rdf` would write that one thing under, so 1.00 means a store merging the exports holds it once; «over-merged individuals» counts, per attempt, individuals whose name carries the names of two or more things — several things made one. «Same IRI in both modes» asks whether an " +
                 "individual from the separate calls and one from the combined call share an IRI — whether the two ways of calling could be merged at all.")
             .AppendLine()
-            .AppendLine("| case | mode | parsed | things found (per attempt) | things as one individual | individuals per found thing (mean) | denoting record kept | over-merged individuals |")
-            .AppendLine("|---|---|---|---|---|---|---|---|");
+            .AppendLine("«Known» proposes the first source on its own, makes the entities it denoted known under the IRIs its export wrote, and proposes each later source with them " +
+                "(`KnownEntity`, prompt fingerprint `" + SinglePassOntologyProposer.KnownEntitiesPromptFingerprint + "`); «wrong known matches» counts entities matched to a known entity whose name joins a different thing.")
+            .AppendLine()
+            .AppendLine("| case | mode | parsed | things found (per attempt) | things as one individual | individuals per found thing (mean) | denoting record kept | over-merged individuals | wrong known matches |")
+            .AppendLine("|---|---|---|---|---|---|---|---|---|");
         foreach (var s in stats)
         {
-            foreach (var (label, mode) in new[] { ("separate", s.Separate), ("combined", s.Combined) })
+            foreach (var (label, mode) in new[] { ("separate", s.Separate), ("combined", s.Combined), ("known", s.Known) })
             {
                 var found = mode.IrisByAttempt.SelectMany(a => a.Values).Where(v => v.Count > 0).ToList();
                 var denotable = s.Case.Things.Count(t => t.DenotingRecord is not null) * mode.Parsed;
@@ -504,7 +580,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                     $"{found.Count(v => v.Count == 1)}/{found.Count} | " +
                     $"{(found.Count == 0 ? "-" : found.Average(v => v.Count).ToString("0.00", CultureInfo.InvariantCulture))} | " +
                     $"{mode.DenotedByAttempt.Sum(d => d.Count)}/{denotable} | " +
-                    $"{string.Join(" · ", mode.OverMergedByAttempt)} |");
+                    $"{string.Join(" · ", mode.OverMergedByAttempt)} | " +
+                    $"{(mode.WrongKnownByAttempt.Count == 0 ? "-" : string.Join(" · ", mode.WrongKnownByAttempt))} |");
             }
 
             var shared = s.Separate.IrisByAttempt.Zip(s.Combined.IrisByAttempt)
@@ -512,7 +589,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 .ToList();
             report.AppendLine()
                 .AppendLine(CultureInfo.InvariantCulture, $"- {s.Case.Name}: same IRI in both modes for {shared.Count(x => x)}/{shared.Count} thing-attempts (attempts where both modes parsed).");
-            foreach (var (label, mode) in new[] { ("separate", s.Separate), ("combined", s.Combined) })
+            foreach (var (label, mode) in new[] { ("separate", s.Separate), ("combined", s.Combined), ("known", s.Known) })
             {
                 for (var i = 0; i < mode.IrisByAttempt.Count; i++)
                 {

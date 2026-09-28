@@ -405,7 +405,9 @@ types still) or a different set of denoting records is a different IRI, and two 
 denoting records share one — within one proposal too, where a model reading a document chunk by chunk
 proposes the same company once per chunk: those entities are one individual carrying every claim.
 `OntologyTurtle.IndividualIris` returns the IRI each entity is written under, for linking your own
-triples to them.
+triples to them. An entity matched to a known entity (`KnownEntityKey`) is written under that entity
+instead: a key that is an absolute IRI is the IRI — pass the IRI an earlier export gave the entity and
+a match keeps it, however this call named it — and any other key is hashed under `entity/known/`.
 
 The ontology names the rule its IRIs were minted under — `<ontology> eyu:iriRule "0.5.0"`, the
 release that introduced the rule. The value changes only in a release that changes how a class,

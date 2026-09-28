@@ -175,6 +175,14 @@ public static class OntologyTurtle
     /// its <see cref="EntityProposal.EntityId"/>, an IRI that, like the id, means nothing outside this
     /// proposal.
     /// </para>
+    /// <para>
+    /// An entity matched to a known entity (<see cref="EntityProposal.KnownEntityKey"/>) is that entity,
+    /// whatever this call named it: it is written under the known entity's key, not the key above. A key
+    /// that is an absolute IRI is the IRI — a caller that keeps exports passes the IRI an earlier export
+    /// gave the entity, and a match keeps it. Any other key is hashed under <c>entity/known/</c>, so it
+    /// names the same individual in every export and never one this rule mints from a name and type. No
+    /// earlier release produced a known key, so every IRI an earlier export minted is minted the same way.
+    /// </para>
     /// </summary>
     public static IReadOnlyDictionary<string, string> IndividualIris(OntologyProposal proposal, RdfExportOptions options)
     {
@@ -182,23 +190,45 @@ public static class OntologyTurtle
         ArgumentNullException.ThrowIfNull(options);
 
         var baseIri = options.BaseIri.AbsoluteUri;
+        var known = proposal.Entities
+            .Where(e => e.KnownEntityKey is not null)
+            .GroupBy(e => e.EntityId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => KnownIri(g.First().KnownEntityKey!, baseIri), StringComparer.Ordinal);
+
         var keys = proposal.Entities
+            .Where(e => !known.ContainsKey(e.EntityId))
             .GroupBy(e => e.EntityId, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => IdentityKey(g.First()), StringComparer.Ordinal);
 
         // A relation end no entity carries has nothing to key on either: it keeps a proposal-local IRI.
         foreach (var end in proposal.Relations.SelectMany(r => new[] { r.FromEntityId, r.ToEntityId }))
         {
-            keys.TryAdd(end, null);
+            if (!known.ContainsKey(end))
+            {
+                keys.TryAdd(end, null);
+            }
         }
 
-        return keys.ToDictionary(
+        var iris = keys.ToDictionary(
             kv => kv.Key,
             kv => kv.Value is { } key
                 ? baseIri + "entity/" + Hash(key)
                 : baseIri + "entity/local/" + TermSet.LocalName(kv.Key),
             StringComparer.Ordinal);
+        foreach (var (entityId, iri) in known)
+        {
+            iris[entityId] = iri;
+        }
+
+        return iris;
     }
+
+    // An absolute http(s) or urn key is already an IRI; anything else is the caller's opaque name for the
+    // entity, hashed into its own branch so it can never collide with an IRI minted from a name and type.
+    private static string KnownIri(string knownEntityKey, string baseIri) =>
+        Uri.TryCreate(knownEntityKey, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" or "urn"
+            ? knownEntityKey
+            : baseIri + "entity/known/" + Hash(knownEntityKey);
 
     // Each part is length-prefixed, so no two different inputs spell the same key whatever characters a
     // record id or name holds. Null when there is nothing to key on: no denoting record, and a name with

@@ -33,6 +33,11 @@ every published version has a section here.
   matched to a known one reads that evidence (`LinkageConfidenceAdjuster.AdjustForKnownEntity`). Only
   fields of the same name are compared, as within a call: sources that name the same thing under
   different fields are left to the model.
+- `Eyu.Rdf` writes an entity matched to a known entity under that entity: a known key that is an
+  absolute `http`, `https` or `urn` IRI is the individual's IRI — a caller that passes the IRI an earlier
+  export minted keeps it across calls, whatever the new records name the entity — and any other key is
+  hashed under `entity/known/`, a branch no name-and-type IRI shares. Entities without a known key are
+  minted exactly as before, so `eyu:iriRule` stays `"0.5.0"`: no earlier release produced a known key.
 
 - `Eyu.Rdf` names the rule an export's IRIs were minted under: the ontology carries
   `eyu:iriRule "0.5.0"` (`EyuVocabulary.IriRule`), the release that introduced the current rule, and

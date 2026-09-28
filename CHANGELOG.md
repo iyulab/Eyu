@@ -60,8 +60,9 @@ every published version has a section here.
 
 ### Dependencies
 
-- `Eyu.Formbase` now takes `Formbase.Core` 0.12.0 (was 0.11.1). No type `Eyu.Formbase` uses moved;
-  `DocumentBody.From`/`Parse` now refuse JSON that names a property twice in one object.
+- `Eyu.Formbase` now takes `Formbase.Core` 0.13.0 (was 0.11.1). No type `Eyu.Formbase` uses moved:
+  0.13.0 breaks `QuerySpec.Filters`, which `Eyu.Formbase` does not read, and since 0.12.0
+  `DocumentBody.From`/`Parse` refuse JSON that names a property twice in one object.
 
 ## 0.5.0
 

@@ -8,7 +8,14 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.6.0
+
+A minor. `Eyu.Core` matches a call's entities to entities earlier calls identified (known entities),
+returns what its record-linkage pre-filter contributed with every proposal, caps the gray-zone pairs a
+prompt carries, and keeps a declared relation declared when a model names it by its whole prompt line.
+`Eyu.Formbase` pairs with Formbase 0.14.0 and samples records rather than appends. Implementers of
+`IOntologyProposer` implement a new overload, and `PromptFingerprint` changes, so measurements taken
+before and after this release are not comparable.
 
 ### Added
 
@@ -63,12 +70,12 @@ every published version has a section here.
 
 ### Fixed
 
-- `FormbaseRecordSample` samples records, not appends. Against Formbase 0.14.0, where a document can
-  correct or retire a record, it used to hand Eyu every version of a corrected record as a separate
-  record and fail on a retirement, which has no body. It now folds the stream the way Formbase's
-  projection does (`RecordFold.Latest`): a corrected record appears once, as its latest document, and a
-  retired one not at all. Every document of the form type is read before the first `maxCount` records
-  are taken.
+- `FormbaseRecordSample` samples records, not appends. Formbase 0.14.0 lets a document correct or
+  retire a record; read append by append, every version of a corrected record would be a separate
+  record and a retirement, which has no body, would fail. The sampler folds the stream the way
+  Formbase's projection does (`RecordFold.Latest`): a corrected record appears once, as its latest
+  document, and a retired one not at all. Every document of the form type is read before the first
+  `maxCount` records are taken.
 - A relation a model named by copying the prompt's whole declared-relation line — name and ends,
   `asset: work_order -> asset` rather than `asset` — came back `Inferred` under a name nothing declares,
   skipped the check that it joins the declared ends, and got a different property IRI in `Eyu.Rdf` from

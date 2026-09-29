@@ -127,7 +127,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     private const string PromptSchemaWithKnownEntities = "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"denotedBy\",\"knownEntityKey\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.";
     private const string KnownEntitiesClause = "Known entities are ones earlier work already identified, each listed with its key, type, name and the records that denoted it. When an entity you propose is the same thing as a known entity, set its \"knownEntityKey\" to that key; otherwise set it to null. Known entities' records are shown for comparison only and cannot be cited as sources.";
 
-    private const string DeclarationClause = "Declared structure is authoritative: a declared type, field or relation is fact, not a hypothesis. Where a declared type describes an entity, propose the entity under that type; where a declared relation describes a relation, propose it under that name; never contradict declared structure. A declaration is a floor, not a ceiling: the declared types and relations are not the only ones, so still propose every entity and relation the records show beyond what is declared, under types and names of your own.";
+    private const string DeclarationClause = "Declared structure is authoritative: a declared type, field or relation is fact, not a hypothesis. Where a declared type describes an entity, propose the entity under that type; where a declared relation describes a relation, propose it under that name -- the quoted name alone, not the ends written after it; never contradict declared structure. A declaration is a floor, not a ceiling: the declared types and relations are not the only ones, so still propose every entity and relation the records show beyond what is declared, under types and names of your own.";
 
     /// <summary>
     /// First 8 hex characters of the SHA-256 of the request's fixed part (preamble + the declaration
@@ -234,7 +234,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             {
                 foreach (var relation in declared.Relations)
                 {
-                    text.AppendLine(CultureInfo.InvariantCulture, $"Declared relation: {DescribeRelation(declared, relation)}");
+                    text.AppendLine(CultureInfo.InvariantCulture, $"Declared relation {DeclaredStructureMerge.DescribeRelation(declared, relation)}");
                 }
             }
         }
@@ -359,23 +359,6 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     /// declared subjects the relation's name alone no longer says which type it leaves; and which
     /// field carries it, and on which side.
     /// </summary>
-    private static string DescribeRelation(DeclaredStructure declared, DeclaredRelation relation)
-    {
-        var facts = new List<string>();
-        if (relation.Kind is { } kind)
-        {
-            facts.Add(kind.ToString().ToLowerInvariant());
-        }
-
-        if (!string.IsNullOrWhiteSpace(relation.ViaField))
-        {
-            facts.Add($"via {relation.ViaField}");
-        }
-
-        var head = $"{relation.Name}: {declared.Subject} -> {relation.Target}";
-        return facts.Count == 0 ? head : $"{head} ({string.Join(" ", facts)})";
-    }
-
     /// <summary>
     /// Turns the model's answer into a proposal in a fixed order, so each later step can rely on what
     /// the earlier ones removed: invalid JSON and invented sources refuse the whole response; then

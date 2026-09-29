@@ -61,6 +61,17 @@ every published version has a section here.
   export per named graph, the annotation says which graphs to drop; an export without it was written
   by 0.5.0 or earlier.
 
+### Fixed
+
+- A relation a model named by copying the prompt's whole declared-relation line — name and ends,
+  `asset: work_order -> asset` rather than `asset` — came back `Inferred` under a name nothing declares,
+  skipped the check that it joins the declared ends, and got a different property IRI in `Eyu.Rdf` from
+  run to run. The merge now recognizes that line (it is Eyu's own rendering) and restores the declared
+  name, so the relation is `Declared` and checked like any other. The prompt also quotes a declared
+  relation's name and says to use the quoted name alone (`Declared relation "asset": work_order -> asset`),
+  which changes `PromptFingerprint` for every call: measurements taken before and after this release are
+  not comparable.
+
 ### Documentation
 
 - `OntologyTurtle`'s summary said a class is written under the first spelling seen; since 0.5.0 it

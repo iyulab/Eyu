@@ -63,6 +63,54 @@ public class DeclaredStructureMergeTests
         Assert.Equal(ProposalBasis.Inferred, proposal.Relations.Single(r => r.RelationName == "assigned_to").Basis);
     }
 
+    [Theory]
+    [InlineData("\\\"asset\\\": work_order -> asset (reference via asset_tag)")]
+    [InlineData("\\\"asset\\\": work_order -> asset")]
+    [InlineData("asset: work_order -> asset")]
+    public async Task A_declared_relation_named_by_its_whole_rendered_line_keeps_its_declared_name_and_basis(string echoed)
+    {
+        // Measured: a model copied the prompt's whole declared-relation line into "name" for every
+        // relation of a batch, and each came back Inferred under a name no declaration has.
+        var answer = $$"""
+            {
+              "entities": [
+                {"id": "e1", "name": "e1-name", "type": "WorkOrder", "claim": "d1 is a work order", "sources": ["d1"], "confidence": 0.9},
+                {"id": "e3", "name": "e3-name", "type": "Asset", "claim": "P-77 is an asset", "sources": ["d1"], "confidence": 0.9}
+              ],
+              "relations": [
+                {"name": "{{echoed}}", "from": "e1", "to": "e3", "claim": "d1 references P-77", "sources": ["d1"], "confidence": 0.7}
+              ]
+            }
+            """;
+
+        var proposal = await Propose(answer, WorkOrder);
+
+        var relation = Assert.Single(proposal.Relations);
+        Assert.Equal("asset", relation.RelationName);
+        Assert.Equal(ProposalBasis.Declared, relation.Basis);
+    }
+
+    [Fact]
+    public async Task A_declared_relation_named_by_its_rendered_line_for_the_wrong_ends_is_dropped_as_a_contradiction()
+    {
+        const string answer = """
+            {
+              "entities": [
+                {"id": "e1", "name": "e1-name", "type": "work_order", "claim": "d1", "sources": ["d1"], "confidence": 0.9},
+                {"id": "e2", "name": "e2-name", "type": "Technician", "claim": "kim", "sources": ["d1"], "confidence": 0.8}
+              ],
+              "relations": [
+                {"name": "asset: work_order -> asset", "from": "e1", "to": "e2", "claim": "misused", "sources": ["d1"], "confidence": 0.7}
+              ]
+            }
+            """;
+
+        var proposal = await Propose(answer, WorkOrder);
+
+        Assert.Empty(proposal.Relations);
+        Assert.Equal(RejectionReason.ContradictsDeclaration, Assert.Single(proposal.Rejections).Reason);
+    }
+
     [Fact]
     public async Task A_relation_that_uses_a_declared_name_for_the_wrong_target_is_dropped()
     {

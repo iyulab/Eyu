@@ -71,12 +71,20 @@ internal static class DeclaredStructureMerge
         var declaredEndsByName = declared
             .SelectMany(d => d.Relations.Select(r => (Name: Normalize(r.Name), Ends: (From: Normalize(d.Subject.Value), To: Normalize(r.Target.Value)))))
             .ToLookup(r => r.Name, r => r.Ends, StringComparer.Ordinal);
+        var declaredNameByEcho = EchoedLabels(declared, declaredEndsByName);
 
         var mergedRejections = new List<ProposalRejection>(rejections);
         var mergedRelations = new List<RelationProposal>(relations.Count);
-        foreach (var relation in relations)
+        foreach (var answered in relations)
         {
+            var relation = answered;
             var name = Normalize(relation.RelationName);
+            if (!declaredEndsByName.Contains(name) && declaredNameByEcho.TryGetValue(name, out var declaredName))
+            {
+                relation = relation.WithName(declaredName);
+                name = Normalize(declaredName);
+            }
+
             if (!declaredEndsByName.Contains(name))
             {
                 mergedRelations.Add(relation);
@@ -101,6 +109,63 @@ internal static class DeclaredStructureMerge
         }
 
         return new OntologyProposal(mergedEntities, mergedRelations, mergedRejections);
+    }
+
+    /// <summary>
+    /// A declared relation as the prompt shows it: <c>"name": subject -> target (kind via field)</c>.
+    /// The name is quoted and set apart from its ends, so the name alone is what a model copies; the
+    /// merge still recognizes the whole line, since this is the one place its shape is defined.
+    /// </summary>
+    internal static string DescribeRelation(DeclaredStructure declared, DeclaredRelation relation)
+    {
+        var head = $"\"{relation.Name}\": {declared.Subject} -> {relation.Target}";
+        var facts = RelationFacts(relation);
+        return facts.Length == 0 ? head : $"{head} ({facts})";
+    }
+
+    private static string RelationFacts(DeclaredRelation relation)
+    {
+        var facts = new List<string>();
+        if (relation.Kind is { } kind)
+        {
+            facts.Add(kind.ToString().ToLowerInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(relation.ViaField))
+        {
+            facts.Add($"via {relation.ViaField}");
+        }
+
+        return string.Join(" ", facts);
+    }
+
+    /// <summary>
+    /// A model that copies the rendered line — name and ends — instead of the name answers with a
+    /// relation name that is no declared name, and the relation would lose its declared basis and the
+    /// check that it joins the declared ends. The line is ours, so recognizing it is not a guess: the
+    /// normalized line, with or without the kind and via field, maps back to the declared name.
+    /// A line that normalizes to a declared name itself is left to that name.
+    /// </summary>
+    private static Dictionary<string, string> EchoedLabels(IReadOnlyList<DeclaredStructure> declared, ILookup<string, (string From, string To)> declaredEndsByName)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var structure in declared)
+        {
+            foreach (var relation in structure.Relations)
+            {
+                var head = Normalize($"{relation.Name} {structure.Subject} {relation.Target}");
+                var full = Normalize($"{relation.Name} {structure.Subject} {relation.Target} {RelationFacts(relation)}");
+                foreach (var label in new[] { head, full })
+                {
+                    if (!declaredEndsByName.Contains(label))
+                    {
+                        map.TryAdd(label, relation.Name);
+                    }
+                }
+            }
+        }
+
+        return map;
     }
 
     /// <summary>Every declared <c>subject -> target</c> for a relation name, as the caller wrote them.</summary>

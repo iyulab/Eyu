@@ -58,4 +58,7 @@ public sealed record RelationProposal
 
     /// <summary>The same proposal with <see cref="Basis"/> set — used by the declared-structure merge, never by a model.</summary>
     internal RelationProposal WithBasis(ProposalBasis basis) => new(RelationName, FromEntityId, ToEntityId, Claim, Origin, Confidence, basis);
+
+    /// <summary>The same proposal under another name — used by the declared-structure merge to restore a declared name a model echoed with its rendering, never by a model.</summary>
+    internal RelationProposal WithName(string relationName) => new(relationName, FromEntityId, ToEntityId, Claim, Origin, Confidence, Basis);
 }

@@ -440,8 +440,8 @@ public class SinglePassOntologyProposerTests
         Assert.Contains("total (decimal; monetary amount, minor units)", model.LastPrompt);
         Assert.Contains(", note", model.LastPrompt);
         Assert.Contains("Declared type: work_order (fields: wo_no (text, required), qty (integer)", model.LastPrompt);
-        Assert.Contains("Declared relation: asset: work_order -> asset (reference via asset_tag)", model.LastPrompt);
-        Assert.Contains("Declared relation: owner: work_order -> person", model.LastPrompt);
+        Assert.Contains("Declared relation \"asset\": work_order -> asset (reference via asset_tag)", model.LastPrompt);
+        Assert.Contains("Declared relation \"owner\": work_order -> person", model.LastPrompt);
     }
 
     [Fact]
@@ -466,8 +466,8 @@ public class SinglePassOntologyProposerTests
             "Declared type: Organization",
             "Declared type: Person",
             "Declared type: Product",
-            "Declared relation: PartnerOf: Organization -> Organization",
-            "Declared relation: EmployedBy: Person -> Organization",
+            "Declared relation \"PartnerOf\": Organization -> Organization",
+            "Declared relation \"EmployedBy\": Person -> Organization",
         ]);
         Assert.Contains(expected, model.LastPrompt);
     }

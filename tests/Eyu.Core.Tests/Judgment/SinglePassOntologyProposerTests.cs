@@ -859,6 +859,90 @@ public class SinglePassOntologyProposerTests
         Assert.Contains("m-99", ex.Message);
     }
 
+    [Fact]
+    public async Task ProposeAsync_reports_a_confirmed_group_the_answer_split_over_two_entities()
+    {
+        var model = new StubModelClient("""
+            {"entities":[
+              {"id":"e1","name":"Acme Corp","type":"Organization","claim":"rec-1 is Acme","sources":["rec-1"],"denotedBy":["rec-1"],"confidence":0.8},
+              {"id":"e2","name":"Acme Corp","type":"Organization","claim":"rec-2 is another Acme","sources":["rec-2"],"denotedBy":["rec-2"],"confidence":0.8}
+            ],"relations":[]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+        var records = new[]
+        {
+            new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+            new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+        };
+
+        var proposal = await proposer.ProposeAsync(declaredStructures: [], records, TestContext.Current.CancellationToken);
+
+        var linkage = Assert.IsType<LinkageReport>(proposal.Linkage);
+        var split = Assert.Single(linkage.SplitClusters);
+        Assert.Equal(["rec-1", "rec-2"], split.RecordIds.Order(StringComparer.Ordinal));
+        Assert.Contains(linkage.Analysis.Clustering.Clusters, c => c.RecordIds.Count == 2);
+        Assert.Equal(0, linkage.GrayZonePairsOmitted);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_reports_no_split_when_the_answer_keeps_a_confirmed_group_together()
+    {
+        var model = new StubModelClient("""
+            {"entities":[{"id":"e1","name":"Acme Corp","type":"Organization","claim":"rec-1 and rec-2 are Acme","sources":["rec-1","rec-2"],"denotedBy":["rec-1","rec-2"],"confidence":0.8}],"relations":[]}
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+        var records = new[]
+        {
+            new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+            new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+        };
+
+        var proposal = await proposer.ProposeAsync(declaredStructures: [], records, TestContext.Current.CancellationToken);
+
+        Assert.Empty(Assert.IsType<LinkageReport>(proposal.Linkage).SplitClusters);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_puts_only_the_strongest_gray_zone_pairs_to_the_model_past_the_cap_and_reports_the_rest()
+    {
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model, new LinkageOptions(MaxGrayZonePairsInPrompt: 1));
+        // Three pairs, below the EM floor, so the heuristic m=0.9/u=0.1 applies: rec-1/rec-2 agree on
+        // two fields of three (LLR +2.2), each pair with rec-3 on one (LLR -2.2). All three are gray.
+        var records = new[]
+        {
+            new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Acme", ["city"] = "Springfield", ["phone"] = "111" }),
+            new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme", ["city"] = "Springfield", ["phone"] = "222" }),
+            new RawRecord("rec-3", new Dictionary<string, string?> { ["name"] = "Acme", ["city"] = "Portland", ["phone"] = "333" }),
+        };
+
+        var proposal = await proposer.ProposeAsync(declaredStructures: [], records, TestContext.Current.CancellationToken);
+
+        var pairLines = model.LastPrompt!.Split('\n').Where(l => l.Contains(" vs ", StringComparison.Ordinal)).ToList();
+        var line = Assert.Single(pairLines);
+        Assert.StartsWith("- rec-1 vs rec-2:", line, StringComparison.Ordinal);
+        var linkage = Assert.IsType<LinkageReport>(proposal.Linkage);
+        Assert.Equal(3, linkage.Analysis.Clustering.GrayZonePairs.Count);
+        Assert.Equal(2, linkage.GrayZonePairsOmitted);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_with_a_zero_cap_puts_no_gray_zone_pair_to_the_model()
+    {
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model, new LinkageOptions(MaxGrayZonePairsInPrompt: 0));
+        var records = new[]
+        {
+            new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+            new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Portland" }),
+        };
+
+        var proposal = await proposer.ProposeAsync(declaredStructures: [], records, TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain("Ambiguous record pairs", model.LastPrompt);
+        Assert.Equal(1, Assert.IsType<LinkageReport>(proposal.Linkage).GrayZonePairsOmitted);
+    }
+
     private static RawRecord[] WorkOrdersAndMachine() =>
     [
         new("w-01", new Dictionary<string, string?> { ["order_no"] = "WO-2024-0311", ["machine"] = "Press 3", ["operator"] = "Kim", ["process"] = "blanking", ["site"] = "Plant 1", ["start"] = "2024-03-11" }),

@@ -161,14 +161,60 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         DeclaredStructureMerge.EnsureDistinctSubjects(declaredStructures);
         KnownEntity.Validate(knownEntities, records);
         var linkageAnalysis = LinkagePipeline.Analyze(records, knownEntities, options);
-        var prompt = BuildPrompt(declaredStructures, records, knownEntities, linkageAnalysis);
+        var promptedPairs = SelectPromptedPairs(linkageAnalysis.Clustering.GrayZonePairs, options.MaxGrayZonePairsInPrompt);
+        var prompt = BuildPrompt(declaredStructures, records, knownEntities, linkageAnalysis, promptedPairs);
         var schema = knownEntities.Count > 0 ? ResponseSchemaWithKnownEntities : ResponseSchema;
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt, schema), cancellationToken).ConfigureAwait(false);
         var parsed = ParseResponse(response.Text, records, knownEntities, linkageAnalysis, options.RecordsDenoteEntities);
-        return DeclaredStructureMerge.Apply(declaredStructures, parsed.Entities, parsed.Relations, parsed.Rejections);
+        var proposal = DeclaredStructureMerge.Apply(declaredStructures, parsed.Entities, parsed.Relations, parsed.Rejections);
+        return proposal with
+        {
+            Linkage = new LinkageReport(
+                linkageAnalysis,
+                FindSplitClusters(linkageAnalysis.Clustering, proposal.Entities),
+                linkageAnalysis.Clustering.GrayZonePairs.Count - promptedPairs.Count),
+        };
     }
 
-    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, LinkageAnalysis linkageAnalysis)
+    /// <summary>
+    /// The gray-zone pairs the prompt carries: all of them up to <paramref name="cap"/>; past it, the
+    /// <paramref name="cap"/> with the strongest prior toward the same entity, kept in their original
+    /// order — so a batch under the cap sends exactly the prompt it always sent.
+    /// </summary>
+    private static IReadOnlyList<PairLinkage> SelectPromptedPairs(IReadOnlyList<PairLinkage> pairs, int cap)
+    {
+        if (pairs.Count <= cap)
+        {
+            return pairs;
+        }
+
+        return pairs
+            .Select((pair, index) => (pair, index))
+            .OrderByDescending(p => p.pair.LogLikelihoodRatio)
+            .ThenBy(p => p.index)
+            .Take(cap)
+            .OrderBy(p => p.index)
+            .Select(p => p.pair)
+            .ToList();
+    }
+
+    /// <summary>Confirmed groups whose records the answer attributes to two or more different entities.</summary>
+    private static List<RecordCluster> FindSplitClusters(ClusteringResult clustering, IReadOnlyList<EntityProposal> entities)
+    {
+        var split = new List<RecordCluster>();
+        foreach (var cluster in clustering.Clusters.Where(c => c.RecordIds.Count > 1))
+        {
+            var members = cluster.RecordIds.ToHashSet(StringComparer.Ordinal);
+            if (entities.Count(e => e.DenotedBy.Any(members.Contains)) > 1)
+            {
+                split.Add(cluster);
+            }
+        }
+
+        return split;
+    }
+
+    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, LinkageAnalysis linkageAnalysis, IReadOnlyList<PairLinkage> promptedPairs)
     {
         var text = new StringBuilder();
         text.AppendLine(PromptInstruction);
@@ -247,11 +293,11 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             }
         }
 
-        if (linkageAnalysis.Clustering.GrayZonePairs.Count > 0)
+        if (promptedPairs.Count > 0)
         {
             text.AppendLine();
             text.AppendLine("Ambiguous record pairs needing your judgment (prior evidence toward same entity, in log-odds -- positive favors same entity, negative favors different entities):");
-            foreach (var pair in linkageAnalysis.Clustering.GrayZonePairs)
+            foreach (var pair in promptedPairs)
             {
                 text.AppendLine(CultureInfo.InvariantCulture, $"- {pair.RecordIdA} vs {pair.RecordIdB}: prior log-odds {pair.LogLikelihoodRatio:F2}");
             }

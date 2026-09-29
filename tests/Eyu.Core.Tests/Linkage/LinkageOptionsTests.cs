@@ -42,6 +42,12 @@ public class LinkageOptionsTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new LinkageOptions(MaxIterations: 0).Validate());
     }
 
+    [Fact]
+    public void Validate_rejects_a_negative_gray_zone_pair_cap()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LinkageOptions(MaxGrayZonePairsInPrompt: -1).Validate());
+    }
+
     [Theory]
     [InlineData(0.0)]
     [InlineData(-1e-4)]

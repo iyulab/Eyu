@@ -48,6 +48,16 @@ namespace Eyu.Core.Linkage;
 /// singleton, the model receives no pre-linked groups and no gray-zone pairs, and the proposal's
 /// grounding still cites record ids as before. Defaults to <see langword="true"/>.
 /// </param>
+/// <param name="MaxGrayZonePairsInPrompt">
+/// The most gray-zone pairs a proposer puts to the model in one prompt. Pairs grow with the square of
+/// the batch — measured, 104 records produced 2,187 pairs and a prompt larger than a 131,072-token
+/// context, while the records themselves took a fraction of it. Past the cap the pairs with the
+/// strongest prior evidence toward the same entity are kept (in their usual order) and the rest are
+/// left out; the proposal reports how many (<see cref="Eyu.Core.Proposals.LinkageReport.GrayZonePairsOmitted"/>).
+/// A pair left out is not judged "different" — the model still sees both records and may still merge
+/// them — it is only not singled out as needing judgment. Zero puts no pair to the model. Defaults to
+/// <see cref="DefaultMaxGrayZonePairsInPrompt"/>.
+/// </param>
 public sealed record LinkageOptions(
     double MatchThreshold = LinkageClassifier.DefaultMatchThreshold,
     double NonMatchThreshold = LinkageClassifier.DefaultNonMatchThreshold,
@@ -55,14 +65,18 @@ public sealed record LinkageOptions(
     double ConvergenceTolerance = FellegiSunterEstimator.DefaultConvergenceTolerance,
     bool UseStringSimilarityComparator = false,
     double StringSimilarityAgreementThreshold = FieldComparator.DefaultStringSimilarityAgreementThreshold,
-    bool RecordsDenoteEntities = true)
+    bool RecordsDenoteEntities = true,
+    int MaxGrayZonePairsInPrompt = LinkageOptions.DefaultMaxGrayZonePairsInPrompt)
 {
+    /// <summary>The default for <see cref="MaxGrayZonePairsInPrompt"/>.</summary>
+    public const int DefaultMaxGrayZonePairsInPrompt = 200;
+
     public static readonly LinkageOptions Default = new();
 
     /// <summary>
     /// Throws when a value could not be honoured: thresholds that do not order, an iteration
-    /// count that would run EM zero times, a non-positive tolerance, or a similarity threshold
-    /// outside [0, 1]. <see cref="LinkagePipeline.Analyze(IReadOnlyList{Eyu.Core.Records.RawRecord}, LinkageOptions)"/> calls this before it looks at the
+    /// count that would run EM zero times, a non-positive tolerance, a similarity threshold
+    /// outside [0, 1], or a negative gray-zone pair cap. <see cref="LinkagePipeline.Analyze(IReadOnlyList{Eyu.Core.Records.RawRecord}, LinkageOptions)"/> calls this before it looks at the
     /// batch, so a bad option fails the same way whether the batch has one record or a thousand.
     /// </summary>
     public void Validate()
@@ -80,5 +94,7 @@ public sealed record LinkageOptions(
         {
             throw new ArgumentOutOfRangeException(nameof(StringSimilarityAgreementThreshold), StringSimilarityAgreementThreshold, "Must be within [0, 1].");
         }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(MaxGrayZonePairsInPrompt, nameof(MaxGrayZonePairsInPrompt));
     }
 }

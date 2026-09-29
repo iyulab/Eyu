@@ -353,6 +353,23 @@ reproduces the behavior of passing nothing, so a caller reaches for it only once
 run shows the defaults classifying that caller's data badly — what each value does, and
 what is still unmeasured about them, is in Status above.
 
+Gray-zone pairs grow with the square of the batch, so they — not the records — are what fills a
+prompt first: measured, 47 records produced 542 pairs, more lines than the records themselves, and
+104 records produced 2,187 pairs and a prompt past a 131,072-token context.
+`LinkageOptions.MaxGrayZonePairsInPrompt` (default 200) caps how many are put to the model; past
+it the pairs with the strongest prior toward the same entity are kept, and the proposal says how
+many were left out (`OntologyProposal.Linkage.GrayZonePairsOmitted`). A pair left out is not judged
+different — the model still sees both records — it is only not singled out. Size a batch by its
+records and their length plus that cap.
+
+Every proposal from `SinglePassOntologyProposer` also carries what the pre-filter contributed
+(`OntologyProposal.Linkage`): its full result for the call (`Analysis`) and the confirmed groups
+the answer spread over more than one entity anyway (`SplitClusters`). The pre-filter compares every
+field two records share, so documents that copy the same values from a record they refer to — the
+same machine's number and location on every inspection — agree, and read as one entity; a model
+that sees they are different documents will not merge them. That list is where the disagreement
+shows, for a caller to settle from the records.
+
 One default is a premise rather than a tuning value. The pre-filter assumes **a record
 is one mention of one entity** — a row, a form submission, a directory entry — so that
 two records agreeing on their fields is evidence they denote the same thing. A document

@@ -12,6 +12,18 @@ every published version has a section here.
 
 ### Added
 
+- `OntologyProposal.Linkage` (`LinkageReport`): what the record-linkage pre-filter contributed to a
+  proposal — its full result for the call (`Analysis`, which was computed but not returned) and the
+  groups it confirmed as one entity that the answer spread over two or more entities anyway
+  (`SplitClusters`). A pre-filter that joins different documents on values they copy from a record
+  they refer to, and a model that did not follow a confirmed group, used to leave no trace in the
+  result. Null for a proposal built directly.
+- `LinkageOptions.MaxGrayZonePairsInPrompt` (default 200) caps the gray-zone pairs put to the model.
+  Pairs grow with the square of the batch: 104 records produced 2,187 pairs and a prompt larger than
+  a 131,072-token context. Past the cap the pairs with the strongest prior toward the same entity are
+  kept and the rest are counted in `LinkageReport.GrayZonePairsOmitted`; a batch under the cap sends
+  exactly the prompt it did before. A call that put more than 200 pairs to the model now puts 200.
+
 - Known entities: `IOntologyProposer.ProposeAsync` gains an overload that takes the entities earlier
   calls identified (`KnownEntity` — the caller's key, name, type and the records that denoted it). An
   entity the new records show that is one of them comes back with `EntityProposal.KnownEntityKey` set

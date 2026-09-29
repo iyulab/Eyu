@@ -23,7 +23,7 @@ public class FormbaseRecordSampleTests
     {
         var rawStore = new InMemoryRawStore();
         var type = FormTypeRef.Create("invoice");
-        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"lot":"L1","qty":3,"paid":true,"note":null}"""), TestContext.Current.CancellationToken);
+        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"lot":"L1","qty":3,"paid":true,"note":null}"""), cancellationToken: TestContext.Current.CancellationToken);
         var sample = new FormbaseRecordSample(rawStore);
 
         var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);
@@ -36,6 +36,40 @@ public class FormbaseRecordSampleTests
     }
 
     [Fact]
+    public async Task SampleAsync_returns_a_corrected_record_once_as_its_latest_document()
+    {
+        var rawStore = new InMemoryRawStore();
+        var type = FormTypeRef.Create("invoice");
+        var key = RecordKey.Create("INV-1");
+        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"qty":3}"""), key, TestContext.Current.CancellationToken);
+        var corrected = DocumentId.New();
+        await rawStore.AppendAsync(type, corrected, DocumentBody.Parse("""{"qty":4}"""), key, TestContext.Current.CancellationToken);
+        var sample = new FormbaseRecordSample(rawStore);
+
+        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);
+
+        var record = Assert.Single(records);
+        Assert.Equal(corrected.ToString(), record.Id);
+        Assert.Equal("4", record.Fields["qty"]);
+    }
+
+    [Fact]
+    public async Task SampleAsync_leaves_out_a_retired_record()
+    {
+        var rawStore = new InMemoryRawStore();
+        var type = FormTypeRef.Create("invoice");
+        var key = RecordKey.Create("INV-1");
+        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"qty":3}"""), key, TestContext.Current.CancellationToken);
+        await rawStore.RetireAsync(type, DocumentId.New(), key, TestContext.Current.CancellationToken);
+        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"qty":9}"""), cancellationToken: TestContext.Current.CancellationToken);
+        var sample = new FormbaseRecordSample(rawStore);
+
+        var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);
+
+        Assert.Equal("9", Assert.Single(records).Fields["qty"]);
+    }
+
+    [Fact]
     public async Task SampleAsync_passes_a_nested_value_through_as_its_raw_json_text()
     {
         // Documented limitation: this adapter flattens only the top level. A nested object or
@@ -43,7 +77,7 @@ public class FormbaseRecordSampleTests
         // judgment, not this adapter, is where deeper structure gets interpreted.
         var rawStore = new InMemoryRawStore();
         var type = FormTypeRef.Create("invoice");
-        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"lines":[{"sku":"A"}]}"""), TestContext.Current.CancellationToken);
+        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"lines":[{"sku":"A"}]}"""), cancellationToken: TestContext.Current.CancellationToken);
         var sample = new FormbaseRecordSample(rawStore);
 
         var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);
@@ -56,7 +90,7 @@ public class FormbaseRecordSampleTests
     {
         var rawStore = new InMemoryRawStore();
         var type = FormTypeRef.Create("invoice");
-        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("[1,2,3]"), TestContext.Current.CancellationToken);
+        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("[1,2,3]"), cancellationToken: TestContext.Current.CancellationToken);
         var sample = new FormbaseRecordSample(rawStore);
 
         var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);
@@ -71,7 +105,7 @@ public class FormbaseRecordSampleTests
         var type = FormTypeRef.Create("invoice");
         for (var i = 0; i < 5; i++)
         {
-            await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("{}"), TestContext.Current.CancellationToken);
+            await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("{}"), cancellationToken: TestContext.Current.CancellationToken);
         }
         var sample = new FormbaseRecordSample(rawStore);
 
@@ -86,7 +120,7 @@ public class FormbaseRecordSampleTests
         var rawStore = new InMemoryRawStore();
         var type = FormTypeRef.Create("invoice");
         var id = DocumentId.New();
-        await rawStore.AppendAsync(type, id, DocumentBody.Parse("{}"), TestContext.Current.CancellationToken);
+        await rawStore.AppendAsync(type, id, DocumentBody.Parse("{}"), cancellationToken: TestContext.Current.CancellationToken);
         var sample = new FormbaseRecordSample(rawStore);
 
         var records = await sample.SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);

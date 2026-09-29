@@ -4,6 +4,7 @@ using Eyu.Core.Primitives;
 using Eyu.Core.Records;
 using Formbase.Core.Ports;
 using Formbase.Core.Primitives;
+using Formbase.Core.Projection;
 
 namespace Eyu.Formbase;
 
@@ -13,25 +14,29 @@ namespace Eyu.Formbase;
 /// nested object or array is not recursively flattened, it survives as its own raw JSON text —
 /// deeper structure is Eyu's judgment to interpret, not this adapter's to pre-decide. A
 /// non-object document body (e.g. a bare JSON array) yields a record with no fields.
+/// The sample is of records, not of appends: documents are folded the way Formbase's projection
+/// folds them (<see cref="RecordFold.Latest"/>) — a corrected record appears once, as its latest
+/// document, and a retired one not at all — so every document of the form type is read before the
+/// first <c>maxCount</c> records are taken. A record appears under the id of the document that
+/// stands for it, which changes when the record is corrected.
 /// </summary>
 public sealed class FormbaseRecordSample(IRawStore rawStore) : IRecordSample
 {
     public async Task<IReadOnlyList<RawRecord>> SampleAsync(SubjectRef subject, int maxCount, CancellationToken cancellationToken = default)
     {
         var type = FormTypeRef.Create(subject.Value);
-        var records = new List<RawRecord>();
+        var documents = new List<StoredDocument>();
 
         await foreach (var document in rawStore.StreamAsync(type, Watermark.Zero, cancellationToken).ConfigureAwait(false))
         {
-            if (records.Count >= maxCount)
-            {
-                break;
-            }
-
-            records.Add(new RawRecord(document.Id.ToString(), Flatten(document.Body.Root)));
+            documents.Add(document);
         }
 
-        return records;
+        // A standing record is never a retirement, so its body is present.
+        return RecordFold.Latest(documents)
+            .Take(maxCount)
+            .Select(document => new RawRecord(document.Id.ToString(), Flatten(document.Body!.Root)))
+            .ToList();
     }
 
     private static Dictionary<string, string?> Flatten(JsonElement root)

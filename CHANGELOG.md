@@ -63,6 +63,12 @@ every published version has a section here.
 
 ### Fixed
 
+- `FormbaseRecordSample` samples records, not appends. Against Formbase 0.14.0, where a document can
+  correct or retire a record, it used to hand Eyu every version of a corrected record as a separate
+  record and fail on a retirement, which has no body. It now folds the stream the way Formbase's
+  projection does (`RecordFold.Latest`): a corrected record appears once, as its latest document, and a
+  retired one not at all. Every document of the form type is read before the first `maxCount` records
+  are taken.
 - A relation a model named by copying the prompt's whole declared-relation line — name and ends,
   `asset: work_order -> asset` rather than `asset` — came back `Inferred` under a name nothing declares,
   skipped the check that it joins the declared ends, and got a different property IRI in `Eyu.Rdf` from
@@ -83,9 +89,9 @@ every published version has a section here.
 
 ### Dependencies
 
-- `Eyu.Formbase` now takes `Formbase.Core` 0.13.0 (was 0.11.1). No type `Eyu.Formbase` uses moved:
-  0.13.0 breaks `QuerySpec.Filters`, which `Eyu.Formbase` does not read, and since 0.12.0
-  `DocumentBody.From`/`Parse` refuse JSON that names a property twice in one object.
+- `Eyu.Formbase` now takes `Formbase.Core` 0.14.0 (was 0.11.1). 0.13.0 breaks `QuerySpec.Filters`, which
+  `Eyu.Formbase` does not read; since 0.12.0 `DocumentBody.From`/`Parse` refuse JSON that names a property
+  twice in one object; 0.14.0 gives documents a record identity (see the next entry).
 
 ## 0.5.0
 

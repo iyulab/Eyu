@@ -86,4 +86,52 @@ public class KnownEntityChainTests
         Assert.Empty(step.ThingsMadeKnown);
         Assert.Empty(step.ThingsMentionedOnly);
     }
+
+    [Fact]
+    public void Entities_nothing_denotes_become_mentioned_with_the_records_that_cited_them()
+    {
+        var proposal = new OntologyProposal(
+            [Entity("e1", "Conveyor 12", "Equipment", "erp-eq-2"), Entity("e2", "Press 4", "Equipment"), Entity("e3", "Press 4", "Equipment"),
+             EntityProposal.Create("e4", "PRS-004", "Equipment", GroundedClaim.Create("x", [new SourceRef("erp-po-1")]), VocabularyOrigin.Acquired, 0.8, knownEntityKey: "iri:known")],
+            [], []);
+
+        var mentioned = KnownEntityChain.MentionedFromProposal(proposal, Records, e => e.EntityId == "e3" ? "iri:e2" : $"iri:{e.EntityId}");
+
+        var press = Assert.Single(mentioned);
+        Assert.Equal("iri:e2", press.Key);
+        Assert.Equal(["erp-po-1"], press.MentioningRecords.Select(r => r.Id));
+    }
+
+    [Fact]
+    public void Accumulating_mentions_merges_records_and_drops_a_key_that_became_known()
+    {
+        var held = new List<MentionedEntity> { new("iri:press", "Press 4", "Equipment", [Records[2]]), new("iri:belt", "Belt", "Part", [Records[2]]) };
+        var later = new RawRecord("cmms-wo-9", new Dictionary<string, string?> { ["equipment"] = "Press#4" });
+
+        KnownEntityChain.AccumulateMentioned(held, [new("iri:press", "Press 4", "Equipment", [Records[2], later])], [new KnownEntity("iri:belt", "Belt", "Part", [Records[1]])]);
+
+        var press = Assert.Single(held);
+        Assert.Equal(["erp-po-1", "cmms-wo-9"], press.MentioningRecords.Select(r => r.Id));
+    }
+
+    [Theory]
+    [InlineData("PRS-004", "Press 4", CandidateVerdict.Correct)]
+    [InlineData("CNV-012", "Press 4", CandidateVerdict.Wrong)]
+    [InlineData("Line A", "Press 4", CandidateVerdict.Unjudged)]
+    public void A_candidate_is_judged_by_the_things_both_sides_join(string entityName, string mentionedName, CandidateVerdict expected)
+    {
+        Assert.Equal(expected, KnownEntityChain.Judge(entityName, mentionedName, Plant));
+    }
+
+    [Fact]
+    public void Confirmed_candidates_join_groups_transitively()
+    {
+        var identity = new ConfirmedIdentity();
+        identity.Join("mention:press", "iri:erp-press");
+        identity.Join("iri:erp-press", "iri:other-press");
+
+        Assert.Equal(identity.Find("mention:press"), identity.Find("iri:other-press"));
+        Assert.NotEqual(identity.Find("mention:press"), identity.Find("iri:conveyor"));
+        Assert.Equal("iri:conveyor", identity.Find("iri:conveyor"));
+    }
 }

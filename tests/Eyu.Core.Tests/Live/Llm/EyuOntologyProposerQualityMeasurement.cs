@@ -383,6 +383,18 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         /// what it matched, what it made known and what it only mentioned (<see cref="KnownEntityChain.Step"/>).
         /// </summary>
         public readonly List<List<KnownChainStep>> StepsByAttempt = [];
+
+        /// <summary>
+        /// Per parsed attempt («mentioned» modes only): the merge candidates the chain reported, by
+        /// verdict against the case (<see cref="KnownEntityChain.Judge"/>), and the things a correct one joined.
+        /// </summary>
+        public readonly List<(int Correct, int Wrong, int Unjudged, HashSet<string> Joined)> CandidatesByAttempt = [];
+
+        /// <summary>
+        /// Per parsed attempt («mentioned» modes only): <see cref="IrisByAttempt"/> after the caller confirms
+        /// every merge candidate — each IRI replaced by its confirmed group's representative.
+        /// </summary>
+        public readonly List<Dictionary<string, HashSet<string>>> ConfirmedIrisByAttempt = [];
     }
 
     private sealed class CrossSourceStats(CrossSourceCase crossSource)
@@ -395,8 +407,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         /// <summary>«Known», with the sources chained in the opposite order — the first call is the last source's.</summary>
         public CrossSourceMode KnownReversed { get; } = new();
 
+        /// <summary>«Known», also handing forward the entities earlier calls only mentioned (<see cref="MentionedEntity"/>).</summary>
+        public CrossSourceMode Mentioned { get; } = new();
+
+        /// <summary>«Mentioned», with the sources chained in the opposite order.</summary>
+        public CrossSourceMode MentionedReversed { get; } = new();
+
         public IEnumerable<(string Label, CrossSourceMode Mode)> Modes =>
-            [("separate", Separate), ("combined", Combined), ("known", Known), ("known reversed", KnownReversed)];
+            [("separate", Separate), ("combined", Combined), ("known", Known), ("known reversed", KnownReversed), ("mentioned", Mentioned), ("mentioned reversed", MentionedReversed)];
     }
 
     /// <summary>
@@ -437,9 +455,15 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var parsedSeparately = separate.Count == crossSource.Sources.Length;
         await RunKnownChainAsync(proposer, crossSource, stats.Known, parsedSeparately ? separate : null, reversed: false);
         await RunKnownChainAsync(proposer, crossSource, stats.KnownReversed, parsedSeparately ? separate : null, reversed: true);
+
+        // «Mentioned»: the same chains, also handing forward what earlier calls only mentioned, so a call
+        // that meets a record of such a thing can report a merge candidate. The caller is taken to confirm
+        // every candidate — what «one individual» would be if it did.
+        await RunKnownChainAsync(proposer, crossSource, stats.Mentioned, parsedSeparately ? separate : null, reversed: false, handMentioned: true);
+        await RunKnownChainAsync(proposer, crossSource, stats.MentionedReversed, parsedSeparately ? separate : null, reversed: true, handMentioned: true);
     }
 
-    private static async Task RunKnownChainAsync(SinglePassOntologyProposer proposer, CrossSourceCase crossSource, CrossSourceMode mode, List<OntologyProposal>? separate, bool reversed)
+    private static async Task RunKnownChainAsync(SinglePassOntologyProposer proposer, CrossSourceCase crossSource, CrossSourceMode mode, List<OntologyProposal>? separate, bool reversed, bool handMentioned = false)
     {
         mode.Attempts++;
         if (separate is null)
@@ -461,21 +485,63 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             KnownEntityChain.Step(crossSource.Sources[first].Name, separate[first], crossSource.Sources[first].Records, KeyOf(separate[first]), [], crossSource),
         };
         var known = KnownEntityChain.FromProposal(separate[first], crossSource.Sources[first].Records, KeyOf(separate[first])).ToList();
+        var mentioned = new List<MentionedEntity>();
+        if (handMentioned)
+        {
+            KnownEntityChain.AccumulateMentioned(mentioned, KnownEntityChain.MentionedFromProposal(separate[first], crossSource.Sources[first].Records, KeyOf(separate[first])), known);
+        }
+
+        var identity = new ConfirmedIdentity();
+        var (correct, wrong, unjudged, joined) = (0, 0, 0, new HashSet<string>(StringComparer.Ordinal));
         foreach (var source in order.Skip(1).Select(i => crossSource.Sources[i]))
         {
-            if (await TryProposeAsync(proposer, source.Records, mode, source.Name, known) is not { } next)
+            if (await TryProposeAsync(proposer, source.Records, mode, source.Name, known, mentioned) is not { } next)
             {
                 return;
             }
 
             chained.Add(next);
             steps.Add(KnownEntityChain.Step(source.Name, next, source.Records, KeyOf(next), known, crossSource));
+            var iris = OntologyTurtle.IndividualIris(next, IdentityExport);
+            foreach (var candidate in next.MergeCandidates)
+            {
+                var entityName = next.Entities.Single(e => e.EntityId == candidate.EntityId).Name;
+                var mentionedName = mentioned.Single(m => m.Key == candidate.MentionedEntityKey).Name;
+                switch (KnownEntityChain.Judge(entityName, mentionedName, crossSource))
+                {
+                    case CandidateVerdict.Correct:
+                        correct++;
+                        joined.UnionWith(CrossSourceJoin.Match(crossSource, entityName).Select(t => t.Label));
+                        break;
+                    case CandidateVerdict.Wrong:
+                        wrong++;
+                        break;
+                    default:
+                        unjudged++;
+                        break;
+                }
+
+                identity.Join(candidate.MentionedEntityKey, iris[candidate.EntityId]);
+            }
+
             known.AddRange(KnownEntityChain.FromProposal(next, source.Records, KeyOf(next)).Where(k => known.All(existing => existing.Key != k.Key)));
+            if (handMentioned)
+            {
+                KnownEntityChain.AccumulateMentioned(mentioned, KnownEntityChain.MentionedFromProposal(next, source.Records, KeyOf(next)), known);
+            }
         }
 
         RecordThings(chained, crossSource, mode);
         mode.StepsByAttempt.Add(steps);
         mode.WrongKnownByAttempt.Add(WrongKnownMatches(chained, crossSource));
+        if (handMentioned)
+        {
+            mode.CandidatesByAttempt.Add((correct, wrong, unjudged, joined));
+            mode.ConfirmedIrisByAttempt.Add(mode.IrisByAttempt[^1].ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value.Select(identity.Find).ToHashSet(StringComparer.Ordinal),
+                StringComparer.Ordinal));
+        }
     }
 
     // The key a caller keeps an entity by: the IRI the export wrote it under, unless that IRI is
@@ -513,11 +579,11 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             });
     }
 
-    private static async Task<OntologyProposal?> TryProposeAsync(SinglePassOntologyProposer proposer, RawRecord[] records, CrossSourceMode mode, string label, IReadOnlyList<KnownEntity>? known = null)
+    private static async Task<OntologyProposal?> TryProposeAsync(SinglePassOntologyProposer proposer, RawRecord[] records, CrossSourceMode mode, string label, IReadOnlyList<KnownEntity>? known = null, IReadOnlyList<MentionedEntity>? mentioned = null)
     {
         try
         {
-            return await proposer.ProposeAsync([], records, known ?? []);
+            return await proposer.ProposeAsync([], records, known ?? [], mentioned ?? []);
         }
         catch (FormatException ex)
         {
@@ -594,7 +660,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             .AppendLine("«Known» proposes the first source on its own, makes the entities it denoted known under the IRIs its export wrote, and proposes each later source with them " +
                 "(`KnownEntity`, prompt fingerprint `" + SinglePassOntologyProposer.KnownEntitiesPromptFingerprint + "`); «wrong known matches» counts entities matched to a known entity whose name joins a different thing. " +
                 "«Known reversed» chains the sources the other way round, starting from the last source's own call; «one individual in both orders» counts the things that end up as a single individual whichever source came first — identity that does not depend on arrival order. " +
-                "Each known chain is listed call by call: known entities handed in, entities matched to one, entities made known, the things it made known, and the things it named only by mention — matched to nothing known and denoted by no record, so nothing of them is carried to the next call.")
+                "Each known chain is listed call by call: known entities handed in, entities matched to one, entities made known, the things it made known, and the things it named only by mention — matched to nothing known and denoted by no record, so nothing of them is carried to the next call. " +
+                "«Mentioned» and «mentioned reversed» are the same chains also handing forward what earlier calls only mentioned (`MentionedEntity`, added fingerprint `" + SinglePassOntologyProposer.MentionedEntitiesPromptFingerprint + "`), so a call meeting a record of such a thing can report a merge candidate; " +
+                "a candidate is correct when it and the mentioned entity join a common thing and wrong when they join different ones, and «every candidate confirmed» is the identity a caller that accepted all of them would hold.")
             .AppendLine()
             .AppendLine("Both error columns are what the OAEI-LLM taxonomy calls a *false* mapping: an over-merged individual fuses two things, a wrong known match joins a thing to another. " +
                 "Its other kinds — *align-up* and *align-down* (joined to a broader or narrower thing, such as a line for the machine on it) and *disputed* — need the catalog to say which things contain which, which it does not yet; an individual of that kind shows up here only as unmatched.")
@@ -626,6 +694,27 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             report.AppendLine()
                 .AppendLine(CultureInfo.InvariantCulture, $"- {s.Case.Name}: same IRI in both modes for {shared.Count(x => x)}/{shared.Count} thing-attempts (attempts where both modes parsed).")
                 .AppendLine(CultureInfo.InvariantCulture, $"- {s.Case.Name}: one individual in both orders for {bothOrders.Count(x => x)}/{bothOrders.Count} thing-attempts (attempts where both known orders parsed).");
+            if (s.Mentioned.CandidatesByAttempt.Count + s.MentionedReversed.CandidatesByAttempt.Count > 0)
+            {
+                var confirmedBothOrders = s.Mentioned.ConfirmedIrisByAttempt.Zip(s.MentionedReversed.ConfirmedIrisByAttempt)
+                    .SelectMany(pair => s.Case.Things.Select(t => pair.First[t.Label].Count == 1 && pair.Second[t.Label].Count == 1))
+                    .ToList();
+                foreach (var (label, mode) in new[] { ("mentioned", s.Mentioned), ("mentioned reversed", s.MentionedReversed) })
+                {
+                    // A thing the chain only mentioned at one call and made known at a later one is identity
+                    // that depends on arrival order; «recovered» is how many of those a correct candidate joined.
+                    var orderDependent = mode.StepsByAttempt.Select(steps => steps
+                        .SelectMany((step, i) => step.ThingsMentionedOnly.Where(t => steps.Skip(i + 1).Any(later => later.ThingsMadeKnown.Contains(t))))
+                        .ToHashSet(StringComparer.Ordinal)).ToList();
+                    var recovered = orderDependent.Zip(mode.CandidatesByAttempt, (dependent, c) => dependent.Count(c.Joined.Contains));
+                    report.AppendLine(CultureInfo.InvariantCulture,
+                        $"- {s.Case.Name}: {label} merge candidates (correct/wrong/unjudged per attempt) {string.Join(" · ", mode.CandidatesByAttempt.Select(c => $"{c.Correct}/{c.Wrong}/{c.Unjudged}"))}" +
+                        $" · order-dependent things recovered {string.Join(" · ", recovered.Zip(orderDependent, (r, d) => $"{r}/{d.Count}"))}");
+                }
+
+                report.AppendLine(CultureInfo.InvariantCulture,
+                    $"- {s.Case.Name}: one individual in both orders, every candidate confirmed, for {confirmedBothOrders.Count(x => x)}/{confirmedBothOrders.Count} thing-attempts (attempts where both mentioned orders parsed).");
+            }
             foreach (var (label, mode) in s.Modes)
             {
                 for (var i = 0; i < mode.IrisByAttempt.Count; i++)
@@ -640,7 +729,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                     report.AppendLine(
                         string.Create(CultureInfo.InvariantCulture, $"  - {label}, chain of parsed attempt {i + 1}: ") +
                         string.Join(" → ", mode.StepsByAttempt[i].Select(step =>
-                            $"{step.Source} (known in {step.KnownIn} · matched {step.MatchedToKnown} · made known {step.NewlyKnown}" +
+                            $"{step.Source} (known in {step.KnownIn} · matched {step.MatchedToKnown} · made known {step.NewlyKnown}{(step.MergeCandidates == 0 ? "" : $" · merge candidates {step.MergeCandidates}")}" +
                             $"{(step.ThingsMadeKnown.Count == 0 ? "" : $": {string.Join(", ", step.ThingsMadeKnown)}")}" +
                             $" · mention-only: {(step.ThingsMentionedOnly.Count == 0 ? "none" : string.Join(", ", step.ThingsMentionedOnly))})")));
                 }

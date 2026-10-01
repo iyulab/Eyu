@@ -90,6 +90,7 @@ internal static class KnownEntityChain
             [.. named.Where(t => !carried.Contains(t))])
         {
             MergeCandidates = proposal.MergeCandidates.Count,
+            DemotedDenotations = proposal.DemotedDenotations.Count,
         };
     }
 
@@ -218,4 +219,10 @@ internal sealed record KnownChainStep(
 {
     /// <summary>Merge candidates the call reported — 0 for a chain that hands forward no mentioned entities.</summary>
     public int MergeCandidates { get; init; }
+
+    /// <summary>
+    /// Denotations the call withdrew because the record named the entity in a declared reference field
+    /// (<see cref="OntologyProposal.DemotedDenotations"/>) — 0 for a source that declares none.
+    /// </summary>
+    public int DemotedDenotations { get; init; }
 }

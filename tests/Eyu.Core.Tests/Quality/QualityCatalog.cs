@@ -48,8 +48,15 @@ internal sealed record CrossSourceCase(
     SourceSample[] Sources,
     SameThing[] Things);
 
-/// <summary>One source's records, as its own connector would hand them over.</summary>
-internal sealed record SourceSample(string Name, RawRecord[] Records);
+/// <summary>
+/// One source's records, as its own connector would hand them over, with what that connector would
+/// declare about them — here, the fields that carry a relation to another subject, which is what lets
+/// a proposer tell a row that names a thing from a row that is it.
+/// </summary>
+internal sealed record SourceSample(string Name, RawRecord[] Records, DeclaredStructure[]? Declared = null)
+{
+    public IReadOnlyList<DeclaredStructure> Declarations => Declared ?? [];
+}
 
 /// <summary>
 /// One real thing and every name the sources use for it. <paramref name="DenotingRecord"/> is the
@@ -229,6 +236,11 @@ internal static class QualityCatalog
                 Row("erp-eq-3", ("asset_code", "CMP-002"), ("name", "공기압축기 2호"), ("maker", "한성기계"), ("line", "공용"), ("installed", "2018-11-20")),
                 Row("erp-po-1", ("po_no", "PO-24-0913"), ("item", "베어링 6205"), ("for_asset", "PRS-004"), ("qty", "4"), ("vendor", "KBS베어링")),
                 Row("erp-po-2", ("po_no", "PO-24-0921"), ("item", "벨트 B-1200"), ("for_asset", "CNV-012"), ("qty", "2"), ("vendor", "대한오토")),
+            ],
+            [
+                new(SubjectRef.Create("purchase_order"),
+                    [new DeclaredField("for_asset", "the asset the part is ordered for", DeclaredValueKind.Identifier)],
+                    [new DeclaredRelation("ordered_for", SubjectRef.Create("asset"), ViaField: "for_asset", DeclaredRelationKind.Reference)]),
             ]),
             new("cmms",
             [
@@ -236,6 +248,11 @@ internal static class QualityCatalog
                 Row("cmms-wo-2", ("wo", "WO-5540"), ("equipment", "Press 04 (A line)"), ("symptom", "유압 누유"), ("action", "씰 교체"), ("tech", "이수진"), ("date", "2024-09-25")),
                 Row("cmms-wo-3", ("wo", "WO-5602"), ("equipment", "컨베이어#12"), ("symptom", "벨트 슬립"), ("action", "벨트 B-1200 교체"), ("tech", "박준호"), ("date", "2024-10-02")),
                 Row("cmms-wo-4", ("wo", "WO-5610"), ("equipment", "압축기2"), ("symptom", "토출압 저하"), ("action", "필터 청소"), ("tech", "김민지"), ("date", "2024-10-05")),
+            ],
+            [
+                new(SubjectRef.Create("work_order"),
+                    [new DeclaredField("equipment", "the equipment the work order was carried out on", DeclaredValueKind.Text)],
+                    [new DeclaredRelation("performed_on", SubjectRef.Create("asset"), ViaField: "equipment", DeclaredRelationKind.Reference)]),
             ]),
         ],
         [

@@ -430,7 +430,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var separate = new List<OntologyProposal>();
         foreach (var source in crossSource.Sources)
         {
-            if (await TryProposeAsync(proposer, source.Records, stats.Separate, source.Name) is not { } proposal)
+            if (await TryProposeAsync(proposer, source.Declarations, source.Records, stats.Separate, source.Name) is not { } proposal)
             {
                 separate.Clear();
                 break;
@@ -446,7 +446,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
 
         stats.Combined.Attempts++;
-        if (await TryProposeAsync(proposer, crossSource.Sources.SelectMany(s => s.Records).ToArray(), stats.Combined, "all sources") is { } combined)
+        if (await TryProposeAsync(proposer, crossSource.Sources.SelectMany(s => s.Declarations).ToArray(), crossSource.Sources.SelectMany(s => s.Records).ToArray(), stats.Combined, "all sources") is { } combined)
         {
             RecordThings([combined], crossSource, stats.Combined);
         }
@@ -498,7 +498,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var (correct, wrong, unjudged, joined) = (0, 0, 0, new HashSet<string>(StringComparer.Ordinal));
         foreach (var source in order.Skip(1).Select(i => crossSource.Sources[i]))
         {
-            if (await TryProposeAsync(proposer, source.Records, mode, source.Name, known, mentioned) is not { } next)
+            if (await TryProposeAsync(proposer, source.Declarations, source.Records, mode, source.Name, known, mentioned) is not { } next)
             {
                 return;
             }
@@ -582,11 +582,11 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             });
     }
 
-    private static async Task<OntologyProposal?> TryProposeAsync(SinglePassOntologyProposer proposer, RawRecord[] records, CrossSourceMode mode, string label, IReadOnlyList<KnownEntity>? known = null, IReadOnlyList<MentionedEntity>? mentioned = null)
+    private static async Task<OntologyProposal?> TryProposeAsync(SinglePassOntologyProposer proposer, IReadOnlyList<DeclaredStructure> declarations, RawRecord[] records, CrossSourceMode mode, string label, IReadOnlyList<KnownEntity>? known = null, IReadOnlyList<MentionedEntity>? mentioned = null)
     {
         try
         {
-            return await proposer.ProposeAsync([], records, known ?? [], mentioned ?? []);
+            return await proposer.ProposeAsync(declarations, records, known ?? [], mentioned ?? []);
         }
         catch (FormatException ex)
         {
@@ -663,7 +663,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             .AppendLine("«Known» proposes the first source on its own, makes the entities it denoted known under the IRIs its export wrote, and proposes each later source with them " +
                 "(`KnownEntity`, prompt fingerprint `" + SinglePassOntologyProposer.KnownEntitiesPromptFingerprint + "`); «wrong known matches» counts entities matched to a known entity whose name joins a different thing. " +
                 "«Known reversed» chains the sources the other way round, starting from the last source's own call; «one individual in both orders» counts the things that end up as a single individual whichever source came first — identity that does not depend on arrival order. " +
-                "Each known chain is listed call by call: known entities handed in, entities matched to one, entities made known, the things it made known, and the things it named only by mention — matched to nothing known and denoted by no record, so nothing of them is carried to the next call. " +
+                "Each known chain is listed call by call: known entities handed in, entities matched to one, entities made known, the things it made known, and the things it named only by mention — matched to nothing known and denoted by no record, so nothing of them is carried to the next call; «denotations withdrawn» counts records the call claimed denote an entity but that only name it in a field the source declares as a reference (`DemotedDenotations`). " +
                 "«Mentioned» and «mentioned reversed» are the same chains also handing forward what earlier calls only mentioned (`MentionedEntity`, added fingerprint `" + SinglePassOntologyProposer.MentionedEntitiesPromptFingerprint + "`), so a call meeting a record of such a thing can report a merge candidate; " +
                 "a candidate is correct when it and the mentioned entity join a common thing and wrong when they join different ones, and «every candidate confirmed» is the identity a caller that accepted all of them would hold.")
             .AppendLine()
@@ -732,7 +732,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                     report.AppendLine(
                         string.Create(CultureInfo.InvariantCulture, $"  - {label}, chain of parsed attempt {i + 1}: ") +
                         string.Join(" → ", mode.StepsByAttempt[i].Select(step =>
-                            $"{step.Source} (known in {step.KnownIn} · matched {step.MatchedToKnown} · made known {step.NewlyKnown}{(step.MergeCandidates == 0 ? "" : $" · merge candidates {step.MergeCandidates}")}" +
+                            $"{step.Source} (known in {step.KnownIn} · matched {step.MatchedToKnown} · made known {step.NewlyKnown}{(step.MergeCandidates == 0 ? "" : $" · merge candidates {step.MergeCandidates}")}{(step.DemotedDenotations == 0 ? "" : $" · denotations withdrawn {step.DemotedDenotations}")}" +
                             $"{(step.ThingsMadeKnown.Count == 0 ? "" : $": {string.Join(", ", step.ThingsMadeKnown)}")}" +
                             $" · mention-only: {(step.ThingsMentionedOnly.Count == 0 ? "none" : string.Join(", ", step.ThingsMentionedOnly))})")));
                 }

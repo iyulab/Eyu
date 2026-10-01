@@ -6,6 +6,22 @@ public class CrossSourceJoinTests
 {
     private static CrossSourceCase Plant => QualityCatalog.CrossSourceCases.Single(c => c.Name == "plant-erp-and-cmms");
 
+    // A source's declared reference field is only read where its records hold that field; a field
+    // named in a declaration but absent from every record would declare nothing and pass unnoticed.
+    [Fact]
+    public void Every_declared_reference_field_is_a_field_of_its_sources_records()
+    {
+        foreach (var source in QualityCatalog.CrossSourceCases.SelectMany(c => c.Sources))
+        {
+            foreach (var field in source.Declarations.SelectMany(d => d.Relations).Select(r => r.ViaField).OfType<string>())
+            {
+                Assert.Contains(source.Records, r => r.Fields.ContainsKey(field));
+            }
+        }
+
+        Assert.All(Plant.Sources, s => Assert.NotEmpty(s.Declarations));
+    }
+
     [Theory]
     [InlineData("프레스 4호기", "press 4")]
     [InlineData("Press 04 (A line)", "press 4")]

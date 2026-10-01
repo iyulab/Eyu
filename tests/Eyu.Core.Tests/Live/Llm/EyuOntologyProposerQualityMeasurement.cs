@@ -3,8 +3,10 @@ using System.Text;
 using System.Text.Json;
 using Eyu.Core.Declared;
 using Eyu.Core.Grounding;
+using Eyu.Core.Inference;
 using Eyu.Core.Judgment;
 using Eyu.Core.Linkage;
+using Eyu.Core.Ports;
 using Eyu.Core.Proposals;
 using Eyu.Core.Records;
 using Eyu.Core.Tests.Quality;
@@ -187,8 +189,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             ? parsed
             : DefaultRuns;
         var linkageOptions = BuildLinkageOptionsFromEnvironment();
-        var (httpClient, modelClient) = EyuLlmLiveClient.Create();
+        var (httpClient, liveClient) = EyuLlmLiveClient.Create();
         using var _ = httpClient;
+        var modelClient = new ResponseCapture(liveClient);
         var proposer = new SinglePassOntologyProposer(modelClient, linkageOptions);
 
         var selected = QualityCatalog.SelectedCaseNames();
@@ -274,7 +277,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         catch (FormatException ex)
         {
             stats.ParseFailures++;
-            stats.FailureNotes.Add(ex.Message);
+            stats.FailureNotes.Add(ex.Message + ResponseCapture.KeepRefused("case"));
             return;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !TestContext.Current.CancellationToken.IsCancellationRequested)
@@ -587,7 +590,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
         catch (FormatException ex)
         {
-            mode.FailureNotes.Add($"{label}: {ex.Message}");
+            mode.FailureNotes.Add($"{label}: {ex.Message}{ResponseCapture.KeepRefused(label)}");
             return null;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !TestContext.Current.CancellationToken.IsCancellationRequested)
@@ -1294,5 +1297,40 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             cases);
 
         return JsonSerializer.Serialize(entry, StructuredLogJsonOptions);
+    }
+
+    /// <summary>
+    /// Keeps the text of the last response the model returned, so a response the proposer refused whole
+    /// can be read in full: the refusal's message carries a bounded excerpt by design, and the place the
+    /// model went wrong is often past it. The calls of one measurement run one at a time.
+    /// </summary>
+    private sealed class ResponseCapture(IModelClient inner) : IModelClient
+    {
+        private static string? last;
+
+        public async Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default)
+        {
+            var response = await inner.CompleteAsync(request, cancellationToken);
+            last = response.Text;
+            return response;
+        }
+
+        /// <summary>
+        /// Writes the last response beside the structured log, when one is kept, and says where — or
+        /// nothing when no log directory is set.
+        /// </summary>
+        public static string KeepRefused(string label)
+        {
+            var dir = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_STRUCTURED_LOG_DIR");
+            if (string.IsNullOrWhiteSpace(dir) || last is null)
+            {
+                return string.Empty;
+            }
+
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, $"refused-{new string(label.Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray())}-{DateTime.UtcNow:HHmmssfff}.json");
+            File.WriteAllText(path, last);
+            return $" (full response: {Path.GetFileName(path)})";
+        }
     }
 }

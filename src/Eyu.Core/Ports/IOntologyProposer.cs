@@ -41,5 +41,21 @@ public interface IOntologyProposer
         IReadOnlyList<DeclaredStructure> declaredStructures,
         IReadOnlyList<RawRecord> records,
         IReadOnlyList<KnownEntity> knownEntities,
+        CancellationToken cancellationToken = default)
+        => ProposeAsync(declaredStructures, records, knownEntities, [], cancellationToken);
+
+    /// <summary>
+    /// The same judgment, also told which entities earlier calls only mentioned. Identity then no longer
+    /// depends on which source arrives first: an entity a record of this call denotes that may be one of
+    /// <paramref name="mentionedEntities"/> is reported in <see cref="OntologyProposal.MergeCandidates"/>
+    /// — a candidate the caller confirms or not, never an identity, since a mention claims nothing about
+    /// what the entity is. Mentioned entities' records are compared, never cited, as known entities' are.
+    /// This is the overload an implementer writes; the others forward to it with empty lists.
+    /// </summary>
+    Task<OntologyProposal> ProposeAsync(
+        IReadOnlyList<DeclaredStructure> declaredStructures,
+        IReadOnlyList<RawRecord> records,
+        IReadOnlyList<KnownEntity> knownEntities,
+        IReadOnlyList<MentionedEntity> mentionedEntities,
         CancellationToken cancellationToken = default);
 }

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Eyu.Core.Declared;
 using Eyu.Core.Grounding;
 using Eyu.Core.Inference;
@@ -127,6 +128,50 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     private const string PromptSchemaWithKnownEntities = "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"denotedBy\",\"knownEntityKey\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.";
     private const string KnownEntitiesClause = "Known entities are ones earlier work already identified, each listed with its key, type, name and the records that denoted it. When an entity you propose is the same thing as a known entity, set its \"knownEntityKey\" to that key; otherwise set it to null. Known entities' records are shown for comparison only and cannot be cited as sources.";
 
+    // Only when mentioned entities are supplied: the clause, the schema sentence for the top-level
+    // "mergeCandidates" array, and that array in the response schema. A call without them sends the
+    // request it sent before, so both fingerprints above and every measurement taken under them hold.
+    private const string PromptSchemaMergeCandidates = "Also include in the same object \"mergeCandidates\":[{\"entity\",\"mentionedKey\",\"claim\",\"sources\",\"confidence\"}].";
+    private const string MentionedEntitiesClause = "Mentioned entities are ones earlier work saw only named by records that refer to them, never in a record of the thing itself, so what they are is not settled; each is listed with its key, type, name and the records that mentioned it. When an entity you propose is denoted by a record below and may be the same thing as a mentioned entity, add a merge candidate: its \"entity\" is your entity's id, its \"mentionedKey\" the mentioned entity's key, and its claim says why, citing records below. A mentioned entity's key is never a \"knownEntityKey\". Mentioned entities' records are shown for comparison only and cannot be cited as sources.";
+
+    private static readonly JsonElement MergeCandidatesSchema = JsonElement.Parse("""
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "entity": { "type": "string" },
+              "mentionedKey": { "type": "string" },
+              "claim": { "type": "string" },
+              "sources": { "type": "array", "items": { "type": "string" } },
+              "confidence": { "type": "number" }
+            },
+            "required": ["entity", "mentionedKey", "claim", "sources", "confidence"],
+            "additionalProperties": false
+          }
+        }
+        """);
+
+    private static readonly JsonElement ResponseSchemaWithMentionedEntities = WithMergeCandidates(ResponseSchema);
+    private static readonly JsonElement ResponseSchemaWithKnownAndMentionedEntities = WithMergeCandidates(ResponseSchemaWithKnownEntities);
+
+    /// <summary>The schema with the top-level "mergeCandidates" array added — required, so a strict provider answers it (with [] when there is none).</summary>
+    private static JsonElement WithMergeCandidates(JsonElement schema)
+    {
+        var node = JsonNode.Parse(schema.GetRawText())!.AsObject();
+        node["properties"]!.AsObject()["mergeCandidates"] = JsonNode.Parse(MergeCandidatesSchema.GetRawText());
+        node["required"]!.AsArray().Add("mergeCandidates");
+        return JsonElement.Parse(node.ToJsonString());
+    }
+
+    private static JsonElement ResponseSchemaFor(bool knownEntities, bool mentionedEntities) => (knownEntities, mentionedEntities) switch
+    {
+        (false, false) => ResponseSchema,
+        (true, false) => ResponseSchemaWithKnownEntities,
+        (false, true) => ResponseSchemaWithMentionedEntities,
+        (true, true) => ResponseSchemaWithKnownAndMentionedEntities,
+    };
+
     private const string DeclarationClause = "Declared structure is authoritative: a declared type, field or relation is fact, not a hypothesis. Where a declared type describes an entity, propose the entity under that type; where a declared relation describes a relation, propose it under that name -- the quoted name alone, not the ends written after it; never contradict declared structure. A declaration is a floor, not a ceiling: the declared types and relations are not the only ones, so still propose every entity and relation the records show beyond what is declared, under types and names of your own.";
 
     /// <summary>
@@ -146,6 +191,13 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     /// </summary>
     public static string KnownEntitiesPromptFingerprint { get; } = Fingerprint(string.Join('\n', PromptSchemaWithKnownEntities, KnownEntitiesClause, ResponseSchemaWithKnownEntities.GetRawText()));
 
+    /// <summary>
+    /// The fingerprint of the fixed part a call with mentioned entities adds (the schema sentence for
+    /// merge candidates, the mentioned-entities clause and the array the response schema gains). A
+    /// report of such a call stamps it beside the others, which this feature leaves unchanged.
+    /// </summary>
+    public static string MentionedEntitiesPromptFingerprint { get; } = Fingerprint(string.Join('\n', PromptSchemaMergeCandidates, MentionedEntitiesClause, MergeCandidatesSchema.GetRawText()));
+
     private static string ComputeFingerprint() =>
         Fingerprint(string.Join('\n', PromptInstruction, PromptSchema, PromptReferenceRule, DeclarationClause, ResponseSchema.GetRawText()));
 
@@ -155,24 +207,37 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     public Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, CancellationToken cancellationToken = default)
         => ProposeAsync(declaredStructures, records, [], cancellationToken);
 
-    public async Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, CancellationToken cancellationToken = default)
+    public Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, CancellationToken cancellationToken = default)
+        => ProposeAsync(declaredStructures, records, knownEntities, [], cancellationToken);
+
+    /// <summary>
+    /// Mentioned entities reach the prompt only. Record linkage compares records of the same kind of
+    /// thing, and a mentioning record (a work order naming its machine) is not a record of the
+    /// mentioned entity, so the pre-filter does not run against them and a merge candidate's confidence
+    /// is the model's own. Where records do not each denote one entity (chunks of a document), no entity
+    /// has a denoting record, so no merge candidate survives — by design, as no known-entity identity does.
+    /// </summary>
+    public async Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, IReadOnlyList<MentionedEntity> mentionedEntities, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(knownEntities);
+        ArgumentNullException.ThrowIfNull(mentionedEntities);
         DeclaredStructureMerge.EnsureDistinctSubjects(declaredStructures);
         KnownEntity.Validate(knownEntities, records);
+        MentionedEntity.Validate(mentionedEntities, knownEntities, records);
         var linkageAnalysis = LinkagePipeline.Analyze(records, knownEntities, options);
         var promptedPairs = SelectPromptedPairs(linkageAnalysis.Clustering.GrayZonePairs, options.MaxGrayZonePairsInPrompt);
-        var prompt = BuildPrompt(declaredStructures, records, knownEntities, linkageAnalysis, promptedPairs);
-        var schema = knownEntities.Count > 0 ? ResponseSchemaWithKnownEntities : ResponseSchema;
+        var prompt = BuildPrompt(declaredStructures, records, knownEntities, mentionedEntities, linkageAnalysis, promptedPairs);
+        var schema = ResponseSchemaFor(knownEntities.Count > 0, mentionedEntities.Count > 0);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt, schema), cancellationToken).ConfigureAwait(false);
-        var parsed = ParseResponse(response.Text, records, knownEntities, linkageAnalysis, options.RecordsDenoteEntities);
-        var proposal = DeclaredStructureMerge.Apply(declaredStructures, parsed.Entities, parsed.Relations, parsed.Rejections);
+        var parsed = ParseResponse(response.Text, records, knownEntities, mentionedEntities, linkageAnalysis, options.RecordsDenoteEntities);
+        var proposal = DeclaredStructureMerge.Apply(declaredStructures, parsed.Proposal.Entities, parsed.Proposal.Relations, parsed.Proposal.Rejections);
         return proposal with
         {
             Linkage = new LinkageReport(
                 linkageAnalysis,
                 FindSplitClusters(linkageAnalysis.Clustering, proposal.Entities),
                 linkageAnalysis.Clustering.GrayZonePairs.Count - promptedPairs.Count),
+            MergeCandidates = parsed.MergeCandidates,
         };
     }
 
@@ -214,11 +279,16 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         return split;
     }
 
-    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, LinkageAnalysis linkageAnalysis, IReadOnlyList<PairLinkage> promptedPairs)
+    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, IReadOnlyList<MentionedEntity> mentionedEntities, LinkageAnalysis linkageAnalysis, IReadOnlyList<PairLinkage> promptedPairs)
     {
         var text = new StringBuilder();
         text.AppendLine(PromptInstruction);
         text.AppendLine(knownEntities.Count > 0 ? PromptSchemaWithKnownEntities : PromptSchema);
+        if (mentionedEntities.Count > 0)
+        {
+            text.AppendLine(PromptSchemaMergeCandidates);
+        }
+
         text.AppendLine(PromptReferenceRule);
 
         if (declaredStructures.Count > 0)
@@ -247,6 +317,20 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             {
                 text.AppendLine(CultureInfo.InvariantCulture, $"Known entity: key={known.Key}, type={known.EntityType}, name={known.Name}");
                 foreach (var record in known.DenotingRecords ?? [])
+                {
+                    text.AppendLine(CultureInfo.InvariantCulture, $"  - {record.Id}: {DescribeFields(record)}");
+                }
+            }
+        }
+
+        if (mentionedEntities.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine(MentionedEntitiesClause);
+            foreach (var mentioned in mentionedEntities)
+            {
+                text.AppendLine(CultureInfo.InvariantCulture, $"Mentioned entity: key={mentioned.Key}, type={mentioned.EntityType}, name={mentioned.Name}");
+                foreach (var record in mentioned.MentioningRecords ?? [])
                 {
                     text.AppendLine(CultureInfo.InvariantCulture, $"  - {record.Id}: {DescribeFields(record)}");
                 }
@@ -368,7 +452,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     /// </summary>
     private static string DescribeFields(RawRecord record) => string.Join(", ", record.Fields.Select(f => $"{f.Key}={f.Value}"));
 
-    private static OntologyProposal ParseResponse(string responseText, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, LinkageAnalysis linkageAnalysis, bool recordsDenoteEntities)
+    private static ParsedResponse ParseResponse(string responseText, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, IReadOnlyList<MentionedEntity> mentionedEntities, LinkageAnalysis linkageAnalysis, bool recordsDenoteEntities)
     {
         var knownKeys = knownEntities.Select(k => k.Key).ToHashSet(StringComparer.Ordinal);
         ProposalResponse parsed;
@@ -386,7 +470,8 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
 
         var entityResponses = parsed.Entities ?? [];
         var relationResponses = parsed.Relations ?? [];
-        RejectUnknownSources(entityResponses, relationResponses, records, responseText);
+        var candidateResponses = parsed.MergeCandidates ?? [];
+        RejectUnknownSources(entityResponses, relationResponses, candidateResponses, records, responseText);
 
         var rejections = new List<ProposalRejection>();
         var duplicatedIds = entityResponses
@@ -443,8 +528,62 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             relations.Add(RelationProposal.Create(r.Name!, r.From!, r.To!, ToClaim(r.Claim!, r.Sources!), InnateVocabulary.OfRelationName(r.Name!), r.Confidence!.Value));
         }
 
-        return new OntologyProposal(entities, relations, rejections);
+        var mergeCandidates = ParseMergeCandidates(candidateResponses, mentionedEntities, entities, proposedIds, rejections);
+        return new ParsedResponse(new OntologyProposal(entities, relations, rejections), mergeCandidates);
     }
+
+    private sealed record ParsedResponse(OntologyProposal Proposal, IReadOnlyList<MergeCandidate> MergeCandidates);
+
+    /// <summary>
+    /// Merge candidates are checked after the entities, against the ones that survived and the records
+    /// they were left to denote: a candidate's evidence is a record of the thing itself, so an entity
+    /// with none — whether the answer gave none, or records here do not each denote one entity — has
+    /// nothing to put against a mention, and the candidate is left out. A pair given twice is one
+    /// candidate; the first is kept.
+    /// </summary>
+    private static List<MergeCandidate> ParseMergeCandidates(IReadOnlyList<MergeCandidateResponse> responses, IReadOnlyList<MentionedEntity> mentionedEntities, IReadOnlyList<EntityProposal> entities, HashSet<string> proposedIds, List<ProposalRejection> rejections)
+    {
+        var mentionedKeys = mentionedEntities.Select(m => m.Key).ToHashSet(StringComparer.Ordinal);
+        var survivingById = entities.ToDictionary(e => e.EntityId, StringComparer.Ordinal);
+        var seen = new HashSet<(string, string)>();
+        var candidates = new List<MergeCandidate>();
+        foreach (var c in responses)
+        {
+            var defect = CandidateDefect(c) ?? MentionedKeyDefect(c, mentionedKeys) ?? CandidateEntityDefect(c, proposedIds, survivingById);
+            if (defect is not null)
+            {
+                rejections.Add(new ProposalRejection(ProposalElement.MergeCandidate, BlankToNull(c.Entity), defect.Reason, $"merge candidate {Describe(c.Entity)} ~ {Describe(c.MentionedKey)}: {defect.Detail}"));
+                continue;
+            }
+
+            if (seen.Add((c.Entity!, c.MentionedKey!)))
+            {
+                candidates.Add(MergeCandidate.Create(c.Entity!, c.MentionedKey!, ToClaim(c.Claim!, c.Sources!), c.Confidence!.Value));
+            }
+        }
+
+        return candidates;
+    }
+
+    private static Defect? CandidateDefect(MergeCandidateResponse c) =>
+        MissingFields(("entity", c.Entity), ("mentionedKey", c.MentionedKey), ("claim", c.Claim)) is { } missing ? new Defect(RejectionReason.MissingField, missing)
+        : !CitesSources(c.Sources) ? new Defect(RejectionReason.MissingField, "cites no source")
+        : ConfidenceDefect(c.Confidence);
+
+    private static Defect? MentionedKeyDefect(MergeCandidateResponse c, HashSet<string> mentionedKeys) =>
+        mentionedKeys.Contains(c.MentionedKey!) ? null
+        : new Defect(RejectionReason.UnknownMentionedEntity, mentionedKeys.Count == 0
+            ? $"names mentioned entity '{c.MentionedKey}', but the call supplied no mentioned entities"
+            : $"names mentioned entity '{c.MentionedKey}', which is not one of the {mentionedKeys.Count} the call supplied");
+
+    private static Defect? CandidateEntityDefect(MergeCandidateResponse c, HashSet<string> proposedIds, Dictionary<string, EntityProposal> survivingById) =>
+        !survivingById.TryGetValue(c.Entity!, out var entity)
+            ? new Defect(RejectionReason.CandidateEntityUnresolved, proposedIds.Contains(c.Entity!)
+                ? $"{c.Entity} was proposed but rejected"
+                : $"{c.Entity} names no entity the response proposed")
+            : entity.DenotedBy.Count == 0
+                ? new Defect(RejectionReason.CandidateEntityNotDenoted, $"{c.Entity} is denoted by no record of this call, so nothing here is evidence of what it is")
+                : null;
 
     private sealed record Defect(RejectionReason Reason, string Detail);
 
@@ -538,11 +677,12 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     /// says, so a response that invented evidence once gives no ground for trusting its other
     /// citations.
     /// </summary>
-    private static void RejectUnknownSources(IReadOnlyList<EntityResponse> entities, IReadOnlyList<RelationResponse> relations, IReadOnlyList<RawRecord> records, string responseText)
+    private static void RejectUnknownSources(IReadOnlyList<EntityResponse> entities, IReadOnlyList<RelationResponse> relations, IReadOnlyList<MergeCandidateResponse> candidates, IReadOnlyList<RawRecord> records, string responseText)
     {
         var known = records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var cited = entities.SelectMany(EntitySources)
             .Concat(relations.SelectMany(r => r.Sources ?? []))
+            .Concat(candidates.SelectMany(c => c.Sources ?? []))
             .OfType<string>()
             .Where(id => !string.IsNullOrWhiteSpace(id));
         var unknown = cited.Where(id => !known.Contains(id)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
@@ -574,7 +714,9 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         _ => $"{text[..DiagnosticExcerptLength]}… ({text.Length} chars total)",
     };
 
-    private sealed record ProposalResponse(IReadOnlyList<EntityResponse>? Entities, IReadOnlyList<RelationResponse>? Relations);
+    private sealed record ProposalResponse(IReadOnlyList<EntityResponse>? Entities, IReadOnlyList<RelationResponse>? Relations, IReadOnlyList<MergeCandidateResponse>? MergeCandidates = null);
+
+    private sealed record MergeCandidateResponse(string? Entity, string? MentionedKey, string? Claim, IReadOnlyList<string?>? Sources, double? Confidence);
 
     // Every field is nullable: a model can omit any of them, and an omission is a per-element
     // rejection, not a deserialization failure of the whole answer.

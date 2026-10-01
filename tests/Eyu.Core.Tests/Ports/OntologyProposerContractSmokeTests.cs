@@ -48,9 +48,9 @@ public class OntologyProposerContractSmokeTests
 
     private sealed class StubOntologyProposer : IOntologyProposer
     {
-        // Implements only the known-entities overload: the port's other overload forwards to it, so an
+        // Implements only the full overload: the port's other overloads forward to it, so an
         // implementer writes the judgment once.
-        public Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, CancellationToken cancellationToken = default)
+        public Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, IReadOnlyList<MentionedEntity> mentionedEntities, CancellationToken cancellationToken = default)
         {
             var claim = GroundedClaim.Create("rec-1 denotes an Invoice", sources: [new SourceRef("rec-1")]);
             var entity = EntityProposal.Create("e1", "INV-1", "Invoice", claim, VocabularyOrigin.Innate, confidence: 0.9);

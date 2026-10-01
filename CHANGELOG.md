@@ -8,6 +8,31 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Added
+
+- `MentionedEntity` and `OntologyProposal.MergeCandidates` (`MergeCandidate`): a caller can hand back
+  entities an earlier call only mentioned — named by records that refer to them, denoted by none — and
+  a call that meets a record of a thing that may be one of them reports a merge candidate: the
+  proposed entity, the mentioned key, a claim citing this call's records, and the model's confidence.
+  A candidate is never an identity (`KnownEntityKey` stays for known entities), so the caller decides
+  whether to join the two and the same records yield the same identities whichever source is proposed
+  first. A candidate comes only from an entity a record of the call denotes; where records do not each
+  denote one entity, none survives. Mentioned entities are not run through the record-linkage
+  pre-filter, so a candidate's confidence is unadjusted.
+- `SinglePassOntologyProposer.MentionedEntitiesPromptFingerprint`, the fingerprint of the fixed text a
+  call with mentioned entities adds. `PromptFingerprint` and `KnownEntitiesPromptFingerprint` are
+  unchanged, and a call without mentioned entities sends exactly the request it sent before.
+- `ProposalElement.MergeCandidate` and the rejection reasons `UnknownMentionedEntity`,
+  `CandidateEntityUnresolved` and `CandidateEntityNotDenoted`: a defective candidate is left out and
+  reported like any other element.
+
+### Changed
+
+- `IOntologyProposer`: the overload an implementer writes now also takes `mentionedEntities`; the
+  known-entities overload forwards to it with an empty list. Callers are unaffected.
+
 ## 0.6.0
 
 A minor. `Eyu.Core` matches a call's entities to entities earlier calls identified (known entities),

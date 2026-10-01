@@ -180,7 +180,15 @@ system" as the target the architecture is built toward, not as a track record.
   denoted it), and an entity the new records show that is one of them comes
   back with that key in `KnownEntityKey` instead of as a new entity. Eyu
   keeps nothing between calls; the known entity's records are compared,
-  never cited.
+  never cited. An entity earlier records only *mentioned* — a work order
+  naming its machine, with no record of the machine itself — is not known:
+  nothing said what it is. Hand it back as a `MentionedEntity` (key, name,
+  type, the records that mentioned it), and when a later call meets a record
+  of a thing that may be it, the proposal lists a `MergeCandidate` (the
+  entity, the mentioned key, a grounded claim, a confidence) in
+  `MergeCandidates`. A candidate is not an identity — whether to join the
+  two is the caller's decision — so identity does not depend on which source
+  arrives first, and no mention is ever promoted to a known entity.
 - **Declared always wins.** Where structure is explicitly declared, the
   declaration is the answer. Inference only fills what nothing declared.
   A call takes one declaration per subject, so a caller whose records name
@@ -425,6 +433,7 @@ proposes the same company once per chunk: those entities are one individual carr
 triples to them. An entity matched to a known entity (`KnownEntityKey`) is written under that entity
 instead: a key that is an absolute IRI is the IRI — pass the IRI an earlier export gave the entity and
 a match keeps it, however this call named it — and any other key is hashed under `entity/known/`.
+Merge candidates are not written: a candidate is not `owl:sameAs`, and joining it is the caller's call.
 
 The ontology names the rule its IRIs were minted under — `<ontology> eyu:iriRule "0.5.0"`, the
 release that introduced the rule. The value changes only in a release that changes how a class,

@@ -16,4 +16,11 @@ public sealed record OntologyProposal(
     /// a proposal no pre-filter ran for (one built directly rather than by a proposer).
     /// </summary>
     public LinkageReport? Linkage { get; init; }
+
+    /// <summary>
+    /// Proposed entities that may be the same thing as an entity an earlier call only mentioned —
+    /// candidates for the caller to join or not, never identities (<see cref="MergeCandidate"/>). Empty
+    /// when the call was given no mentioned entities.
+    /// </summary>
+    public IReadOnlyList<MergeCandidate> MergeCandidates { get; init; } = [];
 }

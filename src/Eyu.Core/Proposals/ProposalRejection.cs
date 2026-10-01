@@ -5,6 +5,9 @@ public enum ProposalElement
 {
     Entity,
     Relation,
+
+    /// <summary>A <see cref="MergeCandidate"/>; the rejection's id is the candidate's entity id.</summary>
+    MergeCandidate,
 }
 
 /// <summary>
@@ -34,6 +37,15 @@ public enum RejectionReason
 
     /// <summary>An entity was matched to a known entity key the call did not supply.</summary>
     UnknownKnownEntity,
+
+    /// <summary>A merge candidate names a mentioned entity key the call did not supply.</summary>
+    UnknownMentionedEntity,
+
+    /// <summary>A merge candidate's entity is not a surviving entity of the response — never proposed, or proposed and rejected.</summary>
+    CandidateEntityUnresolved,
+
+    /// <summary>A merge candidate's entity is denoted by no record of the call, so the call holds no evidence of what it is to set against a mention.</summary>
+    CandidateEntityNotDenoted,
 }
 
 /// <summary>
@@ -43,8 +55,8 @@ public enum RejectionReason
 /// all-or-nothing behavior checks <c>Rejections.Count</c> and a caller that measures counts
 /// <see cref="Reason"/>.
 /// </summary>
-/// <param name="Element">Whether an entity or a relation was left out.</param>
-/// <param name="Id">The entity's response-local id, or the relation's name; <c>null</c> when the model omitted it.</param>
+/// <param name="Element">Whether an entity, a relation or a merge candidate was left out.</param>
+/// <param name="Id">The entity's response-local id, the relation's name, or the merge candidate's entity id; <c>null</c> when the model omitted it.</param>
 /// <param name="Reason">The check the element failed.</param>
 /// <param name="Detail">A human-readable account naming the offending values.</param>
 public sealed record ProposalRejection(ProposalElement Element, string? Id, RejectionReason Reason, string Detail);

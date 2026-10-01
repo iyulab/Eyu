@@ -45,4 +45,45 @@ public class KnownEntityChainTests
         var press = Assert.Single(known);
         Assert.Equal(["erp-eq-1", "erp-po-1"], press.DenotingRecords.Select(r => r.Id).Order(StringComparer.Ordinal));
     }
+
+    private static readonly CrossSourceCase Plant = new("plant", [],
+    [
+        new SameThing("press 4", ["Press 4", "PRS-004"], "erp-eq-1"),
+        new SameThing("conveyor 12", ["Conveyor 12", "CNV-012"], "erp-eq-2"),
+    ]);
+
+    [Fact]
+    public void A_step_names_the_things_it_only_mentioned_and_the_ones_it_made_known()
+    {
+        // A maintenance log first: it denotes the conveyor's own record but only mentions the press.
+        var proposal = new OntologyProposal(
+            [Entity("e1", "Conveyor 12", "Equipment", "erp-eq-2"), Entity("e2", "Press 4", "Equipment")],
+            [], []);
+
+        var step = KnownEntityChain.Step("cmms", proposal, Records, e => $"iri:{e.EntityId}", [], Plant);
+
+        Assert.Equal(0, step.KnownIn);
+        Assert.Equal(0, step.MatchedToKnown);
+        Assert.Equal(1, step.NewlyKnown);
+        Assert.Equal(["conveyor 12"], step.ThingsMadeKnown);
+        Assert.Equal(["press 4"], step.ThingsMentionedOnly);
+    }
+
+    [Fact]
+    public void A_thing_matched_to_a_known_entity_is_carried_even_when_nothing_denotes_it_here()
+    {
+        var knownPress = new KnownEntity("iri:press", "Press 4", "Equipment", [Records[0]]);
+        var proposal = new OntologyProposal(
+            [EntityProposal.Create("e1", "PRS-004", "Equipment", GroundedClaim.Create("PRS-004", [new SourceRef("erp-po-1")]),
+                VocabularyOrigin.Acquired, 0.8, denotedBy: [], knownEntityKey: "iri:press")],
+            [], []);
+
+        var step = KnownEntityChain.Step("erp", proposal, Records, e => $"iri:{e.EntityId}", [knownPress], Plant);
+
+        Assert.Equal(1, step.KnownIn);
+        Assert.Equal(1, step.MatchedToKnown);
+        Assert.Equal(0, step.NewlyKnown);
+        Assert.Empty(step.ThingsMadeKnown);
+        Assert.Empty(step.ThingsMentionedOnly);
+    }
 }

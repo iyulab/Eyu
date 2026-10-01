@@ -377,6 +377,12 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         /// different thing than the known entity's did — a match to the wrong thing.
         /// </summary>
         public readonly List<int> WrongKnownByAttempt = [];
+
+        /// <summary>
+        /// Per parsed attempt («known» modes only): each call of the chain in order — what it was handed,
+        /// what it matched, what it made known and what it only mentioned (<see cref="KnownEntityChain.Step"/>).
+        /// </summary>
+        public readonly List<List<KnownChainStep>> StepsByAttempt = [];
     }
 
     private sealed class CrossSourceStats(CrossSourceCase crossSource)
@@ -450,6 +456,10 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         var first = order[0];
         var chained = new List<OntologyProposal> { separate[first] };
+        var steps = new List<KnownChainStep>
+        {
+            KnownEntityChain.Step(crossSource.Sources[first].Name, separate[first], crossSource.Sources[first].Records, KeyOf(separate[first]), [], crossSource),
+        };
         var known = KnownEntityChain.FromProposal(separate[first], crossSource.Sources[first].Records, KeyOf(separate[first])).ToList();
         foreach (var source in order.Skip(1).Select(i => crossSource.Sources[i]))
         {
@@ -459,10 +469,12 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             }
 
             chained.Add(next);
+            steps.Add(KnownEntityChain.Step(source.Name, next, source.Records, KeyOf(next), known, crossSource));
             known.AddRange(KnownEntityChain.FromProposal(next, source.Records, KeyOf(next)).Where(k => known.All(existing => existing.Key != k.Key)));
         }
 
         RecordThings(chained, crossSource, mode);
+        mode.StepsByAttempt.Add(steps);
         mode.WrongKnownByAttempt.Add(WrongKnownMatches(chained, crossSource));
     }
 
@@ -581,7 +593,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             .AppendLine()
             .AppendLine("«Known» proposes the first source on its own, makes the entities it denoted known under the IRIs its export wrote, and proposes each later source with them " +
                 "(`KnownEntity`, prompt fingerprint `" + SinglePassOntologyProposer.KnownEntitiesPromptFingerprint + "`); «wrong known matches» counts entities matched to a known entity whose name joins a different thing. " +
-                "«Known reversed» chains the sources the other way round, starting from the last source's own call; «one individual in both orders» counts the things that end up as a single individual whichever source came first — identity that does not depend on arrival order.")
+                "«Known reversed» chains the sources the other way round, starting from the last source's own call; «one individual in both orders» counts the things that end up as a single individual whichever source came first — identity that does not depend on arrival order. " +
+                "Each known chain is listed call by call: known entities handed in, entities matched to one, entities made known, the things it made known, and the things it named only by mention — matched to nothing known and denoted by no record, so nothing of them is carried to the next call.")
             .AppendLine()
             .AppendLine("Both error columns are what the OAEI-LLM taxonomy calls a *false* mapping: an over-merged individual fuses two things, a wrong known match joins a thing to another. " +
                 "Its other kinds — *align-up* and *align-down* (joined to a broader or narrower thing, such as a line for the machine on it) and *disputed* — need the catalog to say which things contain which, which it does not yet; an individual of that kind shows up here only as unmatched.")
@@ -620,6 +633,16 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                     report.AppendLine(CultureInfo.InvariantCulture,
                         $"  - {label}, parsed attempt {i + 1}: {string.Join("; ", mode.IrisByAttempt[i].Select(kv => $"{kv.Key} → {kv.Value.Count}"))}" +
                         $" — unmatched: {string.Join(", ", mode.UnmatchedByAttempt[i])}");
+                }
+
+                for (var i = 0; i < mode.StepsByAttempt.Count; i++)
+                {
+                    report.AppendLine(
+                        string.Create(CultureInfo.InvariantCulture, $"  - {label}, chain of parsed attempt {i + 1}: ") +
+                        string.Join(" → ", mode.StepsByAttempt[i].Select(step =>
+                            $"{step.Source} (known in {step.KnownIn} · matched {step.MatchedToKnown} · made known {step.NewlyKnown}" +
+                            $"{(step.ThingsMadeKnown.Count == 0 ? "" : $": {string.Join(", ", step.ThingsMadeKnown)}")}" +
+                            $" · mention-only: {(step.ThingsMentionedOnly.Count == 0 ? "none" : string.Join(", ", step.ThingsMentionedOnly))})")));
                 }
 
                 foreach (var note in mode.FailureNotes)

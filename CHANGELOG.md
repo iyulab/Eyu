@@ -8,7 +8,13 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.7.0
+
+A minor. `Eyu.Core` takes the entities earlier calls only mentioned and reports, as merge candidates,
+the entities of a call that may be the same things — so identity across calls no longer depends on
+which source arrives first. `Eyu.Formbase` pairs with Formbase 0.17.0. Implementers of
+`IOntologyProposer` implement a new overload; `PromptFingerprint` and `KnownEntitiesPromptFingerprint`
+are unchanged, so measurements of calls without mentioned entities stay comparable across this release.
 
 ### Added
 
@@ -32,6 +38,7 @@ every published version has a section here.
 
 - `IOntologyProposer`: the overload an implementer writes now also takes `mentionedEntities`; the
   known-entities overload forwards to it with an empty list. Callers are unaffected.
+- `Eyu.Formbase` is built against `Formbase.Core` 0.17.0 (was 0.14.0).
 
 ## 0.6.0
 

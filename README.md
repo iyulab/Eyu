@@ -258,7 +258,11 @@ system" as the target the architecture is built toward, not as a track record.
   cites every record it appears in, and says which of those *are* it
   (`EntityProposal.DenotedBy`) — the rest only mention it, the way a work
   order names its machine. Only the denoting records are a claim that they
-  are one entity. That's the whole surface.
+  are one entity. Where the caller declared the field a relation runs
+  through (`DeclaredRelation.ViaField`), a record holding an entity's name
+  there is held to mention it whatever the model answered: that denotation
+  is withdrawn and reported (`OntologyProposal.DemotedDenotations`) — unless
+  it is the only thing the record would denote. That's the whole surface.
 - **Storage-agnostic.** It has no raw store, no projection target, no query
   engine of its own.
 - **Provider-agnostic.** Model access is a single injected port; local or

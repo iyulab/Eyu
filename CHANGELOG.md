@@ -10,6 +10,18 @@ every published version has a section here.
 
 ## Unreleased
 
+### Added
+
+- **A declared reference field is a mention, never a denotation.** When the caller declares the field a
+  relation runs through (`DeclaredRelation.ViaField`), a record holding an entity's name in that field
+  (case and whitespace aside) no longer counts as denoting the entity, whatever the model answered — a
+  work order naming its machine was read as a record of the machine often enough that a prompt alone
+  did not stop it. The record moves from the entity's `DenotedBy` to its `MentionedIn` before linkage
+  confidence, known-entity matching and merge candidates read it, and each move is reported in the new
+  `OntologyProposal.DemotedDenotations`. A record is never left denoting nothing: when every entity it
+  would denote is one it names in a reference field, the claims stand. Calls without such a declaration
+  behave as before.
+
 ### Fixed
 
 - **Packages carry the license text.** Every package now ships `LICENSE` at its root beside the `MIT`

@@ -23,4 +23,12 @@ public sealed record OntologyProposal(
     /// when the call was given no mentioned entities.
     /// </summary>
     public IReadOnlyList<MergeCandidate> MergeCandidates { get; init; } = [];
+
+    /// <summary>
+    /// Records the answer claimed denote an entity but that only name it in a field the caller declared
+    /// as a reference to another subject — each moved to the entity's mentions
+    /// (<see cref="DemotedDenotation"/>). Empty when nothing was declared with a
+    /// <see cref="Declared.DeclaredRelation.ViaField"/>, or the answer made no such claim.
+    /// </summary>
+    public IReadOnlyList<DemotedDenotation> DemotedDenotations { get; init; } = [];
 }

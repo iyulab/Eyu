@@ -229,7 +229,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         var prompt = BuildPrompt(declaredStructures, records, knownEntities, mentionedEntities, linkageAnalysis, promptedPairs);
         var schema = ResponseSchemaFor(knownEntities.Count > 0, mentionedEntities.Count > 0);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt, schema), cancellationToken).ConfigureAwait(false);
-        var parsed = ParseResponse(response.Text, records, knownEntities, mentionedEntities, linkageAnalysis, options.RecordsDenoteEntities);
+        var parsed = ParseResponse(response.Text, declaredStructures, records, knownEntities, mentionedEntities, linkageAnalysis, options.RecordsDenoteEntities);
         var proposal = DeclaredStructureMerge.Apply(declaredStructures, parsed.Proposal.Entities, parsed.Proposal.Relations, parsed.Proposal.Rejections);
         return proposal with
         {
@@ -238,6 +238,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
                 FindSplitClusters(linkageAnalysis.Clustering, proposal.Entities),
                 linkageAnalysis.Clustering.GrayZonePairs.Count - promptedPairs.Count),
             MergeCandidates = parsed.MergeCandidates,
+            DemotedDenotations = parsed.DemotedDenotations,
         };
     }
 
@@ -452,7 +453,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     /// </summary>
     private static string DescribeFields(RawRecord record) => string.Join(", ", record.Fields.Select(f => $"{f.Key}={f.Value}"));
 
-    private static ParsedResponse ParseResponse(string responseText, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, IReadOnlyList<MentionedEntity> mentionedEntities, LinkageAnalysis linkageAnalysis, bool recordsDenoteEntities)
+    private static ParsedResponse ParseResponse(string responseText, IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, IReadOnlyList<MentionedEntity> mentionedEntities, LinkageAnalysis linkageAnalysis, bool recordsDenoteEntities)
     {
         var knownKeys = knownEntities.Select(k => k.Key).ToHashSet(StringComparer.Ordinal);
         ProposalResponse parsed;
@@ -481,6 +482,21 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             .Select(g => g.Key)
             .ToHashSet(StringComparer.Ordinal);
 
+        // Identity claims made through a declared reference field are withdrawn before anything reads
+        // them -- linkage confidence, known-entity matching and merge candidates all weigh "denotedBy".
+        var demotions = recordsDenoteEntities
+            ? DeclaredReferenceDenotation.Find(
+                declaredStructures,
+                records,
+                entityResponses
+                    .Where(e => EntityDefect(e) is null && !duplicatedIds.Contains(e.Id!) && KnownEntityDefect(e, knownKeys) is null)
+                    .Select(e => new DeclaredReferenceDenotation.Claim(e.Id!, e.Name!, Denoting(e)))
+                    .ToList())
+            : [];
+        var demotedRecords = demotions
+            .GroupBy(d => d.EntityId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Select(d => d.RecordId).ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal);
+
         var entities = new List<EntityProposal>();
         foreach (var e in entityResponses)
         {
@@ -500,7 +516,9 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
             // Where records do not each denote one entity -- chunks of a document -- no record is an
             // entity, whatever the answer says: a record it names there is kept as a citation, never as
             // an identity. Models fill the field for chunks anyway, and not the same way twice.
-            var denotedBy = recordsDenoteEntities ? Denoting(e) : [];
+            var denotedBy = recordsDenoteEntities
+                ? Denoting(e).Where(id => !demotedRecords.TryGetValue(e.Id!, out var demoted) || !demoted.Contains(id)).ToList()
+                : [];
             var claim = ToClaim(e.Claim!, EntitySources(e));
             var knownKey = BlankToNull(e.KnownEntityKey);
             var confidence = LinkageConfidenceAdjuster.AdjustConfidence(denotedBy, e.Confidence!.Value, linkageAnalysis);
@@ -529,10 +547,10 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         }
 
         var mergeCandidates = ParseMergeCandidates(candidateResponses, mentionedEntities, entities, proposedIds, rejections);
-        return new ParsedResponse(new OntologyProposal(entities, relations, rejections), mergeCandidates);
+        return new ParsedResponse(new OntologyProposal(entities, relations, rejections), mergeCandidates, demotions);
     }
 
-    private sealed record ParsedResponse(OntologyProposal Proposal, IReadOnlyList<MergeCandidate> MergeCandidates);
+    private sealed record ParsedResponse(OntologyProposal Proposal, IReadOnlyList<MergeCandidate> MergeCandidates, IReadOnlyList<DemotedDenotation> DemotedDenotations);
 
     /// <summary>
     /// Merge candidates are checked after the entities, against the ones that survived and the records

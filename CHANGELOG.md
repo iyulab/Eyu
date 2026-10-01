@@ -8,7 +8,13 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.8.0
+
+A minor. Where a caller declares the field a relation runs through, `Eyu.Core` no longer lets a record
+that only names an entity in that field count as denoting it, and reports each such withdrawal. Calls
+without such a declaration behave as before, and no prompt changes: `PromptFingerprint`,
+`KnownEntitiesPromptFingerprint` and `MentionedEntitiesPromptFingerprint` are unchanged. `Eyu.Formbase`
+pairs with Formbase 0.17.1. Additive only — no implementer or caller has to change.
 
 ### Added
 

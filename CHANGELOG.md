@@ -8,6 +8,14 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Fixed
+
+- **Packages carry the license text.** Every package now ships `LICENSE` at its root beside the `MIT`
+  license expression, so redistributing a package carries the notice the license requires and tooling
+  that collects third-party notices finds the text.
+
 ## 0.7.0
 
 A minor. `Eyu.Core` takes the entities earlier calls only mentioned and reports, as merge candidates,

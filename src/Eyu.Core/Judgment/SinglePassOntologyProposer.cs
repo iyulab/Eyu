@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Eyu.Core.Declared;
 using Eyu.Core.Grounding;
 using Eyu.Core.Inference;
@@ -44,11 +45,10 @@ namespace Eyu.Core.Judgment;
 /// on its own, which no unit test can verify without a real model behind
 /// <see cref="IModelClient"/>.
 /// </summary>
-public sealed class SinglePassOntologyProposer(IModelClient modelClient, LinkageOptions? linkageOptions = null) : IOntologyProposer
+public sealed partial class SinglePassOntologyProposer(IModelClient modelClient, LinkageOptions? linkageOptions = null) : IOntologyProposer
 {
     private const int DiagnosticExcerptLength = 500;
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly LinkageOptions options = linkageOptions ?? LinkageOptions.Default;
 
     // The prompt's fixed text — the part that is identical across every call, regardless of the
@@ -160,7 +160,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     {
         var node = JsonNode.Parse(schema.GetRawText())!.AsObject();
         node["properties"]!.AsObject()["mergeCandidates"] = JsonNode.Parse(MergeCandidatesSchema.GetRawText());
-        node["required"]!.AsArray().Add("mergeCandidates");
+        node["required"]!.AsArray().Add((JsonNode)"mergeCandidates");
         return JsonElement.Parse(node.ToJsonString());
     }
 
@@ -459,7 +459,7 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
         ProposalResponse parsed;
         try
         {
-            parsed = JsonSerializer.Deserialize<ProposalResponse>(responseText, JsonOptions)
+            parsed = JsonSerializer.Deserialize(responseText, ResponseJsonContext.Default.ProposalResponse)
                 ?? new ProposalResponse(null, null);
         }
         catch (JsonException ex)
@@ -741,4 +741,12 @@ public sealed class SinglePassOntologyProposer(IModelClient modelClient, Linkage
     private sealed record EntityResponse(string? Id, string? Name, string? Type, string? Claim, IReadOnlyList<string?>? Sources, IReadOnlyList<string?>? DenotedBy, double? Confidence, string? KnownEntityKey = null);
 
     private sealed record RelationResponse(string? Name, string? From, string? To, string? Claim, IReadOnlyList<string?>? Sources, double? Confidence);
+
+    /// <summary>
+    /// The response shape's serialization metadata, generated at compile time so the parse works
+    /// where reflection-based serialization is off (Native AOT, trimmed hosts).
+    /// </summary>
+    [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+    [JsonSerializable(typeof(ProposalResponse))]
+    private sealed partial class ResponseJsonContext : JsonSerializerContext;
 }

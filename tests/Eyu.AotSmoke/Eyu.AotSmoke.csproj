@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Publishes Eyu as a Native AOT executable and runs it. The packages' analyzers (IsAotCompatible)
+    catch reflection in Eyu's own code at build time; only a real AOT publish also sees what the
+    compiler keeps or drops across the whole graph, dependencies included, and only running the
+    result proves the paths that worked under reflection still work without it. Not a test project:
+    `dotnet test` does not run it; CI publishes and executes it.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Eyu.Core\Eyu.Core.csproj" />
+    <ProjectReference Include="..\..\src\Eyu.Formbase\Eyu.Formbase.csproj" />
+    <ProjectReference Include="..\..\src\Eyu.Rdf\Eyu.Rdf.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -14,4 +14,14 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
+
+  <!--
+    Every package runs in a Native AOT or trimmed host: IsAotCompatible marks the assembly trimmable
+    and turns on the trim, AOT and single-file analyzers, so code that would only fail at run time in
+    such a host (reflection-based serialization, for one) fails this build instead, under
+    TreatWarningsAsErrors.
+  -->
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
 </Project>

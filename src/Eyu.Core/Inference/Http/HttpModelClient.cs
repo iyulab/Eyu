@@ -38,7 +38,7 @@ namespace Eyu.Core.Inference.Http;
 /// The response never carries a confidence score, and this type never invents one — see design
 /// rationale §D: an absent confidence is honest, a fabricated one is not.
 /// </summary>
-public sealed class HttpModelClient(HttpClient httpClient, string model, IReadOnlyDictionary<string, JsonElement>? extraBody = null) : IModelClient
+public sealed partial class HttpModelClient(HttpClient httpClient, string model, IReadOnlyDictionary<string, JsonElement>? extraBody = null) : IModelClient
 {
     private const int DiagnosticExcerptLength = 500;
 
@@ -46,14 +46,12 @@ public sealed class HttpModelClient(HttpClient httpClient, string model, IReadOn
     // name every request shares is enough.
     private const string ResponseSchemaName = "response";
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     public async Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default)
     {
         var body = new JsonObject
         {
             ["model"] = model,
-            ["messages"] = JsonSerializer.SerializeToNode(new[] { new ChatMessage("user", request.Prompt) }, JsonOptions),
+            ["messages"] = new JsonArray(new JsonObject { ["role"] = "user", ["content"] = request.Prompt }),
         };
         if (request.ResponseSchema is { } schema)
         {
@@ -64,7 +62,7 @@ public sealed class HttpModelClient(HttpClient httpClient, string model, IReadOn
                 {
                     ["name"] = ResponseSchemaName,
                     ["strict"] = true,
-                    ["schema"] = JsonSerializer.SerializeToNode(schema, JsonOptions),
+                    ["schema"] = JsonSerializer.SerializeToNode(schema, WireJsonContext.Default.JsonElement),
                 },
             };
         }
@@ -80,11 +78,11 @@ public sealed class HttpModelClient(HttpClient httpClient, string model, IReadOn
                     continue;
                 }
 
-                body[key] = JsonSerializer.SerializeToNode(value, JsonOptions);
+                body[key] = JsonSerializer.SerializeToNode(value, WireJsonContext.Default.JsonElement);
             }
         }
 
-        var payload = body.ToJsonString(JsonOptions);
+        var payload = body.ToJsonString();
 
         // Sent as a message this method holds, so a failure can name where it went: HttpClient
         // resolves the relative path against its base address onto this request before sending.
@@ -99,7 +97,7 @@ public sealed class HttpModelClient(HttpClient httpClient, string model, IReadOn
             throw new HttpRequestException(DescribeFailure(httpRequest, httpResponse, responseBody), inner: null, httpResponse.StatusCode);
         }
 
-        var parsed = JsonSerializer.Deserialize<ChatCompletionResponse>(responseBody, JsonOptions);
+        var parsed = JsonSerializer.Deserialize(responseBody, WireJsonContext.Default.ChatCompletionResponse);
         var messageText = parsed?.Choices is [{ Message.Content: { Length: > 0 } text }, ..] ? text : null;
 
         if (messageText is null)
@@ -142,8 +140,6 @@ public sealed class HttpModelClient(HttpClient httpClient, string model, IReadOn
         _ => $"{text[..DiagnosticExcerptLength]}… ({text.Length} chars total)",
     };
 
-    private sealed record ChatMessage(string Role, string Content);
-
     private sealed record ChatCompletionResponse(IReadOnlyList<ChatChoice>? Choices, ChatUsage? Usage);
 
     private sealed record ChatChoice(ChatResponseMessage? Message);
@@ -154,4 +150,13 @@ public sealed class HttpModelClient(HttpClient httpClient, string model, IReadOn
         [property: JsonPropertyName("prompt_tokens")] int? PromptTokens,
         [property: JsonPropertyName("completion_tokens")] int? CompletionTokens,
         [property: JsonPropertyName("total_tokens")] int? TotalTokens);
+
+    /// <summary>
+    /// Serialization metadata generated at compile time rather than reflected at run time, so the
+    /// client works where reflection-based serialization is off (Native AOT, trimmed hosts).
+    /// </summary>
+    [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+    [JsonSerializable(typeof(ChatCompletionResponse))]
+    [JsonSerializable(typeof(JsonElement))]
+    private sealed partial class WireJsonContext : JsonSerializerContext;
 }

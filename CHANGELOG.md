@@ -8,6 +8,17 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Fixed
+
+- **Eyu runs under Native AOT and trimming.** Every package now declares `IsAotCompatible`, and the
+  serialization Eyu does itself — the HTTP model client's request and response, the proposer's parse of
+  the model's answer, and routing's sources annotation — uses compile-time generated metadata instead
+  of reflection. Before, a Native AOT host failed in `SinglePassOntologyProposer`'s type initializer
+  (`NotSupportedException`, before any model call) and the publish reported trim and AOT warnings from
+  `Eyu.Core`. CI now publishes and runs a Native AOT executable over every serializing path.
+
 ## 0.8.0
 
 A minor. Where a caller declares the field a relation runs through, `Eyu.Core` no longer lets a record

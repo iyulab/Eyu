@@ -5,6 +5,7 @@
     <Project Path="src/Eyu.Rdf/Eyu.Rdf.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Eyu.AotSmoke/Eyu.AotSmoke.csproj" />
     <Project Path="tests/Eyu.Core.Tests/Eyu.Core.Tests.csproj" />
     <Project Path="tests/Eyu.Formbase.Tests/Eyu.Formbase.Tests.csproj" />
     <Project Path="tests/Eyu.IntegrationSmoke.Tests/Eyu.IntegrationSmoke.Tests.csproj" />

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Eyu.Core.Grounding;
 using Eyu.Core.Proposals;
 using HoneAI;
@@ -14,7 +15,7 @@ namespace Eyu.Core.Routing;
 /// awaiting a reviewer, applying an approved proposal are all the consumer's, because Eyu never
 /// applies anything.
 /// </summary>
-public static class ProposalRouting
+public static partial class ProposalRouting
 {
     /// <summary>The tier <paramref name="policy"/> assigns to this entity proposal's confidence, under its origin's thresholds.</summary>
     public static ProposalRoute Route(this EntityProposal proposal, RoutingPolicy policy)
@@ -79,7 +80,11 @@ public static class ProposalRouting
                 [ProvenanceAnnotations.Route] = route.ToString(),
                 [ProvenanceAnnotations.Origin] = origin.ToString(),
                 [ProvenanceAnnotations.Basis] = basis.ToString(),
-                [ProvenanceAnnotations.Sources] = JsonSerializer.Serialize(claim.Sources.Select(s => s.RecordId)),
+                [ProvenanceAnnotations.Sources] = JsonSerializer.Serialize(claim.Sources.Select(s => s.RecordId).ToArray(), AnnotationJsonContext.Default.StringArray),
             },
         };
+
+    /// <summary>The sources annotation's serialization metadata, generated at compile time (Native AOT, trimmed hosts).</summary>
+    [JsonSerializable(typeof(string[]))]
+    private sealed partial class AnnotationJsonContext : JsonSerializerContext;
 }

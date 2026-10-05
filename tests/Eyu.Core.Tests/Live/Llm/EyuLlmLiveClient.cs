@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using Eyu.Core.Inference.Http;
 using Eyu.Core.Ports;
+using Eyu.Core.Tests.Quality;
 
 namespace Eyu.Core.Tests.Live.Llm;
 
@@ -12,11 +13,22 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// (thinking-model reasoning tokens precede the answer) — the default <see cref="HttpClient"/>
 /// 100s timeout is too short for that and was raised here, not in <see cref="HttpModelClient"/>
 /// itself, which leaves timeouts to the caller by design.
+/// <para>
+/// <c>EYU_LLM_RAW_RESPONSE_DIR</c> keeps every call's request and response there
+/// (<see cref="RecordingModelClient"/>). <c>EYU_LLM_REPLAY_DIR</c> answers from such a directory instead
+/// of a model (<see cref="ReplayModelClient"/>) — no endpoint is needed then, and there is no
+/// <see cref="HttpClient"/> to dispose.
+/// </para>
 /// </summary>
 internal static class EyuLlmLiveClient
 {
-    public static (HttpClient HttpClient, HttpModelClient ModelClient) Create()
+    public static (HttpClient? HttpClient, IModelClient ModelClient) Create()
     {
+        if (Environment.GetEnvironmentVariable("EYU_LLM_REPLAY_DIR") is { Length: > 0 } replay)
+        {
+            return (null, new ReplayModelClient(replay));
+        }
+
         var endpoint = Require("EYU_LLM_ENDPOINT");
         var apiKey = Require("EYU_LLM_API_KEY");
         var model = Require("EYU_LLM_MODEL");
@@ -31,7 +43,13 @@ internal static class EyuLlmLiveClient
         };
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-        return (httpClient, new HttpModelClient(httpClient, model));
+        IModelClient client = new HttpModelClient(httpClient, model);
+        if (Environment.GetEnvironmentVariable("EYU_LLM_RAW_RESPONSE_DIR") is { Length: > 0 } raw)
+        {
+            client = new RecordingModelClient(client, raw);
+        }
+
+        return (httpClient, client);
     }
 
     private static string Require(string variable)

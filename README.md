@@ -69,18 +69,21 @@ references `Formbase.Core` the same way, as a package.
 
 ## Install
 
-Current release: **0.8.0**. All three packages ship from this repository and move together:
+Current release: **0.9.0**. All three packages ship from this repository and move together:
 
 ```bash
-dotnet add package Eyu.Core --version 0.8.0
-dotnet add package Eyu.Formbase --version 0.8.0
-dotnet add package Eyu.Rdf --version 0.8.0
+dotnet add package Eyu.Core --version 0.9.0
+dotnet add package Eyu.Formbase --version 0.9.0
+dotnet add package Eyu.Rdf --version 0.9.0
 ```
 
 `Eyu.Core` alone is enough to implement the five ports against your own source; `Eyu.Formbase` is
 the adapter for one of them and reads `Formbase.Core` as a package, so it pairs with a Formbase
 release — this one is built against `Formbase.* 0.17.2`. `Eyu.Rdf` writes a proposal as OWL in Turtle
 (see [Exporting as RDF/OWL](#exporting-as-rdfowl)).
+
+Every package is AOT-compatible (`IsAotCompatible`): a Native AOT or trimmed host publishes and runs
+Eyu without trim or AOT warnings, which CI checks by publishing and running a Native AOT executable.
 
 ## Quick start
 

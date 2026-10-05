@@ -8,7 +8,13 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.9.0
+
+A minor. Eyu runs under Native AOT and trimming, and `Eyu.Formbase` carries a Formbase field bound to
+another form type as the reference relation it declares — a Formbase consumer that declares references
+that way now has them in the prompt as declared relations, and gets the declared-reference
+check that 0.8.0 applied only to declared relations. Pairs with Formbase 0.17.2. No prompt fingerprint
+changes; no implementer or caller has to change.
 
 ### Fixed
 

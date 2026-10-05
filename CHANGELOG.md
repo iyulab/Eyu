@@ -8,6 +8,12 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Changed
+
+- `Eyu.Formbase` builds on `Formbase.Core` 0.18.0.
+
 ## 0.9.0
 
 A minor. Eyu runs under Native AOT and trimming, and `Eyu.Formbase` carries a Formbase field bound to

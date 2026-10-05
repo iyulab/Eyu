@@ -79,7 +79,7 @@ dotnet add package Eyu.Rdf --version 0.9.0
 
 `Eyu.Core` alone is enough to implement the five ports against your own source; `Eyu.Formbase` is
 the adapter for one of them and reads `Formbase.Core` as a package, so it pairs with a Formbase
-release — this one is built against `Formbase.* 0.17.2`. `Eyu.Rdf` writes a proposal as OWL in Turtle
+release — this one is built against `Formbase.* 0.18.0`. `Eyu.Rdf` writes a proposal as OWL in Turtle
 (see [Exporting as RDF/OWL](#exporting-as-rdfowl)).
 
 Every package is AOT-compatible (`IsAotCompatible`): a Native AOT or trimmed host publishes and runs

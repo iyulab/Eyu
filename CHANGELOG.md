@@ -19,6 +19,10 @@ every published version has a section here.
   (`NotSupportedException`, before any model call) and the publish reported trim and AOT warnings from
   `Eyu.Core`. CI now publishes and runs a Native AOT executable over every serializing path.
 
+### Changed
+
+- `Eyu.Formbase` builds on `Formbase.Core` 0.17.2, the first release of it that is itself AOT-compatible.
+
 ## 0.8.0
 
 A minor. Where a caller declares the field a relation runs through, `Eyu.Core` no longer lets a record

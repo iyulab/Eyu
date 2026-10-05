@@ -12,6 +12,14 @@ every published version has a section here.
 
 ### Fixed
 
+- **`Eyu.Formbase` carries a bound field as the reference it declares.** A Formbase field bound to another
+  form type (`FieldHint.Target`) now reaches Eyu as a reference relation to that form type, through the
+  bound field itself and, when the binding names one, through the field carrying the target record's key
+  (`EntityRef.ViaField`) — each named after the field that carries it. Before, the adapter carried
+  declared relations only, so a reference declared as a bound field was dropped: the proposer never saw
+  it, and a record naming an entity in that field was not withdrawn from denoting it. A field a declared
+  relation to the same form type already runs through adds nothing.
+
 - **Eyu runs under Native AOT and trimming.** Every package now declares `IsAotCompatible`, and the
   serialization Eyu does itself — the HTTP model client's request and response, the proposer's parse of
   the model's answer, and routing's sources annotation — uses compile-time generated metadata instead

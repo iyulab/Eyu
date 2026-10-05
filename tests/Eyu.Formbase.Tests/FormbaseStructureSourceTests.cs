@@ -172,4 +172,69 @@ public class FormbaseStructureSourceTests
 
         Assert.Equal("3", structure!.Version);
     }
+
+    [Fact]
+    public async Task GetStructureAsync_carries_a_bound_field_as_a_reference_relation_through_that_field()
+    {
+        var hintSource = new InMemoryFieldHintSource();
+        hintSource.Declare(new FormTypeHints(
+            FormTypeRef.Create("work_order"),
+            TableName: "work_order",
+            Fields:
+            [
+                new FieldHint("order_no", ColumnType.Text),
+                new FieldHint("machine", ColumnType.Text, Binding: FieldBinding.Snapshot, Target: new EntityRef(FormTypeRef.Create("machine"), "machine_name")),
+            ]));
+        var source = new FormbaseStructureSource(hintSource);
+
+        var structure = await source.GetStructureAsync(SubjectRef.Create("work_order"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            [new DeclaredRelation("machine", SubjectRef.Create("machine"), ViaField: "machine", Kind: DeclaredRelationKind.Reference)],
+            structure!.Relations);
+    }
+
+    [Fact]
+    public async Task GetStructureAsync_carries_a_bound_fields_lookup_field_as_a_second_reference_to_the_same_target()
+    {
+        var hintSource = new InMemoryFieldHintSource();
+        hintSource.Declare(new FormTypeHints(
+            FormTypeRef.Create("work_order"),
+            TableName: "work_order",
+            Fields:
+            [
+                new FieldHint("machine_no", ColumnType.Text),
+                new FieldHint("machine", ColumnType.Text, Binding: FieldBinding.Snapshot, Target: new EntityRef(FormTypeRef.Create("machine"), "machine_name", lookupKey: "no", viaField: "machine_no")),
+            ]));
+        var source = new FormbaseStructureSource(hintSource);
+
+        var structure = await source.GetStructureAsync(SubjectRef.Create("work_order"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            [
+                new DeclaredRelation("machine", SubjectRef.Create("machine"), ViaField: "machine", Kind: DeclaredRelationKind.Reference),
+                new DeclaredRelation("machine_no", SubjectRef.Create("machine"), ViaField: "machine_no", Kind: DeclaredRelationKind.Reference),
+            ],
+            structure!.Relations);
+    }
+
+    [Fact]
+    public async Task GetStructureAsync_adds_nothing_for_a_bound_field_a_declared_relation_already_runs_through()
+    {
+        var hintSource = new InMemoryFieldHintSource();
+        hintSource.Declare(new FormTypeHints(
+            FormTypeRef.Create("work_order"),
+            TableName: "work_order",
+            Fields:
+            [
+                new FieldHint("machine_no", ColumnType.Text),
+                new FieldHint("machine", ColumnType.Text, Binding: FieldBinding.Snapshot, Target: new EntityRef(FormTypeRef.Create("machine"), "machine_name", lookupKey: "no", viaField: "machine_no")),
+            ],
+            Relations: [new RelationHint("uses_machine", RelationKind.Reference, FormTypeRef.Create("machine"), "machine_no")]));
+        var source = new FormbaseStructureSource(hintSource);
+
+        var structure = await source.GetStructureAsync(SubjectRef.Create("work_order"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(["uses_machine", "machine"], structure!.Relations.Select(r => r.Name));
+    }
 }

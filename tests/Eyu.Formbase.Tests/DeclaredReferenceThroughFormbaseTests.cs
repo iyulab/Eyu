@@ -60,6 +60,28 @@ public class DeclaredReferenceThroughFormbaseTests
         Assert.Equal(new Core.Proposals.DemotedDenotation("press", "w-01", "machine"), Assert.Single(proposal.DemotedDenotations));
     }
 
+    // The same reference declared only as a bound field — the machine's name copied onto the work order
+    // from the machine form type — withdraws the denotation just the same: before, the adapter carried
+    // relations alone and a consumer that declared the reference this way got no withdrawal at all.
+    [Fact]
+    public async Task A_field_bound_to_the_machine_withdraws_the_work_orders_denotation_too()
+    {
+        var hints = new InMemoryFieldHintSource();
+        hints.Declare(new FormTypeHints(
+            FormTypeRef.Create("work_order"),
+            TableName: "work_order",
+            Fields:
+            [
+                new FieldHint("order_no", ColumnType.Text),
+                new FieldHint("machine", ColumnType.Text, Binding: FieldBinding.Snapshot, Target: new EntityRef(FormTypeRef.Create("machine"), "machine_name")),
+            ]));
+
+        var proposal = await ProposeWith(hints, "work_order");
+
+        Assert.Equal(["m-01"], proposal.Entities.Single(e => e.EntityId == "press").DenotedBy);
+        Assert.Equal(new Core.Proposals.DemotedDenotation("press", "w-01", "machine"), Assert.Single(proposal.DemotedDenotations));
+    }
+
     private static async Task<Core.Proposals.OntologyProposal> ProposeWith(InMemoryFieldHintSource hints, string subject)
     {
         var structure = await new FormbaseStructureSource(hints).GetStructureAsync(SubjectRef.Create(subject), TestContext.Current.CancellationToken);

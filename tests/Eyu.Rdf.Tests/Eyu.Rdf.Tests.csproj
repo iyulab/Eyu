@@ -19,6 +19,7 @@
   </ItemGroup>
   <ItemGroup Condition="'$(IncludeEyuLlmLiveTests)' == 'true'">
     <Compile Include="..\Eyu.Core.Tests\Live\Llm\EyuLlmLiveClient.cs" Link="Live/Llm/EyuLlmLiveClient.cs" />
+    <Compile Include="..\Eyu.Core.Tests\Quality\RecordedModelResponses.cs" Link="Live/Llm/RecordedModelResponses.cs" />
   </ItemGroup>
 
   <ItemGroup>

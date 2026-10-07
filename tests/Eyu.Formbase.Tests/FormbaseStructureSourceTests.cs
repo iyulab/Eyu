@@ -204,7 +204,7 @@ public class FormbaseStructureSourceTests
             Fields:
             [
                 new FieldHint("machine_no", ColumnType.Text),
-                new FieldHint("machine", ColumnType.Text, Binding: FieldBinding.Snapshot, Target: new EntityRef(FormTypeRef.Create("machine"), "machine_name", lookupKey: "no", viaField: "machine_no")),
+                new FieldHint("machine", ColumnType.Text, Binding: FieldBinding.Snapshot, Target: new EntityRef(FormTypeRef.Create("machine"), "machine_name", lookup: TargetLookup.Field("no"), viaField: "machine_no")),
             ]));
         var source = new FormbaseStructureSource(hintSource);
 
@@ -228,7 +228,7 @@ public class FormbaseStructureSourceTests
             Fields:
             [
                 new FieldHint("machine_no", ColumnType.Text),
-                new FieldHint("machine", ColumnType.Text, Binding: FieldBinding.Snapshot, Target: new EntityRef(FormTypeRef.Create("machine"), "machine_name", lookupKey: "no", viaField: "machine_no")),
+                new FieldHint("machine", ColumnType.Text, Binding: FieldBinding.Snapshot, Target: new EntityRef(FormTypeRef.Create("machine"), "machine_name", lookup: TargetLookup.Field("no"), viaField: "machine_no")),
             ],
             Relations: [new RelationHint("uses_machine", RelationKind.Reference, FormTypeRef.Create("machine"), "machine_no")]));
         var source = new FormbaseStructureSource(hintSource);

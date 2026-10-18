@@ -12,7 +12,7 @@ every published version has a section here.
 
 ### Changed
 
-- `Eyu.Formbase` builds on `Formbase.Core` 0.19.0.
+- `Eyu.Formbase` builds on `Formbase.Core` 0.23.0.
 
 ## 0.9.0
 

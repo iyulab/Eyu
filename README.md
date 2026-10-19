@@ -377,8 +377,13 @@ field's `u` over random pairs of it, `m` comes from a reviewed sample or a fixed
 (`FellegiSunterEstimator.Estimate` with `fixedNonMatchAgreement`), and
 `FieldLinkageParameters.FromNonMatchAgreement` puts them together. Then
 `LinkagePipeline.Analyze(records, knownEntities, parameters)` scores each new record against the
-known ones without fitting anything; the matches are in `LinkageAnalysis.KnownCandidates`. Every pair
-is still compared, so the cost is linear in the known population per record.
+known ones without fitting anything; the matches are in `LinkageAnalysis.KnownCandidates`.
+
+Without blocking every pair is compared — the square of a batch, or the whole known population for
+each record. `LinkageOptions.BlockingRules` narrows that: each rule is a set of fields, a pair is
+compared when it agrees exactly on every field of some rule, and rules are alternatives, so one rule
+can catch what another misses (a misspelt name, but the same birth date and school). A pair no rule
+reaches is not judged different, only not compared.
 
 Gray-zone pairs grow with the square of the batch, so they — not the records — are what fills a
 prompt first: measured, 47 records produced 542 pairs, more lines than the records themselves, and

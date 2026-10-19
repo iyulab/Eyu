@@ -58,6 +58,18 @@ namespace Eyu.Core.Linkage;
 /// them — it is only not singled out as needing judgment. Zero puts no pair to the model. Defaults to
 /// <see cref="DefaultMaxGrayZonePairsInPrompt"/>.
 /// </param>
+/// <param name="BlockingRules">
+/// Which pairs are compared at all. Without rules every pair is — the cost grows with the square of a
+/// batch, and with the whole known population for each record matched against it. Each rule is a set
+/// of field names; two records form a pair when, for at least one rule, every field it names is present
+/// on both and equal as <see cref="FieldComparator"/> compares exactly (case, surrounding whitespace and
+/// Unicode form aside). Rules are alternatives, so a pair one rule misses — a misspelt name — can be
+/// caught by another (the same birth date and school). A pair no rule reaches is not judged different;
+/// it is not compared. Blocking narrows what EM sees too, so when the pairs a call fits on are blocked,
+/// <c>u</c> is better measured over the unblocked population
+/// (<see cref="LinkagePipeline.EstimateNonMatchAgreement"/>, which ignores these rules) and supplied.
+/// Defaults to none.
+/// </param>
 public sealed record LinkageOptions(
     double MatchThreshold = LinkageClassifier.DefaultMatchThreshold,
     double NonMatchThreshold = LinkageClassifier.DefaultNonMatchThreshold,
@@ -66,7 +78,8 @@ public sealed record LinkageOptions(
     bool UseStringSimilarityComparator = false,
     double StringSimilarityAgreementThreshold = FieldComparator.DefaultStringSimilarityAgreementThreshold,
     bool RecordsDenoteEntities = true,
-    int MaxGrayZonePairsInPrompt = LinkageOptions.DefaultMaxGrayZonePairsInPrompt)
+    int MaxGrayZonePairsInPrompt = LinkageOptions.DefaultMaxGrayZonePairsInPrompt,
+    IReadOnlyList<IReadOnlyList<string>>? BlockingRules = null)
 {
     /// <summary>The default for <see cref="MaxGrayZonePairsInPrompt"/>.</summary>
     public const int DefaultMaxGrayZonePairsInPrompt = 200;
@@ -76,7 +89,7 @@ public sealed record LinkageOptions(
     /// <summary>
     /// Throws when a value could not be honoured: thresholds that do not order, an iteration
     /// count that would run EM zero times, a non-positive tolerance, a similarity threshold
-    /// outside [0, 1], or a negative gray-zone pair cap. <see cref="LinkagePipeline.Analyze(IReadOnlyList{Eyu.Core.Records.RawRecord}, LinkageOptions)"/> calls this before it looks at the
+    /// outside [0, 1], a negative gray-zone pair cap, or a blocking rule that names no field. <see cref="LinkagePipeline.Analyze(IReadOnlyList{Eyu.Core.Records.RawRecord}, LinkageOptions)"/> calls this before it looks at the
     /// batch, so a bad option fails the same way whether the batch has one record or a thousand.
     /// </summary>
     public void Validate()
@@ -96,5 +109,13 @@ public sealed record LinkageOptions(
         }
 
         ArgumentOutOfRangeException.ThrowIfNegative(MaxGrayZonePairsInPrompt, nameof(MaxGrayZonePairsInPrompt));
+
+        foreach (var rule in BlockingRules ?? [])
+        {
+            if (rule is null || rule.Count == 0 || rule.Any(string.IsNullOrWhiteSpace))
+            {
+                throw new ArgumentException("Every blocking rule names at least one field, and no blank one.", nameof(BlockingRules));
+            }
+        }
     }
 }

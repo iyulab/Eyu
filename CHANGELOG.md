@@ -31,6 +31,13 @@ every published version has a section here.
     sharing a name were wrongly matched a third as often, and a record took about 7 ms.
 
   The existing overloads are unchanged.
+- **Blocking rules.** `LinkageOptions.BlockingRules` lists sets of field names; two records are
+  compared only when every field of at least one set is present on both and equal (compared as
+  exact field comparison compares). Rules are alternatives, so a pair one misses — a misspelt name —
+  another can catch (the same birth date and school). They apply to a batch's own pairs and to
+  matching against known entities; `EstimateNonMatchAgreement` ignores them, since `u` has to come
+  from random pairs. On the 3,000 records above, a name rule or a birth-and-school rule kept every
+  match and cut a record from about 7 ms to 2. Without rules every pair is compared, as before.
 
 ### Changed
 

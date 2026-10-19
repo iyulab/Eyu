@@ -1,3 +1,4 @@
+using Eyu.Core.Primitives;
 using Eyu.Core.Records;
 
 namespace Eyu.Core.Linkage;
@@ -154,16 +155,16 @@ public static class LinkagePipeline
         var ownPairs = new List<(RawRecord A, RawRecord B)>();
         if (records.Count >= 2 && opts.RecordsDenoteEntities)
         {
-            for (var i = 0; i < records.Count; i++)
+            foreach (var (i, j) in CandidatePairs(records, records, opts.BlockingRules, sameSide: true))
             {
-                for (var j = i + 1; j < records.Count; j++)
-                {
-                    ownPairs.Add((records[i], records[j]));
-                }
+                ownPairs.Add((records[i], records[j]));
             }
         }
 
-        var crossPairs = records.SelectMany(r => knownRecords.Select(k => (Record: r, k.Key, Known: k.Record))).ToList();
+        var knownSide = knownRecords.Select(k => k.Record).ToList();
+        var crossPairs = CandidatePairs(records, knownSide, opts.BlockingRules, sameSide: false)
+            .Select(p => (Record: records[p.I], knownRecords[p.J].Key, Known: knownRecords[p.J].Record))
+            .ToList();
 
         if (ownPairs.Count == 0 && crossPairs.Count == 0)
         {
@@ -196,5 +197,82 @@ public static class LinkagePipeline
         var clustering = EntityClusterer.Cluster(recordIds, pairLinkages);
         var errorRates = pairLinkages.Count > 0 ? LinkageErrorRateEstimator.Estimate(pairLinkages, parameters) : null;
         return new LinkageAnalysis(clustering, pairLinkages, parameters, errorRates) { KnownCandidates = knownCandidates };
+    }
+
+    /// <summary>
+    /// The index pairs to compare, in the order every pair would come in without blocking (by the left
+    /// index, then the right): all of them when there are no rules, otherwise those sharing a key under
+    /// at least one rule. On one side (<paramref name="sameSide"/>) only <c>i &lt; j</c>.
+    /// </summary>
+    private static IEnumerable<(int I, int J)> CandidatePairs(
+        IReadOnlyList<RawRecord> left, IReadOnlyList<RawRecord> right, IReadOnlyList<IReadOnlyList<string>>? rules, bool sameSide)
+    {
+        if (rules is null || rules.Count == 0)
+        {
+            for (var i = 0; i < left.Count; i++)
+            {
+                for (var j = sameSide ? i + 1 : 0; j < right.Count; j++)
+                {
+                    yield return (i, j);
+                }
+            }
+
+            yield break;
+        }
+
+        var pairs = new HashSet<(int, int)>();
+        foreach (var rule in rules)
+        {
+            var buckets = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+            for (var j = 0; j < right.Count; j++)
+            {
+                if (BlockingKey(right[j], rule) is { } key)
+                {
+                    (buckets.TryGetValue(key, out var list) ? list : buckets[key] = []).Add(j);
+                }
+            }
+
+            for (var i = 0; i < left.Count; i++)
+            {
+                if (BlockingKey(left[i], rule) is not { } key || !buckets.TryGetValue(key, out var matches))
+                {
+                    continue;
+                }
+
+                foreach (var j in matches)
+                {
+                    if (!sameSide || i < j)
+                    {
+                        pairs.Add((i, j));
+                    }
+                }
+            }
+        }
+
+        foreach (var pair in pairs.Order())
+        {
+            yield return pair;
+        }
+    }
+
+    /// <summary>
+    /// A record's key under one blocking rule — its values for the rule's fields, compared as
+    /// <see cref="FieldComparator"/> compares exactly — or null when any of them is missing or blank, so
+    /// an empty field never puts two records in one block.
+    /// </summary>
+    private static string? BlockingKey(RawRecord record, IReadOnlyList<string> rule)
+    {
+        var parts = new string[rule.Count];
+        for (var k = 0; k < rule.Count; k++)
+        {
+            if (!record.Fields.TryGetValue(rule[k], out var value) || string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            parts[k] = TextForm.Fold(value).Trim().ToUpperInvariant();
+        }
+
+        return string.Join('', parts);
     }
 }

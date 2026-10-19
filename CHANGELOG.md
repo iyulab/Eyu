@@ -48,7 +48,7 @@ before, except similarity comparison of Hangul values.
 
 ### Changed
 
-- `Eyu.Formbase` builds on `Formbase.Core` 0.23.0.
+- `Eyu.Formbase` builds on `Formbase.Core` 0.24.0.
 - **Similarity comparison reads Hangul by its letters.** With `UseStringSimilarityComparator`, Hangul
   syllables are spelled out as their jamo before Jaro-Winkler compares them. By syllable, `김민준` and
   `김민중` (one final consonant apart) and `김민준` and `김민수` (another name) were both one character

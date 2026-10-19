@@ -42,6 +42,23 @@ every published version has a section here.
 ### Changed
 
 - `Eyu.Formbase` builds on `Formbase.Core` 0.23.0.
+- **Similarity comparison reads Hangul by its letters.** With `UseStringSimilarityComparator`, Hangul
+  syllables are spelled out as their jamo before Jaro-Winkler compares them. By syllable, `김민준` and
+  `김민중` (one final consonant apart) and `김민준` and `김민수` (another name) were both one character
+  of three apart, 0.822 each — below the default 0.90 threshold, so a three-syllable name only ever
+  agreed when identical, and no threshold could tell a typo from another person. By letter they are
+  one and two of nine apart. The threshold now matters for Hangul; it is the data's to set — on
+  synthetic Korean person records, 0.90 let distinct names agree and 0.95 still did for some vowel
+  changes, and with fitted parameters exact comparison did as well as either.
+
+### Fixed
+
+- **Decomposed Hangul and full-width digits compare equal in hosts with `InvariantGlobalization`.**
+  Field values, names and grounding text are compared in Unicode Form KC, so Hangul typed as jamo
+  (as text saved on macOS commonly arrives) meets the precomposed spelling and `０１０` meets `010`. In
+  a host built with `InvariantGlobalization` — usual for Native AOT — the runtime leaves non-ASCII
+  text unnormalized, and the same name in two forms disagreed. Eyu now composes Hangul and narrows
+  full-width ASCII itself; the rest of Form KC still depends on the host.
 
 ## 0.9.0
 

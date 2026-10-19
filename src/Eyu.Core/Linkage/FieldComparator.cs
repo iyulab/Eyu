@@ -11,7 +11,8 @@ namespace Eyu.Core.Linkage;
 /// (not whitespace inside the value), and comparing the values in one Unicode form
 /// (<see cref="TextForm.Fold"/>: decomposed Hangul, full-width digits); passing a
 /// <see cref="LinkageOptions"/> with <see cref="LinkageOptions.UseStringSimilarityComparator"/>
-/// set switches to a <see cref="JaroWinklerSimilarity"/> threshold instead, so notation variants
+/// set switches to a <see cref="JaroWinklerSimilarity"/> threshold instead — over Hangul spelled out
+/// as its jamo, so one changed letter of a syllable is one letter, not one of three characters — so notation variants
 /// (punctuation, spacing) that are not literal duplicates still register as
 /// <see cref="FieldAgreementLevel.Agree"/> — an exact match always scores 1.0 and clears any
 /// reasonable threshold, so this mode is a strict superset of the default's exact-match cases.
@@ -43,7 +44,7 @@ public static class FieldComparator
             var trimmedB = TextForm.Fold(valueB).Trim();
 
             var agrees = opts.UseStringSimilarityComparator
-                ? JaroWinklerSimilarity.Compute(trimmedA.ToUpperInvariant(), trimmedB.ToUpperInvariant())
+                ? JaroWinklerSimilarity.Compute(TextForm.DecomposeHangul(trimmedA.ToUpperInvariant()), TextForm.DecomposeHangul(trimmedB.ToUpperInvariant()))
                     >= opts.StringSimilarityAgreementThreshold
                 : string.Equals(trimmedA, trimmedB, StringComparison.OrdinalIgnoreCase);
 

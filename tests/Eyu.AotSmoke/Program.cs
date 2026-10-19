@@ -29,6 +29,12 @@ var records = new List<RawRecord>
 var linkage = LinkagePipeline.Analyze(records);
 Check(linkage.PairLinkages.Count == 3, $"linkage pairs: {linkage.PairLinkages.Count}");
 
+// This host has InvariantGlobalization, where the runtime leaves Hangul unnormalized: Eyu composes
+// decomposed jamo itself, so the same name typed on another system still agrees.
+var decomposed = new RawRecord("r-04", new Dictionary<string, string?> { ["name"] = "김민수", ["city"] = "서울" });
+var folded = FieldComparator.Compare(records[0], decomposed);
+Check(folded["name"] == FieldAgreementLevel.Agree, $"decomposed Hangul under invariant globalization: {folded["name"]}");
+
 const string answer = """
     {"entities": [
       {"id": "p1", "name": "김민수", "type": "Person", "claim": "two records of one person", "sources": ["r-01", "r-02"], "denotedBy": ["r-01", "r-02"], "confidence": 0.9},

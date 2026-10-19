@@ -131,6 +131,35 @@ public class FieldComparatorTests
     }
 
     [Fact]
+    public void Decomposed_hangul_agrees_with_precomposed_whatever_the_runtime_normalizes()
+    {
+        // Written out as conjoining jamo, so the test does not depend on the host's normalization —
+        // a host with InvariantGlobalization leaves Hangul unnormalized, and Eyu composes it itself.
+        var a = Record("rec-1", ("name", "김민준"), ("phone", "010"));
+        var b = Record("rec-2", ("name", "김민준"), ("phone", "０１０"));
+
+        var result = FieldComparator.Compare(a, b);
+
+        Assert.Equal(FieldAgreementLevel.Agree, result["name"]);
+        Assert.Equal(FieldAgreementLevel.Agree, result["phone"]);
+    }
+
+    [Theory]
+    [InlineData("김민준", "김민중", true)]   // one final consonant: one letter of nine
+    [InlineData("김민준", "이민준", false)]  // another family name
+    [InlineData("김철수", "김영희", false)]
+    public void Similarity_reads_hangul_by_its_letters_not_its_syllables(string a, string b, bool agrees)
+    {
+        // By syllable both first pairs differ in one character of three (0.822 each), so no threshold
+        // could tell a mistyped final consonant from another person's name.
+        var options = LinkageOptions.Default with { UseStringSimilarityComparator = true, StringSimilarityAgreementThreshold = 0.95 };
+
+        var result = FieldComparator.Compare(Record("rec-1", ("name", a)), Record("rec-2", ("name", b)), options);
+
+        Assert.Equal(agrees ? FieldAgreementLevel.Agree : FieldAgreementLevel.Disagree, result["name"]);
+    }
+
+    [Fact]
     public void Exact_match_ignores_surrounding_whitespace_but_not_whitespace_inside_the_value()
     {
         var a = Record("rec-1", ("name", "Kim  Minji"));

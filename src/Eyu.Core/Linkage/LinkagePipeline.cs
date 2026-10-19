@@ -273,6 +273,6 @@ public static class LinkagePipeline
             parts[k] = TextForm.Fold(value).Trim().ToUpperInvariant();
         }
 
-        return string.Join('', parts);
+        return string.Join('\u001F', parts);
     }
 }

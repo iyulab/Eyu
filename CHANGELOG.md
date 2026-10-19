@@ -8,7 +8,14 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.10.0
+
+A minor. Linkage can match new records against known entities with parameters fitted once on the
+population instead of on each call's own pairs, and can block which pairs it compares; similarity
+comparison reads Hangul by its letters. Hangul and full-width digits now compare equal in hosts with
+`InvariantGlobalization`, as Native AOT hosts usually are. `EstimationStatus` gains a value
+(`Supplied`). Pairs with Formbase 0.24.0. No prompt fingerprint changes; existing calls behave as
+before, except similarity comparison of Hangul values.
 
 ### Added
 

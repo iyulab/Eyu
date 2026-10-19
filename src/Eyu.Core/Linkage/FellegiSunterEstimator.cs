@@ -55,10 +55,23 @@ public static class FellegiSunterEstimator
     /// </summary>
     public const double PriorPseudoCount = 0.5;
 
+    /// <param name="comparisonVectors">One agreement vector per compared pair.</param>
+    /// <param name="maxIterations">The most EM rounds.</param>
+    /// <param name="convergenceTolerance">The largest parameter move still read as converged.</param>
+    /// <param name="fixedNonMatchAgreement">
+    /// The <c>u</c> of each field, measured elsewhere — typically
+    /// <see cref="LinkagePipeline.EstimateNonMatchAgreement"/> over random pairs of the population, which
+    /// are nearly all non-matches, so <c>u</c> needs no EM. When given, those fields' <c>u</c> is held where
+    /// it is and EM fits only <c>m</c> and the match prior; a field it does not name is fitted as usual.
+    /// That is how <c>m</c> is learned from pairs where duplicates gather (pairs that share a blocking value)
+    /// without the pairs' own skew also moving <c>u</c>. The components are not relabeled afterwards: with
+    /// <c>u</c> pinned, which component is the non-match one is already decided.
+    /// </param>
     public static FieldLinkageParameters Estimate(
         IReadOnlyList<IReadOnlyDictionary<string, FieldAgreementLevel>> comparisonVectors,
         int maxIterations = DefaultMaxIterations,
-        double convergenceTolerance = DefaultConvergenceTolerance)
+        double convergenceTolerance = DefaultConvergenceTolerance,
+        IReadOnlyDictionary<string, double>? fixedNonMatchAgreement = null)
     {
         ArgumentNullException.ThrowIfNull(comparisonVectors);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxIterations, 1);
@@ -66,17 +79,20 @@ public static class FellegiSunterEstimator
 
         var fieldNames = comparisonVectors.SelectMany(v => v.Keys).Distinct(StringComparer.Ordinal).ToList();
 
+        bool IsFixed(string field) => fixedNonMatchAgreement is not null && fixedNonMatchAgreement.ContainsKey(field);
+        double InitialU(string field) => IsFixed(field) ? fixedNonMatchAgreement![field] : HeuristicDefaultUAgreeProbability;
+
         if (comparisonVectors.Count < MinimumPairsForEmEstimation || fieldNames.Count == 0)
         {
             return new FieldLinkageParameters(
                 fieldNames.ToDictionary(f => f, _ => HeuristicDefaultMAgreeProbability, StringComparer.Ordinal),
-                fieldNames.ToDictionary(f => f, _ => HeuristicDefaultUAgreeProbability, StringComparer.Ordinal),
+                fieldNames.ToDictionary(f => f, InitialU, StringComparer.Ordinal),
                 HeuristicDefaultMatchPrior,
                 EstimationStatus.HeuristicDefault);
         }
 
         var m = fieldNames.ToDictionary(f => f, _ => HeuristicDefaultMAgreeProbability, StringComparer.Ordinal);
-        var u = fieldNames.ToDictionary(f => f, _ => HeuristicDefaultUAgreeProbability, StringComparer.Ordinal);
+        var u = fieldNames.ToDictionary(f => f, InitialU, StringComparer.Ordinal);
         var matchPrior = HeuristicDefaultMatchPrior;
         var converged = false;
 
@@ -127,7 +143,7 @@ public static class FellegiSunterEstimator
                 newM[field] = matchWeightSum <= 0.0
                     ? m[field]
                     : Math.Clamp(matchAgreeSum / matchWeightSum, AgreementProbabilityFloor, AgreementProbabilityCeiling);
-                newU[field] = nonMatchWeightSum <= 0.0
+                newU[field] = nonMatchWeightSum <= 0.0 || IsFixed(field)
                     ? u[field]
                     : Math.Clamp(nonMatchAgreeSum / nonMatchWeightSum, AgreementProbabilityFloor, AgreementProbabilityCeiling);
             }
@@ -146,8 +162,8 @@ public static class FellegiSunterEstimator
             }
         }
 
-        return WithMatchComponentFirst(
-            new FieldLinkageParameters(m, u, matchPrior, converged ? EstimationStatus.Converged : EstimationStatus.NotConverged));
+        var fitted = new FieldLinkageParameters(m, u, matchPrior, converged ? EstimationStatus.Converged : EstimationStatus.NotConverged);
+        return fixedNonMatchAgreement is null ? WithMatchComponentFirst(fitted) : fitted;
     }
 
     /// <summary>

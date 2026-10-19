@@ -10,6 +10,28 @@ every published version has a section here.
 
 ## Unreleased
 
+### Added
+
+- **Linkage can be fitted once and then score new records without refitting.** Matching one new
+  record against many known entities with `LinkagePipeline.Analyze(records, knownEntities)` fits EM
+  on that call's own pairs — about one true match among `N` — and reads whatever most pairs share
+  (a school, a year of birth) as identity: measured on 3,000 synthetic person records, every newcomer
+  sharing a name with someone was matched to somebody, at roughly 270 ms a record. Now:
+  - `LinkagePipeline.EstimateNonMatchAgreement(population)` measures each field's `u` over random
+    pairs of a population (every pair up to a budget, a deterministic sample past it). Random pairs
+    are nearly all non-matches, so this needs no EM.
+  - `FellegiSunterEstimator.Estimate(..., fixedNonMatchAgreement)` fits only `m` and the prior with
+    `u` held, for pairs where duplicates gather.
+  - `FieldLinkageParameters.FromNonMatchAgreement(u, matchAgreement, matchPrior)` builds parameters
+    from measured `u` and a caller-chosen `m`, marked `EstimationStatus.Supplied` (new). `m` has no
+    default: it is how often a true duplicate still agrees, and between 0.90 and 0.95 it decided
+    whether two people with one name were told apart.
+  - `LinkagePipeline.Analyze(records, knownEntities, parameters, options)` scores with the supplied
+    parameters; no EM runs. On the same 3,000 records every re-entered person was matched, newcomers
+    sharing a name were wrongly matched a third as often, and a record took about 7 ms.
+
+  The existing overloads are unchanged.
+
 ### Changed
 
 - `Eyu.Formbase` builds on `Formbase.Core` 0.23.0.

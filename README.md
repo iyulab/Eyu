@@ -368,6 +368,18 @@ reproduces the behavior of passing nothing, so a caller reaches for it only once
 run shows the defaults classifying that caller's data badly — what each value does, and
 what is still unmeasured about them, is in Status above.
 
+Asking whether a new record is someone already known, one record at a time, is a different job
+from deduplicating a batch, and it needs the parameters fitted elsewhere. A call of one record
+against `N` known entities holds about one true match among `N` pairs — too little for EM to learn
+what a match looks like, so a fit there reads whatever most pairs share as identity. Fit once on the
+population instead and keep the result: `LinkagePipeline.EstimateNonMatchAgreement` measures each
+field's `u` over random pairs of it, `m` comes from a reviewed sample or a fixed-`u` fit
+(`FellegiSunterEstimator.Estimate` with `fixedNonMatchAgreement`), and
+`FieldLinkageParameters.FromNonMatchAgreement` puts them together. Then
+`LinkagePipeline.Analyze(records, knownEntities, parameters)` scores each new record against the
+known ones without fitting anything; the matches are in `LinkageAnalysis.KnownCandidates`. Every pair
+is still compared, so the cost is linear in the known population per record.
+
 Gray-zone pairs grow with the square of the batch, so they — not the records — are what fills a
 prompt first: measured, 47 records produced 542 pairs, more lines than the records themselves, and
 104 records produced 2,187 pairs and a prompt past a 131,072-token context.

@@ -13,4 +13,10 @@ public enum EstimationStatus
     Converged,
     NotConverged,
     HeuristicDefault,
+
+    /// <summary>
+    /// No EM ran on the pairs being scored: the caller supplied the parameters — fitted once on a larger
+    /// population and kept, or set from measured values (<see cref="FieldLinkageParameters.FromNonMatchAgreement"/>).
+    /// </summary>
+    Supplied,
 }

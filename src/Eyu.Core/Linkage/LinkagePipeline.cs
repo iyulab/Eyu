@@ -52,6 +52,90 @@ public static class LinkagePipeline
     /// <see cref="LinkageAnalysis.KnownCandidates"/>.
     /// </summary>
     public static LinkageAnalysis Analyze(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, LinkageOptions? options = null)
+        => AnalyzeCore(records, knownEntities, suppliedParameters: null, options);
+
+    /// <summary>
+    /// The same analysis, scored with <paramref name="parameters"/> instead of parameters fitted on this
+    /// call's pairs — no EM runs. This is the way to ask «is this new record someone we already know»
+    /// one record at a time: a call of one record against <c>N</c> known ones holds about one true match
+    /// among <c>N</c> pairs, too little for EM to tell what a match looks like, and fitting there reads
+    /// whatever most pairs share (a school, a year) as identity. Fit once on the population instead —
+    /// <c>u</c> from <see cref="EstimateNonMatchAgreement"/>, <c>m</c> from a reviewed sample or a
+    /// fixed-<c>u</c> fit (<see cref="FellegiSunterEstimator.Estimate"/>) — keep the result, and score each
+    /// call with it. A field the parameters do not name carries no evidence.
+    /// </summary>
+    public static LinkageAnalysis Analyze(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, FieldLinkageParameters parameters, LinkageOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        return AnalyzeCore(records, knownEntities, suppliedParameters: parameters, options);
+    }
+
+    /// <summary>
+    /// Each field's <c>u</c> — how often two records that are <em>not</em> the same entity still agree on
+    /// it — measured over pairs of <paramref name="population"/>: every pair when there are at most
+    /// <paramref name="maxPairs"/>, otherwise that many pairs drawn at random (deterministic for one
+    /// <paramref name="seed"/>). Random pairs of a population are almost all non-matches, so this needs no
+    /// EM and is not distorted by how few duplicates there are; it is also what tells a weak field (a
+    /// school five hundred pupils share) from a strong one (a name). Compared exactly as
+    /// <see cref="FieldComparator.Compare"/> compares under <paramref name="options"/>, and bounded like
+    /// every fitted value (<see cref="FellegiSunterEstimator.AgreementProbabilityFloor"/>). A field that is
+    /// never present on both sides of a pair is absent from the result.
+    /// </summary>
+    public static IReadOnlyDictionary<string, double> EstimateNonMatchAgreement(
+        IReadOnlyList<RawRecord> population, LinkageOptions? options = null, int maxPairs = DefaultNonMatchSamplePairs, int seed = 0)
+    {
+        ArgumentNullException.ThrowIfNull(population);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxPairs, 1);
+        var opts = options ?? LinkageOptions.Default;
+        opts.Validate();
+
+        var agreed = new Dictionary<string, long>(StringComparer.Ordinal);
+        var compared = new Dictionary<string, long>(StringComparer.Ordinal);
+        void Count(RawRecord a, RawRecord b)
+        {
+            foreach (var (field, level) in FieldComparator.Compare(a, b, opts))
+            {
+                compared[field] = compared.GetValueOrDefault(field) + 1;
+                if (level == FieldAgreementLevel.Agree)
+                {
+                    agreed[field] = agreed.GetValueOrDefault(field) + 1;
+                }
+            }
+        }
+
+        var n = population.Count;
+        var allPairs = (long)n * (n - 1) / 2;
+        if (allPairs <= maxPairs)
+        {
+            for (var i = 0; i < n; i++)
+            {
+                for (var j = i + 1; j < n; j++)
+                {
+                    Count(population[i], population[j]);
+                }
+            }
+        }
+        else
+        {
+            var random = new Random(seed);
+            for (var s = 0; s < maxPairs; s++)
+            {
+                var i = random.Next(n);
+                var j = random.Next(n - 1);
+                Count(population[i], population[j >= i ? j + 1 : j]);
+            }
+        }
+
+        return compared.ToDictionary(
+            kv => kv.Key,
+            kv => Math.Clamp((double)agreed.GetValueOrDefault(kv.Key) / kv.Value, FellegiSunterEstimator.AgreementProbabilityFloor, FellegiSunterEstimator.AgreementProbabilityCeiling),
+            StringComparer.Ordinal);
+    }
+
+    /// <summary>The default pair budget of <see cref="EstimateNonMatchAgreement"/>.</summary>
+    public const int DefaultNonMatchSamplePairs = 100_000;
+
+    private static LinkageAnalysis AnalyzeCore(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, FieldLinkageParameters? suppliedParameters, LinkageOptions? options)
     {
         ArgumentNullException.ThrowIfNull(records);
         ArgumentNullException.ThrowIfNull(knownEntities);
@@ -89,7 +173,8 @@ public static class LinkagePipeline
 
         var ownVectors = ownPairs.Select(p => FieldComparator.Compare(p.A, p.B, opts)).ToList();
         var crossVectors = crossPairs.Select(p => FieldComparator.Compare(p.Record, p.Known, opts)).ToList();
-        var parameters = FellegiSunterEstimator.Estimate([.. ownVectors, .. crossVectors], opts.MaxIterations, opts.ConvergenceTolerance);
+        var parameters = suppliedParameters
+            ?? FellegiSunterEstimator.Estimate([.. ownVectors, .. crossVectors], opts.MaxIterations, opts.ConvergenceTolerance);
 
         var pairLinkages = new List<PairLinkage>(ownPairs.Count);
         for (var i = 0; i < ownPairs.Count; i++)

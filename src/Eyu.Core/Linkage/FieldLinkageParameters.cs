@@ -30,4 +30,33 @@ public sealed record FieldLinkageParameters(
     /// know the batch needed it. Never set on a <see cref="EstimationStatus.HeuristicDefault"/>.
     /// </summary>
     public bool LabelsSwapped { get; init; }
+
+    /// <summary>
+    /// Parameters for scoring new records against a population without fitting anything on them: each
+    /// field's <c>u</c> as measured (<see cref="LinkagePipeline.EstimateNonMatchAgreement"/>), one
+    /// <paramref name="matchAgreement"/> as every field's <c>m</c>, and <see cref="EstimationStatus.Supplied"/>.
+    /// There is no default for <paramref name="matchAgreement"/> on purpose: it is how often a true
+    /// duplicate still agrees on a field, a property of how the records were written, and between 0.90
+    /// and 0.95 it decides whether two different people with one name are told apart — the data has to
+    /// set it (a reviewed sample, or <see cref="FellegiSunterEstimator.Estimate"/> with <c>u</c> fixed over
+    /// pairs where duplicates gather).
+    /// </summary>
+    /// <param name="nonMatchAgreement">Each field's <c>u</c>.</param>
+    /// <param name="matchAgreement">Every field's <c>m</c>; inside (0, 1).</param>
+    /// <param name="matchPrior">The match prior; only posteriors read it, the log-likelihood ratio does not.</param>
+    public static FieldLinkageParameters FromNonMatchAgreement(
+        IReadOnlyDictionary<string, double> nonMatchAgreement, double matchAgreement, double matchPrior)
+    {
+        ArgumentNullException.ThrowIfNull(nonMatchAgreement);
+        if (matchAgreement is not (> 0.0 and < 1.0))
+        {
+            throw new ArgumentOutOfRangeException(nameof(matchAgreement), matchAgreement, "Must be strictly between 0 and 1.");
+        }
+
+        return new FieldLinkageParameters(
+            nonMatchAgreement.Keys.ToDictionary(f => f, _ => matchAgreement, StringComparer.Ordinal),
+            new Dictionary<string, double>(nonMatchAgreement, StringComparer.Ordinal),
+            matchPrior,
+            EstimationStatus.Supplied);
+    }
 }

@@ -358,14 +358,14 @@ public class HttpModelClientTests
     }
 
     [Fact]
-    public async Task An_error_in_the_stream_ends_the_call_with_it()
+    public async Task An_error_in_the_stream_ends_the_call_as_a_failed_request()
     {
         var handler = new FakeHandler(_ => Task.FromResult(Streamed(
             """data: {"choices":[{"delta":{"content":"par"}}]}""",
             """data: {"error":{"message":"context length exceeded"}}""")));
         var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", stream: true);
 
-        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+        var failure = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
 
         Assert.Contains("context length exceeded", failure.Message, StringComparison.Ordinal);
     }

@@ -171,7 +171,9 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
             var chunk = JsonSerializer.Deserialize(data, WireJsonContext.Default.ChatCompletionChunk);
             if (chunk?.Error is { } error)
             {
-                throw new InvalidOperationException($"The model endpoint reported an error in the stream: {Excerpt(error.GetRawText())}");
+                // The endpoint failed the request after its 200 — the same failure a non-success status
+                // reports, so a caller handles it the same way (a retry, a call counted as failed).
+                throw new HttpRequestException($"The model endpoint reported an error in the stream: {Excerpt(error.GetRawText())}");
             }
 
             if (chunk?.Choices is [{ Delta.Content: { } piece }, ..])

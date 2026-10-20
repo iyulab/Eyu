@@ -12,6 +12,10 @@ every published version has a section here.
 
 ### Changed
 
+- **An error the endpoint reports inside a streamed answer is an `HttpRequestException`**, as a
+  non-success status is, rather than an `InvalidOperationException` — a caller that retries or counts
+  failed calls on transport errors now does so for a gateway that fails mid-stream too.
+
 - **Breaking: what earlier calls found is passed as one `PriorKnowledge`.** `IOntologyProposer` has
   two overloads, `ProposeAsync(declared, records)` and `ProposeAsync(declared, records, prior)`; the
   overloads taking `knownEntities` and `knownEntities, mentionedEntities` are gone. Migrate

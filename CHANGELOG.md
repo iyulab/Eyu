@@ -8,7 +8,15 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.16.0
+
+A minor. The pre-filter no longer pre-links the rows of a repeated section across their parents: rows
+owned by different parents are not compared, whether the parent declares them (`Child`) or they
+declare their parent (`DeclaredRelationKind.Parent`, new — `Eyu.Formbase` now declares a section's link
+that way). A caller whose declarations use `Child` sees fewer compared pairs: records of two owners are
+no longer candidates for one another. `LinkagePipeline.Analyze` gains an optional `comparisonScope`
+parameter — source-compatible, but code compiled against 0.15 must be rebuilt. The prompt's fixed text
+is unchanged, so its fingerprint stays (`98229faf`). Built against Formbase 0.30.0.
 
 ### Fixed
 

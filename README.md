@@ -7,8 +7,10 @@
 > a piece of data is shaped the way it is, made explicit and citable.
 
 **Status:** contract implemented; grounding integrity and response parsing validated against a real
-model; entity-resolution accuracy measured on a labeled public benchmark (B-cubed F1 0.99–1.00 on Febrl
-synthetic person records) and not yet on any other data; used by one external package consumer on a
+model; entity-resolution accuracy measured on labeled public benchmarks — B-cubed F1 0.99–1.00 on Febrl
+synthetic person records, and pair-level F1 0.93–1.00 from the pre-filter alone on clean structured
+entity-matching sets, where product, dirty and long-text sets leave most pairs to the model (details in
+[Status](docs/status.md)); used by one external package consumer on a
 Korean-language document corpus. All five ports exist (`Eyu.Core`), with a Formbase source adapter
 (`Eyu.Formbase`) and an RDF/OWL writer (`Eyu.Rdf`), all three on NuGet. What
 each measurement establishes — and what it does not, starting with the absence of a human-reviewed
@@ -346,7 +348,8 @@ against `N` known entities holds about one true match among `N` pairs — too li
 what a match looks like, so a fit there reads whatever most pairs share as identity. Fit once on the
 population instead and keep the result: `LinkagePipeline.EstimateNonMatchAgreement` measures each
 field's `u` over random pairs of it, `m` comes from a reviewed sample or a fixed-`u` fit
-(`FellegiSunterEstimator.Estimate` with `fixedNonMatchAgreement`), and
+(`FellegiSunterEstimator.Estimate` with `fixedNonMatchAgreement` — on pairs whose non-matches agree
+about as often as random pairs do; pairs picked for looking alike inflate the fitted match prior), and
 `FieldLinkageParameters.FromNonMatchAgreement` puts them together. Then
 `LinkagePipeline.Analyze(records, knownEntities, parameters)` scores each new record against the
 known ones without fitting anything; the matches are in `LinkageAnalysis.KnownCandidates`. A proposal

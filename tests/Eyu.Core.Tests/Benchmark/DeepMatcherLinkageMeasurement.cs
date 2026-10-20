@@ -40,6 +40,9 @@ public class DeepMatcherLinkageMeasurement(ITestOutputHelper output)
 
     private static readonly string[] Splits = ["train", "valid", "test"];
 
+    /// <summary>Random pairs drawn to measure <c>u</c>; the library's default budget is larger than these tables need.</summary>
+    private const int NonMatchSamplePairs = 20_000;
+
     [Fact]
     public async Task Measure_pair_level_accuracy_on_deepmatcher_benchmarks()
     {
@@ -54,10 +57,16 @@ public class DeepMatcherLinkageMeasurement(ITestOutputHelper output)
             ? [.. names.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)]
             : Datasets;
 
-        var configurations = new (string Name, LinkageOptions Options)[]
+        // «u from random pairs»: each field's non-match agreement measured over random pairs of the two
+        // tables pooled (nearly all non-matches — each table is free of duplicates) and held while EM fits
+        // m and the prior — the fit the library documents for candidates that gather duplicates.
+        var similarity = LinkageOptions.Default with { UseStringSimilarityComparator = true };
+        var configurations = new (string Name, LinkageOptions Options, bool FixU)[]
         {
-            ("exact", LinkageOptions.Default),
-            ("Jaro-Winkler ≥ 0.90", LinkageOptions.Default with { UseStringSimilarityComparator = true }),
+            ("exact", LinkageOptions.Default, false),
+            ("Jaro-Winkler ≥ 0.90", similarity, false),
+            ("exact, u from random pairs", LinkageOptions.Default, true),
+            ("Jaro-Winkler ≥ 0.90, u from random pairs", similarity, true),
         };
 
         var report = new StringBuilder()
@@ -85,11 +94,12 @@ public class DeepMatcherLinkageMeasurement(ITestOutputHelper output)
                 }
             }
 
-            foreach (var (name, options) in configurations)
+            foreach (var (name, options, fixU) in configurations)
             {
                 var clock = Stopwatch.StartNew();
                 var vectors = pairs.Select(p => FieldComparator.Compare(p.A, p.B, options)).ToList();
-                var parameters = FellegiSunterEstimator.Estimate(vectors, options.MaxIterations, options.ConvergenceTolerance);
+                var u = fixU ? LinkagePipeline.EstimateNonMatchAgreement([.. left.Values, .. right.Values], options, NonMatchSamplePairs) : null;
+                var parameters = FellegiSunterEstimator.Estimate(vectors, options.MaxIterations, options.ConvergenceTolerance, u);
                 var test = pairs.Select((p, i) => (p, i))
                     .Where(x => x.p.Split == "test")
                     .Select(x =>

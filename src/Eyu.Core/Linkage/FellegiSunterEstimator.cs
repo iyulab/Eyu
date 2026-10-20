@@ -64,8 +64,12 @@ public static class FellegiSunterEstimator
     /// are nearly all non-matches, so <c>u</c> needs no EM. When given, those fields' <c>u</c> is held where
     /// it is and EM fits only <c>m</c> and the match prior; a field it does not name is fitted as usual.
     /// That is how <c>m</c> is learned from pairs where duplicates gather (pairs that share a blocking value)
-    /// without the pairs' own skew also moving <c>u</c>. The components are not relabeled afterwards: with
-    /// <c>u</c> pinned, which component is the non-match one is already decided.
+    /// without the pairs' own skew also moving <c>u</c> — provided the non-matches among those pairs agree
+    /// about as often as random pairs do. Pairs selected for looking alike break that: their non-matches
+    /// agree far more than the pinned <c>u</c> says, and EM puts the excess into the match component
+    /// (measured on candidate sets of entity-matching benchmarks: a fitted match prior of 0.86–0.99 where
+    /// the true share was 0.09–0.25, and precision falling with it). The components are not relabeled
+    /// afterwards: with <c>u</c> pinned, which component is the non-match one is already decided.
     /// </param>
     public static FieldLinkageParameters Estimate(
         IReadOnlyList<IReadOnlyDictionary<string, FieldAgreementLevel>> comparisonVectors,

@@ -6,8 +6,10 @@ README carries the one-paragraph summary; this page carries the detail.
 ## In one line
 
 Contract implemented; grounding integrity and response-parsing reliability validated against a real
-model; entity-resolution accuracy measured on a labeled public benchmark (B-cubed F1 0.99–1.00 on
-Febrl synthetic person records) and not yet on any other data; exercised by one external package
+model; entity-resolution accuracy measured on labeled public benchmarks (B-cubed F1 0.99–1.00 on
+Febrl synthetic person records; pair-level F1 0.93–1.00 from the pre-filter alone on clean structured
+entity-matching sets, with most pairs left to the model on product, dirty and long-text sets) and not
+yet reviewed by people on domain data; exercised by one external package
 consumer on a Korean-language document corpus, whose first measurement is what the entity `Name`,
 per-element `Rejections` and stamped `VocabularyOrigin` answer.
 
@@ -56,9 +58,14 @@ Bayesian update instead of using it alone.
 
 ## Entity-resolution accuracy
 
-On a labeled public benchmark the pre-filter has been scored — [linkage-benchmark.md](linkage-benchmark.md):
+On labeled public benchmarks the pre-filter has been scored — [linkage-benchmark.md](linkage-benchmark.md):
 B-cubed F1 0.99–1.00 on Febrl person records, 0.991–0.994 on names and addresses alone with exact
-comparison.
+comparison. On the thirteen entity-matching benchmarks of the DeepMatcher study (two tables, labeled
+candidate pairs, pair-level F1 on the test split, unsupervised): 0.93–1.00 from the pre-filter alone on
+clean structured sets; on product, dirty and long-text sets 87–100% of pairs fall in the gray zone the
+model adjudicates, and the ratio separates matches weakly where whole field values rarely agree (best
+single threshold 0.19–0.34 on Amazon-Google and Abt-Buy, and 0.40 on Company — no better than calling
+every pair a match) — a comparator ceiling, not a threshold one.
 
 Where there is no ground truth, the pre-filter reports an *unlabeled estimate* of its own error rates
 (`LinkageAnalysis.ErrorRates`: the false-match and false-non-match rates the fitted EM mixture expects of
@@ -80,9 +87,14 @@ Field comparison inside the pre-filter is exact-match (case-insensitive, ignorin
 and Unicode form — decomposed Hangul, full-width digits) by default;
 `LinkageOptions.UseStringSimilarityComparator` opts into a Jaro-Winkler threshold instead, so two records
 denoting the same entity but differing only in notation (punctuation, spacing) still register as agreeing
-on that field. There is still no ground truth to say which mode classifies better on any given dataset, so
-the option exists but the default is unchanged.
+on that field. On the entity-matching benchmarks its ratios separated matches better than exact comparison's
+on nine of thirteen sets and worse on two (Walmart-Amazon: 0.66 → 0.45 best single threshold), so the
+default is unchanged. Neither
+compares tokens: two values agree as wholes or not at all.
 
 A field the caller declared as a reference (an inspection log's machine tag) is not compared at all for
 records whose subject is known (`RawRecord.Subject`): it names another entity, so agreeing on it is not
-evidence that two records are one.
+evidence that two records are one. A field that names an owner — a `Child` relation's field, or a
+`Parent` relation's when a child is declared on its own (rows of a form's repeated section) — also bounds
+which pairs exist: records of two owners are never compared, since two rows of different sheets are two
+rows whatever their cells say.

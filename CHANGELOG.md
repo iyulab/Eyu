@@ -37,6 +37,14 @@ every published version has a section here.
 - **`Eyu.Formbase` declares a repeated section's link to its parent as `Parent`** (was `Reference`), so
   a section read without its parent form type keeps its rows apart by sheet.
 
+### Documentation
+
+- **Entity-matching benchmark results** (`docs/linkage-benchmark.md`, `docs/status.md`, README Status):
+  the pre-filter on the thirteen benchmarks of the DeepMatcher study, pair-level on the test split.
+- **`FellegiSunterEstimator.Estimate`'s `fixedNonMatchAgreement`** now states the precondition the fit
+  needs: the pairs' non-matches must agree about as often as random pairs do. Pairs selected for looking
+  alike break it and inflate the fitted match prior (measured).
+
 ## 0.15.0
 
 A minor. The base prompt says a source is a record's id, never a value written in a record, so a

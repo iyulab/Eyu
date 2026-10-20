@@ -1,6 +1,8 @@
-# Linkage accuracy on a labeled benchmark
+# Linkage accuracy on labeled benchmarks
 
-What `LinkagePipeline` achieves on public data whose true clusters are known, and what the
+Two kinds of public data: Febrl, whose true clusters are known for every record (the sections below), and
+the entity-matching benchmarks of the DeepMatcher study, which label candidate pairs
+([at the end](#entity-matching-benchmarks--pair-level-test-split)). For Febrl: what `LinkagePipeline` achieves, and what the
 clerical review protocol ([clerical-review.md](clerical-review.md)) says about the same runs when
 the labels play the reviewer. Measured with the estimator as of this release: the EM fits its own match prior and keeps a cap
 on per-field evidence (see "The unlabeled estimate" below). The numbers are properties of these datasets and configurations
@@ -141,3 +143,73 @@ minutes, half of it re-fitting the model at neighbouring thresholds (each report
 "Run cost" line per configuration); it needs the network the first time (`EYU_BENCHMARK_CACHE` keeps the files).
 The scale comparison above is a separate test in the same class and takes under two minutes on its
 own (`--filter-method "*Compare_threshold_scales*"`).
+
+## Entity-matching benchmarks — pair-level, test split
+
+The thirteen benchmarks of the DeepMatcher study (Mudgal et al., *Deep Learning for Entity Matching: A
+Design Space Exploration*, SIGMOD 2018), as the field scores them: two tables of one schema, each free of
+duplicates, and labeled candidate pairs split into train, validation and test; the score is pair-level F1
+on the test split. The candidate pairs are the benchmarks' own (they ship blocked), so what is measured is
+the comparator, the estimator and the classifier, not the batch-wide pair generation of
+`LinkagePipeline.Analyze`. The data is not in this repository and is not fetched: the measurement reads a
+local copy of the published files, checked against a SHA-256 manifest, and reports counts and scores only.
+
+Unsupervised, as Eyu runs: EM fits on every candidate pair's comparison vector (train, validation and
+test, labels ignored), the default thresholds classify, and the labels score the test pairs only. Every
+column but `id` is compared. Three readings, because the pre-filter is not a matcher that decides alone —
+it passes the gray zone on to a model:
+
+- **alone** — a gray-zone pair counts as no match;
+- **gray share** — the pairs left to the model;
+- **oracle** — the best single threshold on the ratio, chosen on the test labels: how well the ratios
+  separate, never a result.
+
+| set | test pairs (matches) | exact: alone F1 · gray · oracle | Jaro-Winkler ≥ 0.90: alone F1 · gray · oracle |
+|---|---|---|---|
+| Structured / Fodors-Zagats | 189 (22) | 0.977 · 0.01 · 1.000 | 1.000 · 0.02 · 1.000 |
+| Structured / DBLP-ACM | 2,473 (444) | 0.934 · 0.16 · 0.943 | 0.954 · 0.15 · 0.966 |
+| Structured / iTunes-Amazon | 109 (27) | 0.714 · 0.61 · 0.898 | 0.906 · 0.59 · 0.947 |
+| Structured / DBLP-Scholar | 5,742 (1,070) | 0.224 · 0.98 · 0.685 | 0.725 · 0.60 · 0.826 |
+| Structured / Beer | 91 (14) | 0.421 · 0.95 · 0.714 | 0.444 · 0.96 · 0.828 |
+| Structured / Walmart-Amazon | 2,049 (193) | 0.135 · 0.99 · 0.660 | 0.248 · 0.98 · 0.452 |
+| Structured / Amazon-Google | 2,293 (234) | 0.034 · 0.93 · 0.286 | 0.087 · 0.95 · 0.340 |
+| Dirty / DBLP-ACM | 2,473 (444) | 0.013 · 0.94 · 0.399 | 0.268 · 0.87 · 0.750 |
+| Dirty / DBLP-Scholar | 5,742 (1,070) | 0.118 · 0.90 · 0.349 | 0.316 · 0.95 · 0.659 |
+| Dirty / iTunes-Amazon | 109 (27) | 0.121 · 0.93 · 0.475 | 0.121 · 0.94 · 0.444 |
+| Dirty / Walmart-Amazon | 2,049 (193) | 0.229 · 0.98 · 0.266 | 0.050 · 0.99 · 0.328 |
+| Textual / Abt-Buy | 1,916 (206) | 0.000 · 1.00 · 0.194 | 0.010 · 1.00 · 0.248 |
+| Textual / Company | 22,503 (5,640) | 0.000 · 1.00 · 0.401 | 0.000 · 1.00 · 0.401 |
+
+What it says:
+
+- **Clean structured sets are decided by the pre-filter alone** (Fodors-Zagats, DBLP-ACM: 0.93–1.00),
+  near what supervised matchers report on the same splits (98–100 F1 — Li et al., *Deep Entity Matching
+  with Pre-Trained Language Models*, VLDB 2021, table 5).
+- **Elsewhere most pairs are left to the model** (gray share 0.6–1.0), and the separating line sits inside
+  the gray zone: the oracle thresholds of those sets fall between −1 and 3, against defaults of ±4. The defaults are
+  conservative by design and are not tuned on these labels.
+- **Whole-field comparison is the ceiling on product titles and long text.** Two titles of one product
+  rarely agree as whole values, exactly or at Jaro-Winkler 0.90 (Amazon-Google oracle 0.29–0.34, Abt-Buy
+  0.19–0.25); a single long `content` field carries no signal (Company: the oracle equals calling every
+  pair a match). Dirty sets move values between columns, which column-aligned comparison cannot follow.
+  Token-level comparison, a standard feature for such data, is not among the comparators.
+- **EM often does not converge on these candidate sets** (reported as `EstimationStatus.NotConverged`),
+  and where it inflates the match prior (Walmart-Amazon, Jaro-Winkler: 0.31 against a true share of 0.09)
+  precision falls with it — the same family as the unsupervised Fellegi-Sunter baseline (ECM) reported at
+  0.01–0.09 F1 by Wu et al., *ZeroER*, SIGMOD 2020, table 3, on candidates of that paper's own blocking.
+- **Pinning `u` to random pairs does not help here.** A second pair of configurations measures each field's
+  `u` over random pairs of the two tables pooled and holds it while EM fits `m` and the prior. These
+  candidate pairs were selected for looking alike, so their non-matches agree far more than random pairs
+  do; EM puts the excess into the match component (fitted priors 0.86–0.99 where the true share is
+  0.09–0.25) and precision collapses (Fodors-Zagats, Jaro-Winkler: 1.000 → 0.301 alone). The joint fit is
+  the better one on such candidates.
+
+Reproducing:
+
+```
+EYU_DEEPMATCHER_ROOT=<directory holding exp/<Type>/<Dataset>/exp_data/*.csv and SHA256SUMS> \
+  dotnet test tests/Eyu.Core.Tests -p:IncludeEyuBenchmarks=true --filter-class Eyu.Core.Tests.Benchmark.DeepMatcherLinkageMeasurement
+```
+
+`EYU_DEEPMATCHER_DATASETS` (comma-separated, e.g. `Structured/DBLP-ACM`) selects sets. Twelve sets take
+seconds; Company's long text under Jaro-Winkler takes about twenty minutes on one core.

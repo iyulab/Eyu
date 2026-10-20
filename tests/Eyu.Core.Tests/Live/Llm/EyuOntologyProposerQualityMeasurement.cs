@@ -106,6 +106,10 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         /// <summary>Question text -> how many parsed attempts produced a vocabulary that reaches it.</summary>
         public readonly Dictionary<string, int> QuestionsReached = [];
+        // Per question, over scored attempts: attempts that reached at least one of its concepts, and
+        // the sum of the share of its concepts reached — cq4oe's AtLeastOne and Mean beside Full.
+        public readonly Dictionary<string, int> QuestionsTouched = [];
+        public readonly Dictionary<string, double> QuestionShareSum = [];
 
         /// <summary>Parsed attempts, the denominator the answerability counts are out of.</summary>
         public int ScoredAttempts;
@@ -908,6 +912,15 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         foreach (var question in questions)
         {
             stats.QuestionsReached.TryAdd(question.Question, 0);
+            stats.QuestionsTouched.TryAdd(question.Question, 0);
+            stats.QuestionShareSum.TryAdd(question.Question, 0);
+            var conceptsReached = CompetencyQuestionReach.ConceptsReached(question, vocabulary);
+            if (conceptsReached > 0)
+            {
+                stats.QuestionsTouched[question.Question]++;
+            }
+
+            stats.QuestionShareSum[question.Question] += (double)conceptsReached / question.RequiredConcepts.Length;
             if (CompetencyQuestionReach.Reaches(question, vocabulary))
             {
                 stats.QuestionsReached[question.Question]++;
@@ -1153,13 +1166,17 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
         report.AppendLine().AppendLine("## Competency questions (vocabulary reach — heuristic, not a semantic check)")
             .AppendLine()
-            .AppendLine("| case | question | reached |")
-            .AppendLine("|---|---|---|");
+            .AppendLine("Per question, over scored attempts: **reached** = every concept it names is in the vocabulary (cq4oe's *FullCoverage*); **at least one** = any of them (*AtLeastOneCoverage*); **mean share** = the share of its concepts reached, averaged (*MeanCoverage*). Concepts are matched by substring against hand-written alternatives, not by cq4oe's similarity alignment.")
+            .AppendLine()
+            .AppendLine("| case | question | reached | at least one | mean share |")
+            .AppendLine("|---|---|---|---|---|");
         foreach (var (name, s) in stats)
         {
             foreach (var (question, reached) in s.QuestionsReached)
             {
-                report.AppendLine(CultureInfo.InvariantCulture, $"| {name} | {question} | {reached}/{s.ScoredAttempts} |");
+                var touched = s.QuestionsTouched.GetValueOrDefault(question);
+                var share = s.ScoredAttempts == 0 ? "-" : (s.QuestionShareSum.GetValueOrDefault(question) / s.ScoredAttempts).ToString("F2", CultureInfo.InvariantCulture);
+                report.AppendLine(CultureInfo.InvariantCulture, $"| {name} | {question} | {reached}/{s.ScoredAttempts} | {touched}/{s.ScoredAttempts} | {share} |");
             }
         }
 

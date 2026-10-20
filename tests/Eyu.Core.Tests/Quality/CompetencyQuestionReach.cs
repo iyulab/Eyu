@@ -99,6 +99,16 @@ internal static class CompetencyQuestionReach
         question.RequiredConcepts.All(concept => IsReached(concept, vocabulary));
 
     /// <summary>
+    /// How many of the question's concepts <paramref name="vocabulary"/> reaches — the count behind the
+    /// three CQ-conditioned coverages the cq4oe benchmark reports per question: at least one (any
+    /// reached), mean (the share reached) and full (all reached — what <see cref="Reaches"/> answers).
+    /// A question missed by one concept of four and one missed entirely are both «not reached»; the
+    /// share tells them apart.
+    /// </summary>
+    public static int ConceptsReached(CompetencyQuestion question, IReadOnlyList<string> vocabulary) =>
+        question.RequiredConcepts.Count(concept => IsReached(concept, vocabulary));
+
+    /// <summary>
     /// For a question that was <em>not</em> reached: each concept it did reach, with the entities
     /// whose type carries that concept. A missed question names the concept that is absent, which
     /// leaves a reader to guess whether the model ignored the idea or expressed it some other way.

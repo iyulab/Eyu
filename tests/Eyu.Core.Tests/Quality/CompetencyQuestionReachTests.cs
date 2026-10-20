@@ -181,4 +181,15 @@ public class CompetencyQuestionReachTests
                 $"type \"{type}\" should reach the plant concept");
         }
     }
+
+    [Fact]
+    public void A_partly_reached_question_counts_the_concepts_it_reached()
+    {
+        var question = new CompetencyQuestion("Which events belong to a plant?", ["plant", "event|incident", "occurred"]);
+
+        Assert.Equal(2, CompetencyQuestionReach.ConceptsReached(question, ["powerplant", "incidentreport"]));
+        Assert.Equal(0, CompetencyQuestionReach.ConceptsReached(question, ["machine"]));
+        Assert.Equal(3, CompetencyQuestionReach.ConceptsReached(question, ["powerplant", "event", "occurredat"]));
+        Assert.False(CompetencyQuestionReach.Reaches(question, ["powerplant", "incidentreport"]));
+    }
 }

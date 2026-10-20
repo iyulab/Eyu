@@ -14,8 +14,8 @@ namespace Eyu.Core.Linkage;
 /// same machine, grouped with the machine's register entry).
 /// <para>
 /// The role is read per subject, from the declaration: a record of subject S references through the
-/// <see cref="DeclaredRelation.ViaField"/> of each of S's <see cref="DeclaredRelationKind.Reference"/>
-/// relations, and through the <see cref="DeclaredRelation.ViaField"/> of every other subject's
+/// <see cref="DeclaredRelation.ViaField"/> of each of S's <see cref="DeclaredRelationKind.Reference"/> and
+/// <see cref="DeclaredRelationKind.Parent"/> relations, and through the <see cref="DeclaredRelation.ViaField"/> of every other subject's
 /// <see cref="DeclaredRelationKind.Child"/> relation whose target is S (the child carries the key).
 /// A relation that does not say its side (<see cref="DeclaredRelation.Kind"/> unset) is not read —
 /// guessing would strip a record's own key. A record without a <see cref="RawRecord.Subject"/> keeps
@@ -63,9 +63,10 @@ public static class LinkageEvidence
 
     /// <summary>
     /// The scope a record can only be the same thing within, read from the declarations: a subject some
-    /// declaration names as the target of a <see cref="DeclaredRelationKind.Child"/> relation holds rows
-    /// owned by a parent — a sheet's checked items, an order's lines — and the relation's
-    /// <see cref="DeclaredRelation.ViaField"/> names the parent. Two rows of different parents are two
+    /// declaration names as the target of a <see cref="DeclaredRelationKind.Child"/> relation, or that
+    /// declares a <see cref="DeclaredRelationKind.Parent"/> relation itself (a child read without its
+    /// parent), holds rows owned by a parent — a sheet's checked items, an order's lines — and the
+    /// relation's <see cref="DeclaredRelation.ViaField"/> names the parent. Two rows of different parents are two
     /// rows whatever their cells say (the same item checked on two sheets is two readings), so their
     /// scopes differ and <see cref="LinkagePipeline"/> does not compare them; rows of one parent are
     /// still compared. The parent key stays out of what is compared (<see cref="IdentityView"/>) — it
@@ -87,18 +88,33 @@ public static class LinkageEvidence
         ArgumentNullException.ThrowIfNull(declaredStructures);
 
         var ownerFields = new Dictionary<SubjectRef, SortedSet<string>>();
+        void Own(SubjectRef owned, string? field)
+        {
+            if (string.IsNullOrWhiteSpace(field))
+            {
+                return;
+            }
+
+            if (!ownerFields.TryGetValue(owned, out var fields))
+            {
+                ownerFields[owned] = fields = new SortedSet<string>(StringComparer.Ordinal);
+            }
+
+            fields.Add(field);
+        }
+
         foreach (var structure in declaredStructures)
         {
             foreach (var relation in structure.Relations)
             {
-                if (relation.Kind == DeclaredRelationKind.Child && !string.IsNullOrWhiteSpace(relation.ViaField))
+                switch (relation.Kind)
                 {
-                    if (!ownerFields.TryGetValue(relation.Target, out var fields))
-                    {
-                        ownerFields[relation.Target] = fields = new SortedSet<string>(StringComparer.Ordinal);
-                    }
-
-                    fields.Add(relation.ViaField);
+                    case DeclaredRelationKind.Child:
+                        Own(relation.Target, relation.ViaField);
+                        break;
+                    case DeclaredRelationKind.Parent:
+                        Own(structure.Subject, relation.ViaField);
+                        break;
                 }
             }
         }
@@ -166,6 +182,7 @@ public static class LinkageEvidence
                 switch (relation.Kind)
                 {
                     case DeclaredRelationKind.Reference:
+                    case DeclaredRelationKind.Parent:
                         Add(structure.Subject, relation.ViaField);
                         break;
                     case DeclaredRelationKind.Child:

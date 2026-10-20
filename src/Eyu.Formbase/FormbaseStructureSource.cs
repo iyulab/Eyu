@@ -56,15 +56,16 @@ public sealed class FormbaseStructureSource(IFieldHintSource hintSource) : IStru
 
     /// <summary>
     /// The declared relations, then — for a repeated section (<see cref="SectionSource"/>) — the link back to
-    /// the parent it was cut from: each row's key field holds the parent's value, so it names the parent
-    /// rather than the row. The parent declares that link, as its child relation; carrying it here keeps it
-    /// declared when the section is read without its parent, where two rows of one sheet would otherwise
-    /// agree on the sheet's number as if it were their own.
+    /// the parent it was cut from, as a <see cref="DeclaredRelationKind.Parent"/> relation: each row's key
+    /// field holds the parent's value, so it names the parent rather than the row, and the parent owns the
+    /// row. The parent declares that link, as its child relation; carrying it here keeps it declared when
+    /// the section is read without its parent, where two rows of one sheet would otherwise agree on the
+    /// sheet's number as if it were their own, and two rows of different sheets would be compared at all.
     /// </summary>
     private static IEnumerable<DeclaredRelation> WithParent(IEnumerable<DeclaredRelation> declared, SectionSource? section) =>
         section is null
             ? declared
-            : [.. declared, new DeclaredRelation(section.Relation.Name, SubjectRef.Create(section.Parent.Type.Value), ViaField: section.Relation.KeyField, Kind: DeclaredRelationKind.Reference)];
+            : [.. declared, new DeclaredRelation(section.Relation.Name, SubjectRef.Create(section.Parent.Type.Value), ViaField: section.Relation.KeyField, Kind: DeclaredRelationKind.Parent)];
 
     /// <summary>
     /// The declared relations, then one for each field bound to another form type (<see cref="FieldHint.Target"/>):

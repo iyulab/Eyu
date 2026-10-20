@@ -267,8 +267,8 @@ internal static class QualityCatalog
         // An equipment inspection log with a repeated section, written for this catalog: each sheet is a
         // record, and each checked item on it is a row of the sheet's «점검 항목» table, handed over the
         // way a form store's section adapter hands section rows — one record per row, id
-        // "{sheet}/{position}", the row's cells plus the key field that holds the sheet number, and a
-        // declared reference back to the sheet. The same item («유압 압력») is checked on several sheets;
+        // "{sheet}/{position}", the row's cells plus the key field that holds the sheet number, and the
+        // sheet declared as the row's parent. The same item («유압 압력») is checked on several sheets;
         // what the case asks is whether each sheet stays one individual while its rows point at it.
         new("plant-inspection-log-sections",
         [
@@ -303,7 +303,7 @@ internal static class QualityCatalog
             [
                 new(SubjectRef.Create("inspection_item"),
                     [new DeclaredField("sheet_no", "the sheet this row belongs to", DeclaredValueKind.Identifier, Required: true, BusinessName: "점검일지 번호")],
-                    [new DeclaredRelation("items", SubjectRef.Create("inspection_log"), ViaField: "sheet_no", DeclaredRelationKind.Reference)],
+                    [new DeclaredRelation("items", SubjectRef.Create("inspection_log"), ViaField: "sheet_no", DeclaredRelationKind.Parent)],
                     BusinessName: "점검 항목"),
             ]),
         ],

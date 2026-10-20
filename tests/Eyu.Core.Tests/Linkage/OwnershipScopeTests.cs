@@ -82,6 +82,21 @@ public class OwnershipScopeTests
     }
 
     [Fact]
+    public void A_section_read_without_its_sheet_is_scoped_by_its_declared_parent()
+    {
+        DeclaredStructure[] sectionAlone =
+        [
+            new(Item, [new DeclaredField("sheet_no")],
+                [new DeclaredRelation("sheet", Sheet, ViaField: "sheet_no", Kind: DeclaredRelationKind.Parent)]),
+        ];
+        var scope = LinkageEvidence.OwnershipScope(Rows, sectionAlone);
+
+        Assert.Equal(scope(Rows[0]), scope(Rows[1]));
+        Assert.NotEqual(scope(Rows[0]), scope(Rows[3]));
+        Assert.Contains("sheet_no", LinkageEvidence.ReferenceFieldsBySubject(sectionAlone)[Item]);
+    }
+
+    [Fact]
     public void A_reference_alone_owns_nothing()
     {
         DeclaredStructure[] referenceOnly = [Declared[1]];

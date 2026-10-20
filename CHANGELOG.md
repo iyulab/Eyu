@@ -23,9 +23,19 @@ every published version has a section here.
 
 ### Added
 
+- **`DeclaredRelationKind.Parent`** — `Child` seen from the child's side: this subject carries a field
+  naming the target, which owns it. A child declared without its parent (a section's rows read on
+  their own) still says who owns its rows; the key field is left out of what the pre-filter compares,
+  as a `Reference`'s is, and rows of two parents are not compared. The prompt shows it as
+  `(parent via <field>)`.
 - **`LinkageEvidence.OwnershipScope`** reads, from the declarations, the parent each record is owned
   by, and `LinkagePipeline.Analyze` takes it as `comparisonScope`: two records whose scopes are both set
   and differ are never compared. `SinglePassOntologyProposer` passes it.
+
+### Changed
+
+- **`Eyu.Formbase` declares a repeated section's link to its parent as `Parent`** (was `Reference`), so
+  a section read without its parent form type keeps its rows apart by sheet.
 
 ## 0.15.0
 

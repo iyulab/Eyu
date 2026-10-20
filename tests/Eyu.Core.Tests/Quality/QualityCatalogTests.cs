@@ -63,7 +63,7 @@ public class QualityCatalogTests
 
     /// <summary>
     /// The section case's rows hold their sheet's number, which is the sheet's identity and not theirs:
-    /// declared as a reference back to the sheet, it is left out of what the pre-filter compares, so two
+    /// declared as the row's parent, it is left out of what the pre-filter compares, so two
     /// rows of one sheet do not look like one thing for sharing it.
     /// </summary>
     [Fact]
@@ -78,5 +78,21 @@ public class QualityCatalogTests
         Assert.All(rows, row => Assert.Equal(SubjectRef.Create("inspection_item"), row.Subject));
         Assert.All(view, row => Assert.DoesNotContain("sheet_no", row.Fields.Keys));
         Assert.All(view, row => Assert.Contains("item", row.Fields.Keys));
+    }
+
+    /// <summary>
+    /// Read alone — the separate calls of the measurement, a connector per source — the rows' own
+    /// declaration still says the sheet owns them, so rows of two sheets are not compared.
+    /// </summary>
+    [Fact]
+    public void The_section_rows_alone_are_scoped_by_their_sheet()
+    {
+        var items = QualityCatalog.CrossSourceCases.Single(c => c.Name == "plant-inspection-log-sections")
+            .Sources.Single(s => s.Name == "inspection-items");
+
+        var scope = LinkageEvidence.OwnershipScope(items.Records, items.Declarations);
+
+        Assert.All(items.Records, row => Assert.NotNull(scope(row)));
+        Assert.Equal(3, items.Records.Select(scope).Distinct().Count());
     }
 }

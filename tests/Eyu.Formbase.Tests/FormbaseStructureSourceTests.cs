@@ -281,10 +281,11 @@ public class FormbaseStructureSourceTests
 
     /// <summary>
     /// A checklist row carries its sheet's number, which names the sheet — read with no sheet structure at
-    /// hand, the rows of one sheet would agree on it as identity evidence.
+    /// hand, the rows of one sheet would agree on it as identity evidence, and rows of two sheets would be
+    /// compared at all. The link is declared as the row's parent, so neither happens.
     /// </summary>
     [Fact]
-    public async Task A_repeated_section_declares_its_key_field_as_a_reference_to_its_parent()
+    public async Task A_repeated_section_declares_its_key_field_as_its_parent()
     {
         var hints = new InMemoryFieldHintSource();
         var item = FormTypeRef.Create("inspection-item");
@@ -297,13 +298,17 @@ public class FormbaseStructureSourceTests
         var parent = Assert.Single(structure!.Relations);
         Assert.Equal(SubjectRef.Create("inspection-log"), parent.Target);
         Assert.Equal("log_no", parent.ViaField);
-        Assert.Equal(DeclaredRelationKind.Reference, parent.Kind);
+        Assert.Equal(DeclaredRelationKind.Parent, parent.Kind);
 
         var rows = new[]
         {
             new RawRecord("s/0", new Dictionary<string, string?> { ["log_no"] = "L-7", ["item"] = "유압 압력" }, SubjectRef.Create(item.Value)),
             new RawRecord("s/1", new Dictionary<string, string?> { ["log_no"] = "L-7", ["item"] = "유압 온도" }, SubjectRef.Create(item.Value)),
+            new RawRecord("t/0", new Dictionary<string, string?> { ["log_no"] = "L-8", ["item"] = "유압 압력" }, SubjectRef.Create(item.Value)),
         };
         Assert.All(LinkageEvidence.IdentityView(rows, [structure]), row => Assert.False(row.Fields.ContainsKey("log_no")));
+        var scope = LinkageEvidence.OwnershipScope(rows, [structure]);
+        Assert.Equal(scope(rows[0]), scope(rows[1]));
+        Assert.NotEqual(scope(rows[0]), scope(rows[2]));
     }
 }

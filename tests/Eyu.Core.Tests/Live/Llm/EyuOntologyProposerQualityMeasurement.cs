@@ -213,6 +213,21 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             }
         }
 
+        // Gold-annotated cases from outside the repository (EYU_CQ4OE_ROOT), scored as record cases are.
+        var cq4oeCases = Cq4oeCase.FromEnvironment().Where(c => selected is null || selected.Contains(c.Name)).ToList();
+        foreach (var gold in cq4oeCases)
+        {
+            var caseStats = stats[gold.Name] = new CaseStats
+            {
+                Linkage = LinkagePipeline.Analyze(gold.Records, linkageOptions),
+            };
+            for (var attempt = 0; attempt < runs; attempt++)
+            {
+                caseStats.Attempts++;
+                await RunAttemptAsync(proposer, [], gold.Records, gold.CatalogQuestions(), caseStats);
+            }
+        }
+
         var documentOptions = linkageOptions with { RecordsDenoteEntities = false };
         var documentProposer = new SinglePassOntologyProposer(modelClient, documentOptions);
         foreach (var documentCase in QualityCatalog.DocumentCases.Where(c => selected is null || selected.Contains(c.Name)))
@@ -246,7 +261,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             }
         }
 
-        var report = RenderReport(runs, linkageOptions, stats) + RenderCrossSource(crossSourceStats);
+        var report = RenderReport(runs, linkageOptions, stats) + RenderCrossSource(crossSourceStats) + RenderCq4oeCeiling(cq4oeCases);
         output.WriteLine(report);
         var reportPath = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_REPORT");
         if (!string.IsNullOrWhiteSpace(reportPath))
@@ -687,6 +702,29 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         mode.UnmatchedByAttempt.Add(unmatched);
         mode.OverMergedByAttempt.Add(overMerged);
         mode.TypesByAttempt.Add(KnownTypeVocabulary.TypesByName(proposals));
+    }
+
+    private static string RenderCq4oeCeiling(IReadOnlyList<Cq4oeCase> cases)
+    {
+        if (cases.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var report = new StringBuilder()
+            .AppendLine()
+            .AppendLine("## cq4oe gold terms past the ceiling")
+            .AppendLine()
+            .AppendLine("Cases from the cq4oe benchmark (oeg-upm/cq4oe-benchmark, Apache-2.0): the gold ontology's individuals are the records, without their `rdf:type`, and each question's gold classes and properties are the concepts its reach is scored on — each question once over all its terms, as the benchmark scores it, and once over the terms short of the ceiling. " +
+                "Past the ceiling: a datatype property (literal values — a proposal has no literal channel) and a class no individual is typed by directly (it lives in the class hierarchy, which a proposal does not carry).")
+            .AppendLine();
+        foreach (var gold in cases)
+        {
+            var ceiling = string.Join(", ", gold.Ceiling.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => $"{kv.Key} ({(kv.Value == CeilingReason.LiteralValue ? "literal" : "hierarchy only")})"));
+            report.AppendLine(CultureInfo.InvariantCulture, $"- {gold.Name}: {gold.Records.Length} records · {gold.Questions.Length} questions · past the ceiling: {ceiling}");
+        }
+
+        return report.ToString();
     }
 
     private static string RenderCrossSource(List<CrossSourceStats> stats)

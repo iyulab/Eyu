@@ -277,7 +277,8 @@ internal static class QualityCatalog
         }
 
         var names = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
-        var known = Cases.Select(c => c.Name).Concat(DocumentCases.Select(c => c.Name)).Concat(CrossSourceCases.Select(c => c.Name)).ToHashSet(StringComparer.Ordinal);
+        var known = Cases.Select(c => c.Name).Concat(DocumentCases.Select(c => c.Name)).Concat(CrossSourceCases.Select(c => c.Name))
+            .Concat(Cq4oeCase.FromEnvironment().Select(c => c.Name)).ToHashSet(StringComparer.Ordinal);
         var unknown = names.Where(n => !known.Contains(n)).ToList();
         if (unknown.Count > 0)
         {

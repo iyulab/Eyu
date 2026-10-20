@@ -207,10 +207,4 @@ public class DeclaredReferenceDenotationTests
     private static string Response(params string[] entities) => $$"""{"entities": [{{string.Join(", ", entities)}}], "relations": []}""";
 
     private static string Quote(string[] ids) => string.Join(", ", ids.Select(id => $"\"{id}\""));
-
-    private sealed class StubModelClient(string responseText) : IModelClient
-    {
-        public Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ModelResponse(responseText));
-    }
 }

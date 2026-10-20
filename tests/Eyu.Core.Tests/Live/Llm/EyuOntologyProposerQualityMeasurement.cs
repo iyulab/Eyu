@@ -502,7 +502,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var (correct, wrong, unjudged, joined) = (0, 0, 0, new HashSet<string>(StringComparer.Ordinal));
         foreach (var source in order.Skip(1).Select(i => crossSource.Sources[i]))
         {
-            if (await TryProposeAsync(proposer, source.Declarations, source.Records, mode, source.Name, known, mentioned) is not { } next)
+            if (await TryProposeAsync(proposer, source.Declarations, source.Records, mode, source.Name, new PriorKnowledge(known, mentioned, [])) is not { } next)
             {
                 return;
             }
@@ -586,11 +586,11 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             });
     }
 
-    private static async Task<OntologyProposal?> TryProposeAsync(SinglePassOntologyProposer proposer, IReadOnlyList<DeclaredStructure> declarations, RawRecord[] records, CrossSourceMode mode, string label, IReadOnlyList<KnownEntity>? known = null, IReadOnlyList<MentionedEntity>? mentioned = null)
+    private static async Task<OntologyProposal?> TryProposeAsync(SinglePassOntologyProposer proposer, IReadOnlyList<DeclaredStructure> declarations, RawRecord[] records, CrossSourceMode mode, string label, PriorKnowledge? prior = null)
     {
         try
         {
-            return await proposer.ProposeAsync(declarations, records, known ?? [], mentioned ?? []);
+            return await proposer.ProposeAsync(declarations, records, prior ?? PriorKnowledge.None);
         }
         catch (FormatException ex)
         {

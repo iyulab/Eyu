@@ -12,6 +12,13 @@ every published version has a section here.
 
 ### Changed
 
+- **Breaking: what earlier calls found is passed as one `PriorKnowledge`.** `IOntologyProposer` has
+  two overloads, `ProposeAsync(declared, records)` and `ProposeAsync(declared, records, prior)`; the
+  overloads taking `knownEntities` and `knownEntities, mentionedEntities` are gone. Migrate
+  `ProposeAsync(d, r, known)` to `ProposeAsync(d, r, PriorKnowledge.Of(known))` and
+  `ProposeAsync(d, r, known, mentioned)` to `ProposeAsync(d, r, new PriorKnowledge(known, mentioned, []))`.
+  An implementer writes the `PriorKnowledge` overload. Requests and prompt fingerprints are unchanged
+  for the same inputs.
 - **An entity matched to a known entity keeps the known entity's type.** `EntityProposal.KnownEntityKey`
   already made the known entity win on identity; its type now wins too, so a thing an earlier call
   exported as `Equipment` is not stated as a `Machine` by the next one. The prompt also asks for a
@@ -21,6 +28,13 @@ every published version has a section here.
 
 ### Added
 
+- **Known types: type names a caller already uses.** `PriorKnowledge.KnownTypes` takes `KnownType`
+  (a name, and records of its kind as specimens — compared, never cited). The prompt lists them and
+  asks for that name on an entity of a kind one of them names, rather than a new name for the same
+  kind; the parse writes an answered type that spells a name in use — a known type's or a known
+  entity's — as that name (`TypeNames.SameType`: case and non-alphanumerics set aside, so `WorkOrder`
+  becomes `work_order`, while `item` stays `item`). A call with known types stamps
+  `KnownTypesPromptFingerprint`; one without them sends the request it sent before.
 - **`HttpModelClient` can stream the answer.** `stream: true` sends `"stream": true` (with
   `stream_options.include_usage`) and joins the server-sent chunks' `delta.content` until `[DONE]`,
   so a thinking model behind a gateway that closes slow-to-start responses (commonly after 100

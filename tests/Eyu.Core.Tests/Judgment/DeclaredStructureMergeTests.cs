@@ -347,12 +347,6 @@ public class DeclaredStructureMergeTests
     private static Task<OntologyProposal> Propose(string modelAnswer, params DeclaredStructure[] declared)
         => new SinglePassOntologyProposer(new StubModelClient(modelAnswer)).ProposeAsync(declared, Records);
 
-    private sealed class StubModelClient(string responseText) : IModelClient
-    {
-        public Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default)
-            => Task.FromResult(new ModelResponse(responseText));
-    }
-
     private sealed class CountingModelClient : IModelClient
     {
         public int Calls { get; private set; }

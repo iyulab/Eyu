@@ -153,6 +153,10 @@ public sealed partial class SinglePassOntologyProposer(
     private const string PromptSchemaMergeCandidates = "Also include in the same object \"mergeCandidates\":[{\"entity\",\"mentionedKey\",\"claim\",\"sources\",\"confidence\"}].";
     private const string MentionedEntitiesClause = "Mentioned entities are ones earlier work saw only named by records that refer to them, never in a record of the thing itself, so what they are is not settled; each is listed with its key, type, name and the records that mentioned it. When an entity you propose is denoted by one of the Records and may be the same thing as a mentioned entity, add a merge candidate: its \"entity\" is your entity's id, its \"mentionedKey\" the mentioned entity's key, and its claim says why, citing only the Records. A mentioned entity's key is never a \"knownEntityKey\". Mentioned entities' records are shown for comparison only and cannot be cited as sources.";
 
+    // Only when known types are supplied: the clause and the list. The response shape does not change —
+    // the answer still names a type per entity, and the parse reads it against the names in use.
+    private const string KnownTypesClause = "Known types are type names earlier work already uses, each listed with records of its kind where there are any. When an entity you propose is of a kind a known type names, give it that type, written as listed, rather than a new name for the same kind; a kind no known type names gets a type of your own. Known types' records are shown for comparison only and cannot be cited as sources.";
+
     private static readonly JsonElement MergeCandidatesSchema = JsonElement.Parse("""
         {
           "type": "array",
@@ -217,6 +221,12 @@ public sealed partial class SinglePassOntologyProposer(
     /// </summary>
     public static string MentionedEntitiesPromptFingerprint { get; } = Fingerprint(string.Join('\n', PromptSchemaMergeCandidates, MentionedEntitiesClause, MergeCandidatesSchema.GetRawText()));
 
+    /// <summary>
+    /// The fingerprint of the fixed part a call with known types adds (the known-types clause). A report
+    /// of such a call stamps it beside the others, which this feature leaves unchanged.
+    /// </summary>
+    public static string KnownTypesPromptFingerprint { get; } = Fingerprint(KnownTypesClause);
+
     private static string ComputeFingerprint() =>
         Fingerprint(string.Join('\n', PromptInstruction, PromptSchema, PromptReferenceRule, DeclarationClause, ResponseSchema.GetRawText()));
 
@@ -224,10 +234,7 @@ public sealed partial class SinglePassOntologyProposer(
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fixedText))).ToLowerInvariant()[..8];
 
     public Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, CancellationToken cancellationToken = default)
-        => ProposeAsync(declaredStructures, records, [], cancellationToken);
-
-    public Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, CancellationToken cancellationToken = default)
-        => ProposeAsync(declaredStructures, records, knownEntities, [], cancellationToken);
+        => ProposeAsync(declaredStructures, records, PriorKnowledge.None, cancellationToken);
 
     /// <summary>
     /// Mentioned entities reach the prompt only. Record linkage compares records of the same kind of
@@ -235,23 +242,27 @@ public sealed partial class SinglePassOntologyProposer(
     /// mentioned entity, so the pre-filter does not run against them and a merge candidate's confidence
     /// is the model's own. Where records do not each denote one entity (chunks of a document), no entity
     /// has a denoting record, so no merge candidate survives — by design, as no known-entity identity does.
+    /// Known types reach the prompt, and the parse: a proposed type that is a spelling of a name in use
+    /// (<see cref="TypeNames.SameType"/>) is written as that name, so <c>WorkOrder</c> answered for
+    /// <c>work_order</c> does not become a second type. Whether a kind is the one a name stands for stays
+    /// the model's judgment; only the spelling is settled deterministically.
     /// </summary>
-    public async Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, IReadOnlyList<MentionedEntity> mentionedEntities, CancellationToken cancellationToken = default)
+    public async Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, PriorKnowledge prior, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(knownEntities);
-        ArgumentNullException.ThrowIfNull(mentionedEntities);
+        ArgumentNullException.ThrowIfNull(prior);
         DeclaredStructureMerge.EnsureDistinctSubjects(declaredStructures);
-        KnownEntity.Validate(knownEntities, records);
-        MentionedEntity.Validate(mentionedEntities, knownEntities, records);
+        prior.Validate(records);
+        var knownEntities = prior.KnownEntities;
+        var mentionedEntities = prior.MentionedEntities;
         var identity = LinkageEvidence.IdentityView(records, declaredStructures);
         var linkageAnalysis = linkageParameters is null
             ? LinkagePipeline.Analyze(identity, knownEntities, options)
             : LinkagePipeline.Analyze(identity, knownEntities, linkageParameters, options);
         var promptedPairs = SelectPromptedPairs(linkageAnalysis.Clustering.GrayZonePairs, options.MaxGrayZonePairsInPrompt);
-        var prompt = BuildPrompt(declaredStructures, records, knownEntities, mentionedEntities, linkageAnalysis, promptedPairs);
+        var prompt = BuildPrompt(declaredStructures, records, prior, linkageAnalysis, promptedPairs);
         var schema = ResponseSchemaFor(knownEntities.Count > 0, mentionedEntities.Count > 0);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt, schema), cancellationToken).ConfigureAwait(false);
-        var parsed = ParseResponse(response.Text, declaredStructures, records, knownEntities, mentionedEntities, linkageAnalysis, options.RecordsDenoteEntities);
+        var parsed = ParseResponse(response.Text, declaredStructures, records, prior, linkageAnalysis, options.RecordsDenoteEntities);
         var proposal = DeclaredStructureMerge.Apply(declaredStructures, parsed.Proposal.Entities, parsed.Proposal.Relations, parsed.Proposal.Rejections);
         return proposal with
         {
@@ -302,8 +313,9 @@ public sealed partial class SinglePassOntologyProposer(
         return split;
     }
 
-    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, IReadOnlyList<MentionedEntity> mentionedEntities, LinkageAnalysis linkageAnalysis, IReadOnlyList<PairLinkage> promptedPairs)
+    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, PriorKnowledge prior, LinkageAnalysis linkageAnalysis, IReadOnlyList<PairLinkage> promptedPairs)
     {
+        var (knownEntities, mentionedEntities, knownTypes) = prior;
         var text = new StringBuilder();
         text.AppendLine(PromptInstruction);
         text.AppendLine(knownEntities.Count > 0 ? PromptSchemaWithKnownEntities : PromptSchema);
@@ -354,6 +366,20 @@ public sealed partial class SinglePassOntologyProposer(
             {
                 text.AppendLine(CultureInfo.InvariantCulture, $"Mentioned entity: key={mentioned.Key}, type={mentioned.EntityType}, name={mentioned.Name}");
                 foreach (var record in mentioned.MentioningRecords ?? [])
+                {
+                    text.AppendLine(CultureInfo.InvariantCulture, $"  - {record.Id}: {DescribeFields(record)}");
+                }
+            }
+        }
+
+        if (knownTypes.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine(KnownTypesClause);
+            foreach (var known in knownTypes)
+            {
+                text.AppendLine(CultureInfo.InvariantCulture, $"Known type: {known.Name.Trim()}");
+                foreach (var record in known.Specimens ?? [])
                 {
                     text.AppendLine(CultureInfo.InvariantCulture, $"  - {record.Id}: {DescribeFields(record)}");
                 }
@@ -463,11 +489,8 @@ public sealed partial class SinglePassOntologyProposer(
         _ => kind.ToString().ToLowerInvariant(),
     };
 
-    /// <summary>
-    /// "asset: work_order -> asset (reference via asset_tag)" — both ends, since with several
-    /// declared subjects the relation's name alone no longer says which type it leaves; and which
-    /// field carries it, and on which side.
-    /// </summary>
+    private static string DescribeFields(RawRecord record) => string.Join(", ", record.Fields.Select(f => $"{f.Key}={f.Value}"));
+
     /// <summary>
     /// Turns the model's answer into a proposal in a fixed order, so each later step can rely on what
     /// the earlier ones removed: invalid JSON and invented sources refuse the whole response; then
@@ -475,12 +498,12 @@ public sealed partial class SinglePassOntologyProposer(
     /// own and against the entities that survived. Origin is stamped from
     /// <see cref="InnateVocabulary"/>, not read from the model.
     /// </summary>
-    private static string DescribeFields(RawRecord record) => string.Join(", ", record.Fields.Select(f => $"{f.Key}={f.Value}"));
-
-    private static ParsedResponse ParseResponse(string responseText, IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, IReadOnlyList<MentionedEntity> mentionedEntities, LinkageAnalysis linkageAnalysis, bool recordsDenoteEntities)
+    private static ParsedResponse ParseResponse(string responseText, IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, PriorKnowledge prior, LinkageAnalysis linkageAnalysis, bool recordsDenoteEntities)
     {
+        var (knownEntities, mentionedEntities, _) = prior;
         var knownKeys = knownEntities.Select(k => k.Key).ToHashSet(StringComparer.Ordinal);
-        var knownTypes = knownEntities.ToDictionary(k => k.Key, k => k.EntityType, StringComparer.Ordinal);
+        var knownEntityTypes = knownEntities.ToDictionary(k => k.Key, k => k.EntityType, StringComparer.Ordinal);
+        var namesInUse = NamesInUse(prior);
         ProposalResponse parsed;
         try
         {
@@ -553,8 +576,9 @@ public sealed partial class SinglePassOntologyProposer(
             }
 
             // A known entity wins as a declaration does, its type included: the entity keeps the type it
-            // was already exported under, or one thing would be stated as two kinds across calls.
-            var type = knownKey is not null ? knownTypes[knownKey] : e.Type!;
+            // was already exported under, or one thing would be stated as two kinds across calls. Any
+            // other type that spells a name in use is written as that name.
+            var type = knownKey is not null ? knownEntityTypes[knownKey] : InUseSpelling(e.Type!, namesInUse);
             entities.Add(EntityProposal.Create(e.Id!, e.Name!.Trim(), type, claim, InnateVocabulary.OfEntityType(type), confidence, denotedBy: denotedBy, knownEntityKey: knownKey));
         }
 
@@ -577,6 +601,25 @@ public sealed partial class SinglePassOntologyProposer(
         var mergeCandidates = ParseMergeCandidates(candidateResponses, mentionedEntities, entities, proposedIds, rejections);
         return new ParsedResponse(new OntologyProposal(entities, relations, rejections), mergeCandidates, demotions);
     }
+
+    /// <summary>
+    /// The type names in use, by spelling key: known types first (the names the caller keeps), then known
+    /// entities' types. Where two of them spell one name, the first is the spelling kept — earlier calls
+    /// may have written one name two ways, and that is no reason to refuse the call.
+    /// </summary>
+    private static Dictionary<string, string> NamesInUse(PriorKnowledge prior)
+    {
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var name in prior.KnownTypes.Select(t => t.Name.Trim()).Concat(prior.KnownEntities.Select(k => k.EntityType.Trim())))
+        {
+            names.TryAdd(TypeNames.Key(name), name);
+        }
+
+        return names;
+    }
+
+    private static string InUseSpelling(string type, Dictionary<string, string> namesInUse) =>
+        namesInUse.TryGetValue(TypeNames.Key(type), out var inUse) ? inUse : type;
 
     private sealed record ParsedResponse(OntologyProposal Proposal, IReadOnlyList<MergeCandidate> MergeCandidates, IReadOnlyList<DemotedDenotation> DemotedDenotations);
 

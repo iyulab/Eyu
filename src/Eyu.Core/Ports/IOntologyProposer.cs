@@ -28,34 +28,34 @@ public interface IOntologyProposer
         IReadOnlyList<DeclaredStructure> declaredStructures,
         IReadOnlyList<RawRecord> records,
         CancellationToken cancellationToken = default)
-        => ProposeAsync(declaredStructures, records, [], cancellationToken);
+        => ProposeAsync(declaredStructures, records, PriorKnowledge.None, cancellationToken);
 
     /// <summary>
-    /// The same judgment, told which entities earlier calls already identified. An entity the records
-    /// show that is one of <paramref name="knownEntities"/> is proposed with that entity's key in
-    /// <see cref="EntityProposal.KnownEntityKey"/> — the known entity wins, as a declaration does — so
-    /// a caller that keeps proposals across calls (Eyu keeps none) can join them. A known entity's
-    /// records are compared, never cited: a claim still cites only this call's records.
+    /// The same judgment, told what earlier calls already found (<paramref name="prior"/>). Eyu keeps
+    /// nothing between calls; a caller that keeps proposals passes back what it wants carried over:
+    /// <list type="bullet">
+    /// <item><description>
+    /// <b>Known entities.</b> An entity the records show that is one of them is proposed with that entity's
+    /// key in <see cref="EntityProposal.KnownEntityKey"/> and that entity's type — the known entity wins,
+    /// as a declaration does — so the caller can join proposals across calls.
+    /// </description></item>
+    /// <item><description>
+    /// <b>Mentioned entities.</b> Identity then no longer depends on which source arrives first: an entity
+    /// a record of this call denotes that may be one of them is reported in
+    /// <see cref="OntologyProposal.MergeCandidates"/> — a candidate the caller confirms or not, never an
+    /// identity, since a mention claims nothing about what the entity is.
+    /// </description></item>
+    /// <item><description>
+    /// <b>Known types.</b> An entity of a kind a known type names — or a known entity's type names — is
+    /// proposed under that name, spelled as it is in use, rather than under a new name for the same kind.
+    /// </description></item>
+    /// </list>
+    /// Their records are compared, never cited: a claim still cites only this call's records. This is the
+    /// overload an implementer writes; the other forwards to it with <see cref="PriorKnowledge.None"/>.
     /// </summary>
     Task<OntologyProposal> ProposeAsync(
         IReadOnlyList<DeclaredStructure> declaredStructures,
         IReadOnlyList<RawRecord> records,
-        IReadOnlyList<KnownEntity> knownEntities,
-        CancellationToken cancellationToken = default)
-        => ProposeAsync(declaredStructures, records, knownEntities, [], cancellationToken);
-
-    /// <summary>
-    /// The same judgment, also told which entities earlier calls only mentioned. Identity then no longer
-    /// depends on which source arrives first: an entity a record of this call denotes that may be one of
-    /// <paramref name="mentionedEntities"/> is reported in <see cref="OntologyProposal.MergeCandidates"/>
-    /// — a candidate the caller confirms or not, never an identity, since a mention claims nothing about
-    /// what the entity is. Mentioned entities' records are compared, never cited, as known entities' are.
-    /// This is the overload an implementer writes; the others forward to it with empty lists.
-    /// </summary>
-    Task<OntologyProposal> ProposeAsync(
-        IReadOnlyList<DeclaredStructure> declaredStructures,
-        IReadOnlyList<RawRecord> records,
-        IReadOnlyList<KnownEntity> knownEntities,
-        IReadOnlyList<MentionedEntity> mentionedEntities,
+        PriorKnowledge prior,
         CancellationToken cancellationToken = default);
 }

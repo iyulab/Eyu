@@ -79,12 +79,12 @@ public class LinkageEvidenceTests
     [Fact]
     public async Task Two_logs_of_one_machine_are_not_pre_linked_once_their_subject_is_known()
     {
-        var control = new StubModelClient();
+        var control = new StubModelClient("""{"entities":[],"relations":[]}""");
         await new SinglePassOntologyProposer(control).ProposeAsync(
             Declared, [Machine("log-1", null), Machine("log-2", null)], TestContext.Current.CancellationToken);
         Assert.Contains("Pre-linked record groups", control.LastPrompt);
 
-        var model = new StubModelClient();
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
         var proposal = await new SinglePassOntologyProposer(model).ProposeAsync(
             Declared, [Machine("log-1", Log), Machine("log-2", Log)], TestContext.Current.CancellationToken);
 
@@ -95,21 +95,10 @@ public class LinkageEvidenceTests
     [Fact]
     public async Task Two_register_entries_of_one_machine_are_still_pre_linked()
     {
-        var model = new StubModelClient();
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
         await new SinglePassOntologyProposer(model).ProposeAsync(
             Declared, [Machine("reg-1", Register), Machine("reg-2", Register)], TestContext.Current.CancellationToken);
 
         Assert.Contains("Pre-linked record groups", model.LastPrompt);
-    }
-
-    private sealed class StubModelClient : IModelClient
-    {
-        public string? LastPrompt { get; private set; }
-
-        public Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default)
-        {
-            LastPrompt = request.Prompt;
-            return Task.FromResult(new ModelResponse("""{"entities":[],"relations":[]}"""));
-        }
     }
 }

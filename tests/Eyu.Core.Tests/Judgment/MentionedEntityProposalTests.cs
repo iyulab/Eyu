@@ -41,7 +41,7 @@ public sealed class MentionedEntityProposalTests
         """;
 
     private static Task<OntologyProposal> Propose(string response, IReadOnlyList<MentionedEntity> mentioned, StubModelClient? model = null) =>
-        new SinglePassOntologyProposer(model ?? new StubModelClient(response)).ProposeAsync([], Ledger, [], mentioned, TestContext.Current.CancellationToken);
+        new SinglePassOntologyProposer(model ?? new StubModelClient(response)).ProposeAsync([], Ledger, new PriorKnowledge([], mentioned, []), TestContext.Current.CancellationToken);
 
     [Fact]
     public async Task Without_mentioned_entities_the_request_is_the_one_a_call_always_sent()
@@ -191,7 +191,7 @@ public sealed class MentionedEntityProposalTests
         var model = new StubModelClient(CandidateResponse);
         var proposer = new SinglePassOntologyProposer(model, LinkageOptions.Default with { RecordsDenoteEntities = false });
 
-        var proposal = await proposer.ProposeAsync([], Ledger, [], [MentionedPress], TestContext.Current.CancellationToken);
+        var proposal = await proposer.ProposeAsync([], Ledger, new PriorKnowledge([], [MentionedPress], []), TestContext.Current.CancellationToken);
 
         Assert.Empty(proposal.MergeCandidates);
         Assert.Contains(proposal.Rejections, r => r.Reason == RejectionReason.CandidateEntityNotDenoted);
@@ -234,7 +234,7 @@ public sealed class MentionedEntityProposalTests
         var known = new KnownEntity("key:erp/conveyor", "컨베이어 12", "Equipment", [new("erp-old-2", new Dictionary<string, string?> { ["asset_code"] = "CNV-012" })]);
         var model = new StubModelClient(CandidateResponse);
 
-        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], Ledger, [known], [MentionedPress], TestContext.Current.CancellationToken);
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], Ledger, new PriorKnowledge([known], [MentionedPress], []), TestContext.Current.CancellationToken);
 
         var schema = model.LastRequest!.ResponseSchema!.Value;
         Assert.True(schema.GetProperty("properties").GetProperty("entities").GetProperty("items").GetProperty("properties").TryGetProperty("knownEntityKey", out _));
@@ -257,7 +257,7 @@ public sealed class MentionedEntityProposalTests
         var model = new StubModelClient(CandidateResponse);
 
         await Assert.ThrowsAsync<ArgumentException>(() => new SinglePassOntologyProposer(model)
-            .ProposeAsync([], Ledger, known, mentioned, TestContext.Current.CancellationToken));
+            .ProposeAsync([], Ledger, new PriorKnowledge(known, mentioned, []), TestContext.Current.CancellationToken));
 
         Assert.True(model.LastPrompt is null, because);
     }
@@ -269,32 +269,18 @@ public sealed class MentionedEntityProposalTests
         var repair = new KnownEntity("key:cmms/repair-1", "유압 점검", "WorkOrder", [WorkOrder]);
 
         var proposal = await new SinglePassOntologyProposer(new StubModelClient(CandidateResponse))
-            .ProposeAsync([], Ledger, [repair], [MentionedPress], TestContext.Current.CancellationToken);
+            .ProposeAsync([], Ledger, new PriorKnowledge([repair], [MentionedPress], []), TestContext.Current.CancellationToken);
 
         Assert.Single(proposal.MergeCandidates);
     }
 
     [Fact]
-    public async Task The_port_forwards_the_known_entities_overload_with_no_mentioned_entities()
+    public async Task The_port_forwards_a_call_without_prior_knowledge_with_no_mentioned_entities()
     {
         IOntologyProposer proposer = new SinglePassOntologyProposer(new StubModelClient(CandidateResponse));
 
-        var proposal = await proposer.ProposeAsync([], Ledger, [], TestContext.Current.CancellationToken);
+        var proposal = await proposer.ProposeAsync([], Ledger, TestContext.Current.CancellationToken);
 
         Assert.Empty(proposal.MergeCandidates);
-    }
-
-    private sealed class StubModelClient(string responseText) : IModelClient
-    {
-        public string? LastPrompt { get; private set; }
-
-        public ModelRequest? LastRequest { get; private set; }
-
-        public Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default)
-        {
-            LastPrompt = request.Prompt;
-            LastRequest = request;
-            return Task.FromResult(new ModelResponse(responseText));
-        }
     }
 }

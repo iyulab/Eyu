@@ -47,7 +47,7 @@ public sealed class KnownEntityProposalTests
         var withNone = new StubModelClient(MatchedResponse);
 
         await new SinglePassOntologyProposer(plain).ProposeAsync([], WorkOrders, TestContext.Current.CancellationToken);
-        await new SinglePassOntologyProposer(withNone).ProposeAsync([], WorkOrders, [], TestContext.Current.CancellationToken);
+        await new SinglePassOntologyProposer(withNone).ProposeAsync([], WorkOrders, PriorKnowledge.None, TestContext.Current.CancellationToken);
 
         Assert.Equal(plain.LastPrompt, withNone.LastPrompt);
         Assert.Equal(plain.LastRequest!.ResponseSchema!.Value.GetRawText(), withNone.LastRequest!.ResponseSchema!.Value.GetRawText());
@@ -60,7 +60,7 @@ public sealed class KnownEntityProposalTests
     {
         var model = new StubModelClient(MatchedResponse);
 
-        await new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrders, [Press, Conveyor], TestContext.Current.CancellationToken);
+        await new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrders, PriorKnowledge.Of([Press, Conveyor]), TestContext.Current.CancellationToken);
 
         var prompt = model.LastPrompt!;
         Assert.Contains("Known entity: key=https://example.org/entity/press-4, type=Equipment, name=프레스 4호기", prompt, StringComparison.Ordinal);
@@ -82,7 +82,7 @@ public sealed class KnownEntityProposalTests
         // would state one thing as two kinds. The known entity wins, as a declaration does.
         var model = new StubModelClient(MatchedResponse.Replace("\"name\": \"프레스#4\", \"type\": \"Equipment\"", "\"name\": \"프레스#4\", \"type\": \"Machine\"", StringComparison.Ordinal));
 
-        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrders, [Press, Conveyor], TestContext.Current.CancellationToken);
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrders, PriorKnowledge.Of([Press, Conveyor]), TestContext.Current.CancellationToken);
 
         var press = Assert.Single(proposal.Entities, e => e.KnownEntityKey == Press.Key);
         Assert.Equal("Equipment", press.EntityType);
@@ -94,7 +94,7 @@ public sealed class KnownEntityProposalTests
     {
         var model = new StubModelClient(MatchedResponse);
 
-        await new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrders, [Press], TestContext.Current.CancellationToken);
+        await new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrders, PriorKnowledge.Of([Press]), TestContext.Current.CancellationToken);
 
         Assert.Contains("an entity of the same kind gets that type too, known or not", model.LastPrompt!, StringComparison.Ordinal);
     }
@@ -103,7 +103,7 @@ public sealed class KnownEntityProposalTests
     public async Task A_match_carries_the_known_key_and_a_new_entity_carries_none()
     {
         var proposal = await new SinglePassOntologyProposer(new StubModelClient(MatchedResponse))
-            .ProposeAsync([], WorkOrders, [Press, Conveyor], TestContext.Current.CancellationToken);
+            .ProposeAsync([], WorkOrders, PriorKnowledge.Of([Press, Conveyor]), TestContext.Current.CancellationToken);
 
         Assert.Empty(proposal.Rejections);
         Assert.Equal("https://example.org/entity/press-4", proposal.Entities.Single(e => e.EntityId == "e1").KnownEntityKey);
@@ -117,7 +117,7 @@ public sealed class KnownEntityProposalTests
         var response = MatchedResponse.Replace("https://example.org/entity/press-4", "https://example.org/entity/press-9", StringComparison.Ordinal);
 
         var proposal = await new SinglePassOntologyProposer(new StubModelClient(response))
-            .ProposeAsync([], WorkOrders, [Press, Conveyor], TestContext.Current.CancellationToken);
+            .ProposeAsync([], WorkOrders, PriorKnowledge.Of([Press, Conveyor]), TestContext.Current.CancellationToken);
 
         var rejected = Assert.Single(proposal.Rejections, r => r.Element == ProposalElement.Entity);
         Assert.Equal(RejectionReason.UnknownKnownEntity, rejected.Reason);
@@ -142,7 +142,7 @@ public sealed class KnownEntityProposalTests
         Assert.NotEqual(MatchedResponse, response);
 
         await Assert.ThrowsAsync<FormatException>(() => new SinglePassOntologyProposer(new StubModelClient(response))
-            .ProposeAsync([], WorkOrders, [Press], TestContext.Current.CancellationToken));
+            .ProposeAsync([], WorkOrders, PriorKnowledge.Of([Press]), TestContext.Current.CancellationToken));
     }
 
     public static TheoryData<string, KnownEntity[]> Contradictory => new()
@@ -159,7 +159,7 @@ public sealed class KnownEntityProposalTests
         var model = new StubModelClient(MatchedResponse);
 
         await Assert.ThrowsAsync<ArgumentException>(() => new SinglePassOntologyProposer(model)
-            .ProposeAsync([], WorkOrders, known, TestContext.Current.CancellationToken));
+            .ProposeAsync([], WorkOrders, PriorKnowledge.Of(known), TestContext.Current.CancellationToken));
 
         Assert.True(model.LastPrompt is null, because);
     }
@@ -172,7 +172,7 @@ public sealed class KnownEntityProposalTests
         var incident = new KnownEntity("key:incident-7", "Hydraulic leak", "Incident", [ErpPress]);
 
         var proposal = await new SinglePassOntologyProposer(new StubModelClient(MatchedResponse))
-            .ProposeAsync([], WorkOrders, [Press, incident], TestContext.Current.CancellationToken);
+            .ProposeAsync([], WorkOrders, PriorKnowledge.Of([Press, incident]), TestContext.Current.CancellationToken);
 
         Assert.Contains(proposal.Entities, e => e.KnownEntityKey == Press.Key);
     }
@@ -183,7 +183,7 @@ public sealed class KnownEntityProposalTests
         var declared = new DeclaredStructure(SubjectRef.Create("Equipment"), Fields: [], Relations: []);
 
         var proposal = await new SinglePassOntologyProposer(new StubModelClient(MatchedResponse))
-            .ProposeAsync([declared], WorkOrders, [Press], TestContext.Current.CancellationToken);
+            .ProposeAsync([declared], WorkOrders, PriorKnowledge.Of([Press]), TestContext.Current.CancellationToken);
 
         var press = proposal.Entities.Single(e => e.EntityId == "e1");
         Assert.Equal(ProposalBasis.Declared, press.Basis);
@@ -232,25 +232,11 @@ public sealed class KnownEntityProposalTests
             """;
         var model = new StubModelClient(response);
 
-        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], records, known, TestContext.Current.CancellationToken);
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], records, PriorKnowledge.Of(known), TestContext.Current.CancellationToken);
 
         Assert.Contains("Records pre-linked to known entities", model.LastPrompt!, StringComparison.Ordinal);
         Assert.Contains("- new-1 -> key:press", model.LastPrompt!, StringComparison.Ordinal);
         var press = Assert.Single(proposal.Entities);
         Assert.True(press.Confidence > 0.9, $"the pre-filter's decision outweighs a hesitant model; got {press.Confidence}");
-    }
-
-    private sealed class StubModelClient(string responseText) : IModelClient
-    {
-        public string? LastPrompt { get; private set; }
-
-        public ModelRequest? LastRequest { get; private set; }
-
-        public Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default)
-        {
-            LastPrompt = request.Prompt;
-            LastRequest = request;
-            return Task.FromResult(new ModelResponse(responseText));
-        }
     }
 }

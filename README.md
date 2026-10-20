@@ -126,8 +126,9 @@ system" as the target the architecture is built toward, not as a track record.
 - **Input, not fetch.** Eyu never pulls data. A caller hands it declared
   structure (field hints, a schema, an M3L-style declaration) and/or raw
   records to look at. What the caller doesn't supply, Eyu doesn't know.
-  That includes its own earlier answers: a caller that keeps proposals can
-  hand back the entities they identified as known entities (`KnownEntity` —
+  That includes its own earlier answers, which a caller that keeps proposals
+  hands back as `PriorKnowledge`. It can name the entities they identified
+  as known entities (`KnownEntity` —
   a key of the caller's choosing, the name and type, and the records that
   denoted it), and an entity the new records show that is one of them comes
   back with that key in `KnownEntityKey` instead of as a new entity. Eyu
@@ -140,7 +141,14 @@ system" as the target the architecture is built toward, not as a track record.
   entity, the mentioned key, a grounded claim, a confidence) in
   `MergeCandidates`. A candidate is not an identity — whether to join the
   two is the caller's decision — so identity does not depend on which source
-  arrives first, and no mention is ever promoted to a known entity.
+  arrives first, and no mention is ever promoted to a known entity. And it
+  can name the type names already in use (`KnownType` — the name, and records
+  of its kind as specimens): an entity of a kind one of them names comes back
+  under that name, spelled as it is in use (`WorkOrder` answered for
+  `work_order` is written `work_order`), rather than under a new name for the
+  same kind. A known entity's type counts as a name in use too. Whether a kind
+  is the one a name stands for stays the model's judgment — `part` and `item`
+  are two names, not two spellings.
 - **Declared always wins.** Where structure is explicitly declared, the
   declaration is the answer. Inference only fills what nothing declared.
   A call takes one declaration per subject, so a caller whose records name

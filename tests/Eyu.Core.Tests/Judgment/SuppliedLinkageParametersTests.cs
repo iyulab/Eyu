@@ -36,8 +36,8 @@ public sealed class SuppliedLinkageParametersTests
     {
         var proposer = new SinglePassOntologyProposer(new StubModelClient(Response), linkageParameters: Population);
 
-        var first = await proposer.ProposeAsync([], [Newcomer("n-1", "김민지", "1990-03-02")], [Kim, Lee], TestContext.Current.CancellationToken);
-        var second = await proposer.ProposeAsync([], [Newcomer("n-2", "박서준", "1992-01-09")], [Kim, Lee], TestContext.Current.CancellationToken);
+        var first = await proposer.ProposeAsync([], [Newcomer("n-1", "김민지", "1990-03-02")], PriorKnowledge.Of([Kim, Lee]), TestContext.Current.CancellationToken);
+        var second = await proposer.ProposeAsync([], [Newcomer("n-2", "박서준", "1992-01-09")], PriorKnowledge.Of([Kim, Lee]), TestContext.Current.CancellationToken);
 
         Assert.Same(Population, first.Linkage!.Analysis.Parameters);
         Assert.Same(Population, second.Linkage!.Analysis.Parameters);
@@ -61,8 +61,8 @@ public sealed class SuppliedLinkageParametersTests
         var perCall = new SinglePassOntologyProposer(new StubModelClient(Response));
         RawRecord[] stranger = [Newcomer("n-3", "정하늘", "1993-11-30")];
 
-        var proposal = await supplied.ProposeAsync([], stranger, [Kim, Lee], TestContext.Current.CancellationToken);
-        var fitted = await perCall.ProposeAsync([], stranger, [Kim, Lee], TestContext.Current.CancellationToken);
+        var proposal = await supplied.ProposeAsync([], stranger, PriorKnowledge.Of([Kim, Lee]), TestContext.Current.CancellationToken);
+        var fitted = await perCall.ProposeAsync([], stranger, PriorKnowledge.Of([Kim, Lee]), TestContext.Current.CancellationToken);
 
         Assert.Empty(proposal.Linkage!.Analysis.KnownCandidates);
         Assert.Equal(EstimationStatus.HeuristicDefault, fitted.Linkage!.Analysis.Parameters!.Status);
@@ -75,14 +75,8 @@ public sealed class SuppliedLinkageParametersTests
     {
         var proposer = new SinglePassOntologyProposer(new StubModelClient(Response));
 
-        var proposal = await proposer.ProposeAsync([], [Newcomer("n-1", "김민지", "1990-03-02")], [Kim, Lee], TestContext.Current.CancellationToken);
+        var proposal = await proposer.ProposeAsync([], [Newcomer("n-1", "김민지", "1990-03-02")], PriorKnowledge.Of([Kim, Lee]), TestContext.Current.CancellationToken);
 
         Assert.NotEqual(EstimationStatus.Supplied, proposal.Linkage!.Analysis.Parameters!.Status);
-    }
-
-    private sealed class StubModelClient(string responseText) : IModelClient
-    {
-        public Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ModelResponse(responseText));
     }
 }

@@ -986,18 +986,4 @@ public class SinglePassOntologyProposerTests
           ]
         }
         """;
-
-    private sealed class StubModelClient(string responseText) : IModelClient
-    {
-        public string? LastPrompt { get; private set; }
-
-        public ModelRequest? LastRequest { get; private set; }
-
-        public Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default)
-        {
-            LastPrompt = request.Prompt;
-            LastRequest = request;
-            return Task.FromResult(new ModelResponse(responseText));
-        }
-    }
 }

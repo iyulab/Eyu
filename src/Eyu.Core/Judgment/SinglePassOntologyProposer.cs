@@ -145,7 +145,7 @@ public sealed partial class SinglePassOntologyProposer(
     // the answer fills. A call without them sends the request it always sent, so its fingerprint and
     // every measurement taken under it stay comparable.
     private const string PromptSchemaWithKnownEntities = "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"denotedBy\",\"knownEntityKey\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.";
-    private const string KnownEntitiesClause = "Known entities are ones earlier work already identified, each listed with its key, type, name and the records that denoted it. When an entity you propose is the same thing as a known entity, set its \"knownEntityKey\" to that key; otherwise set it to null. Known entities' records are shown for comparison only and cannot be cited as sources.";
+    private const string KnownEntitiesClause = "Known entities are ones earlier work already identified, each listed with its key, type, name and the records that denoted it. When an entity you propose is the same thing as a known entity, set its \"knownEntityKey\" to that key; otherwise set it to null. A known entity's type is the name already in use for its kind of thing: an entity of the same kind gets that type too, known or not, rather than a new name for the same kind. Known entities' records are shown for comparison only and cannot be cited as sources.";
 
     // Only when mentioned entities are supplied: the clause, the schema sentence for the top-level
     // "mergeCandidates" array, and that array in the response schema. A call without them sends the
@@ -480,6 +480,7 @@ public sealed partial class SinglePassOntologyProposer(
     private static ParsedResponse ParseResponse(string responseText, IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, IReadOnlyList<MentionedEntity> mentionedEntities, LinkageAnalysis linkageAnalysis, bool recordsDenoteEntities)
     {
         var knownKeys = knownEntities.Select(k => k.Key).ToHashSet(StringComparer.Ordinal);
+        var knownTypes = knownEntities.ToDictionary(k => k.Key, k => k.EntityType, StringComparer.Ordinal);
         ProposalResponse parsed;
         try
         {
@@ -551,7 +552,10 @@ public sealed partial class SinglePassOntologyProposer(
                 confidence = LinkageConfidenceAdjuster.AdjustForKnownEntity(denotedBy, knownKey, confidence, linkageAnalysis);
             }
 
-            entities.Add(EntityProposal.Create(e.Id!, e.Name!.Trim(), e.Type!, claim, InnateVocabulary.OfEntityType(e.Type!), confidence, denotedBy: denotedBy, knownEntityKey: knownKey));
+            // A known entity wins as a declaration does, its type included: the entity keeps the type it
+            // was already exported under, or one thing would be stated as two kinds across calls.
+            var type = knownKey is not null ? knownTypes[knownKey] : e.Type!;
+            entities.Add(EntityProposal.Create(e.Id!, e.Name!.Trim(), type, claim, InnateVocabulary.OfEntityType(type), confidence, denotedBy: denotedBy, knownEntityKey: knownKey));
         }
 
         var proposedIds = entityResponses.Where(e => !string.IsNullOrWhiteSpace(e.Id)).Select(e => e.Id!).ToHashSet(StringComparer.Ordinal);

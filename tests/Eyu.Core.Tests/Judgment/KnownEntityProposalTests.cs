@@ -76,6 +76,30 @@ public sealed class KnownEntityProposalTests
     }
 
     [Fact]
+    public async Task A_match_keeps_the_known_entitys_type_whatever_type_the_answer_gives_it()
+    {
+        // The press was exported as Equipment; a later call that recognises it but calls it a Machine
+        // would state one thing as two kinds. The known entity wins, as a declaration does.
+        var model = new StubModelClient(MatchedResponse.Replace("\"name\": \"프레스#4\", \"type\": \"Equipment\"", "\"name\": \"프레스#4\", \"type\": \"Machine\"", StringComparison.Ordinal));
+
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrders, [Press, Conveyor], TestContext.Current.CancellationToken);
+
+        var press = Assert.Single(proposal.Entities, e => e.KnownEntityKey == Press.Key);
+        Assert.Equal("Equipment", press.EntityType);
+        Assert.Equal("WorkOrder", Assert.Single(proposal.Entities, e => e.KnownEntityKey is null).EntityType);
+    }
+
+    [Fact]
+    public async Task The_prompt_asks_for_a_known_type_on_an_entity_of_the_same_kind()
+    {
+        var model = new StubModelClient(MatchedResponse);
+
+        await new SinglePassOntologyProposer(model).ProposeAsync([], WorkOrders, [Press], TestContext.Current.CancellationToken);
+
+        Assert.Contains("an entity of the same kind gets that type too, known or not", model.LastPrompt!, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_match_carries_the_known_key_and_a_new_entity_carries_none()
     {
         var proposal = await new SinglePassOntologyProposer(new StubModelClient(MatchedResponse))

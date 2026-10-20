@@ -63,7 +63,9 @@ public sealed class MentionedEntityProposalTests
         // Reports taken before merge candidates existed stamp these two; adding the feature must not move
         // them, or a run without mentioned entities would read as incomparable with every earlier one.
         Assert.Equal("2bc32b71", SinglePassOntologyProposer.PromptFingerprint);
-        Assert.Equal("2bc58427", SinglePassOntologyProposer.KnownEntitiesPromptFingerprint);
+        // The known-entity clause asks for a known type on an entity of the same kind since the version
+        // after 0.12.0 — a deliberate move: measurements with known entities before it stamp 2bc58427.
+        Assert.Equal("d911c6a8", SinglePassOntologyProposer.KnownEntitiesPromptFingerprint);
         Assert.Matches("^[0-9a-f]{8}$", SinglePassOntologyProposer.MentionedEntitiesPromptFingerprint);
         Assert.NotEqual(SinglePassOntologyProposer.PromptFingerprint, SinglePassOntologyProposer.MentionedEntitiesPromptFingerprint);
         Assert.NotEqual(SinglePassOntologyProposer.KnownEntitiesPromptFingerprint, SinglePassOntologyProposer.MentionedEntitiesPromptFingerprint);

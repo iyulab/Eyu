@@ -10,6 +10,15 @@ every published version has a section here.
 
 ## Unreleased
 
+### Changed
+
+- **An entity matched to a known entity keeps the known entity's type.** `EntityProposal.KnownEntityKey`
+  already made the known entity win on identity; its type now wins too, so a thing an earlier call
+  exported as `Equipment` is not stated as a `Machine` by the next one. The prompt also asks for a
+  known entity's type on any entity of the same kind, matched or not, instead of a new name for it.
+  The known-entities prompt fingerprint moves (`2bc58427` → `d911c6a8`): measurements taken with known
+  entities before this are not comparable with ones after it.
+
 ### Added
 
 - **A declared field can carry the name a person reads it by.** `DeclaredField.BusinessName`

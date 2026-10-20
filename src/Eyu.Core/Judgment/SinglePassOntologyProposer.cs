@@ -48,7 +48,7 @@ namespace Eyu.Core.Judgment;
 /// By default each call fits the pre-filter's parameters on its own record pairs. A caller comparing
 /// new records against entities it already knows, a few records at a time, fits once on the population
 /// instead and passes the result as <c>linkageParameters</c>: every call is then scored with those
-/// parameters and runs no estimate (<see cref="LinkagePipeline.Analyze(IReadOnlyList{RawRecord}, IReadOnlyList{KnownEntity}, FieldLinkageParameters, LinkageOptions)"/>)
+/// parameters and runs no estimate (<see cref="LinkagePipeline.Analyze(IReadOnlyList{RawRecord}, IReadOnlyList{KnownEntity}, FieldLinkageParameters, LinkageOptions, Func{RawRecord, string})"/>)
 /// — a call of one record against its known entities holds about one true match, too little for an
 /// estimate to tell what a match looks like, and the same record would otherwise be judged against a
 /// different scale on every call.
@@ -255,9 +255,10 @@ public sealed partial class SinglePassOntologyProposer(
         var knownEntities = prior.KnownEntities;
         var mentionedEntities = prior.MentionedEntities;
         var identity = LinkageEvidence.IdentityView(records, declaredStructures);
+        var scope = LinkageEvidence.OwnershipScope(records, declaredStructures);
         var linkageAnalysis = linkageParameters is null
-            ? LinkagePipeline.Analyze(identity, knownEntities, options)
-            : LinkagePipeline.Analyze(identity, knownEntities, linkageParameters, options);
+            ? LinkagePipeline.Analyze(identity, knownEntities, options, scope)
+            : LinkagePipeline.Analyze(identity, knownEntities, linkageParameters, options, scope);
         var promptedPairs = SelectPromptedPairs(linkageAnalysis.Clustering.GrayZonePairs, options.MaxGrayZonePairsInPrompt);
         var prompt = BuildPrompt(declaredStructures, records, prior, linkageAnalysis, promptedPairs);
         var schema = ResponseSchemaFor(knownEntities.Count > 0, mentionedEntities.Count > 0);

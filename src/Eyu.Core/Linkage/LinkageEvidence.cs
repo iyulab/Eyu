@@ -1,3 +1,4 @@
+using System.Text;
 using Eyu.Core.Declared;
 using Eyu.Core.Primitives;
 using Eyu.Core.Records;
@@ -58,6 +59,83 @@ public static class LinkageEvidence
                     }
                     : record)
             .ToList();
+    }
+
+    /// <summary>
+    /// The scope a record can only be the same thing within, read from the declarations: a subject some
+    /// declaration names as the target of a <see cref="DeclaredRelationKind.Child"/> relation holds rows
+    /// owned by a parent — a sheet's checked items, an order's lines — and the relation's
+    /// <see cref="DeclaredRelation.ViaField"/> names the parent. Two rows of different parents are two
+    /// rows whatever their cells say (the same item checked on two sheets is two readings), so their
+    /// scopes differ and <see cref="LinkagePipeline"/> does not compare them; rows of one parent are
+    /// still compared. The parent key stays out of what is compared (<see cref="IdentityView"/>) — it
+    /// bounds which pairs exist instead of weighing in them. A <see cref="DeclaredRelationKind.Reference"/>
+    /// alone owns nothing (logs naming one machine are not the machine's parts), a record without a
+    /// subject or without the parent key has no scope, and a subject owned through several fields is
+    /// scoped by all of them. Keys compare as blocking keys do (case, surrounding whitespace and Unicode
+    /// form aside).
+    /// <para>
+    /// The parent key is exactly what <see cref="IdentityView"/> removes, so the scope of
+    /// <paramref name="records"/> — the call's records as sampled — is read from them up front and found
+    /// again by id when it is asked of their identity view. Any other record (a known entity's) is read
+    /// from its own fields.
+    /// </para>
+    /// </summary>
+    public static Func<RawRecord, string?> OwnershipScope(IReadOnlyList<RawRecord> records, IReadOnlyList<DeclaredStructure> declaredStructures)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+        ArgumentNullException.ThrowIfNull(declaredStructures);
+
+        var ownerFields = new Dictionary<SubjectRef, SortedSet<string>>();
+        foreach (var structure in declaredStructures)
+        {
+            foreach (var relation in structure.Relations)
+            {
+                if (relation.Kind == DeclaredRelationKind.Child && !string.IsNullOrWhiteSpace(relation.ViaField))
+                {
+                    if (!ownerFields.TryGetValue(relation.Target, out var fields))
+                    {
+                        ownerFields[relation.Target] = fields = new SortedSet<string>(StringComparer.Ordinal);
+                    }
+
+                    fields.Add(relation.ViaField);
+                }
+            }
+        }
+
+        if (ownerFields.Count == 0)
+        {
+            return _ => null;
+        }
+
+        string? Read(RawRecord record)
+        {
+            if (record.Subject is not { } subject || !ownerFields.TryGetValue(subject, out var fields))
+            {
+                return null;
+            }
+
+            var key = new StringBuilder(subject.ToString());
+            foreach (var field in fields)
+            {
+                if (!record.Fields.TryGetValue(field, out var value) || string.IsNullOrWhiteSpace(value))
+                {
+                    return null;
+                }
+
+                key.Append('\u001F').Append(field).Append('=').Append(TextForm.Fold(value).Trim().ToUpperInvariant());
+            }
+
+            return key.ToString();
+        }
+
+        var sampled = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var record in records)
+        {
+            sampled.TryAdd(record.Id, Read(record));
+        }
+
+        return record => sampled.TryGetValue(record.Id, out var scope) ? scope : Read(record);
     }
 
     /// <summary>The fields each subject's records hold another entity's key in, as declared.</summary>

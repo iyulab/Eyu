@@ -51,9 +51,17 @@ public static class LinkagePipeline
     /// parameter estimate, so the evidence against known records is on the same scale as the rest. The
     /// clusters and pair linkages stay the call's own; the cross-call evidence is
     /// <see cref="LinkageAnalysis.KnownCandidates"/>.
+    /// <para>
+    /// <paramref name="comparisonScope"/>, when given, names the scope each record can only be the same
+    /// thing within: two records whose scopes are both set and differ are never compared — on one side
+    /// or across to a known entity's records. The pipeline does not read declarations; a caller holding
+    /// them gets the scope from <see cref="LinkageEvidence.OwnershipScope"/> (a repeated section's rows
+    /// are owned by their sheet, so rows of two sheets are two rows whatever their cells say). A record
+    /// whose scope is null is compared as before.
+    /// </para>
     /// </summary>
-    public static LinkageAnalysis Analyze(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, LinkageOptions? options = null)
-        => AnalyzeCore(records, knownEntities, suppliedParameters: null, options);
+    public static LinkageAnalysis Analyze(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, LinkageOptions? options = null, Func<RawRecord, string?>? comparisonScope = null)
+        => AnalyzeCore(records, knownEntities, suppliedParameters: null, options, comparisonScope);
 
     /// <summary>
     /// The same analysis, scored with <paramref name="parameters"/> instead of parameters fitted on this
@@ -63,12 +71,13 @@ public static class LinkagePipeline
     /// whatever most pairs share (a school, a year) as identity. Fit once on the population instead —
     /// <c>u</c> from <see cref="EstimateNonMatchAgreement"/>, <c>m</c> from a reviewed sample or a
     /// fixed-<c>u</c> fit (<see cref="FellegiSunterEstimator.Estimate"/>) — keep the result, and score each
-    /// call with it. A field the parameters do not name carries no evidence.
+    /// call with it. A field the parameters do not name carries no evidence. Pairs are limited by
+    /// <paramref name="comparisonScope"/> as in the fitting overload.
     /// </summary>
-    public static LinkageAnalysis Analyze(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, FieldLinkageParameters parameters, LinkageOptions? options = null)
+    public static LinkageAnalysis Analyze(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, FieldLinkageParameters parameters, LinkageOptions? options = null, Func<RawRecord, string?>? comparisonScope = null)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        return AnalyzeCore(records, knownEntities, suppliedParameters: parameters, options);
+        return AnalyzeCore(records, knownEntities, suppliedParameters: parameters, options, comparisonScope);
     }
 
     /// <summary>
@@ -136,7 +145,7 @@ public static class LinkagePipeline
     /// <summary>The default pair budget of <see cref="EstimateNonMatchAgreement"/>.</summary>
     public const int DefaultNonMatchSamplePairs = 100_000;
 
-    private static LinkageAnalysis AnalyzeCore(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, FieldLinkageParameters? suppliedParameters, LinkageOptions? options)
+    private static LinkageAnalysis AnalyzeCore(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, FieldLinkageParameters? suppliedParameters, LinkageOptions? options, Func<RawRecord, string?>? comparisonScope)
     {
         ArgumentNullException.ThrowIfNull(records);
         ArgumentNullException.ThrowIfNull(knownEntities);
@@ -155,7 +164,8 @@ public static class LinkagePipeline
         var ownPairs = new List<(RawRecord A, RawRecord B)>();
         if (records.Count >= 2 && opts.RecordsDenoteEntities)
         {
-            foreach (var (i, j) in CandidatePairs(records, records, opts.BlockingRules, sameSide: true))
+            foreach (var (i, j) in CandidatePairs(records, records, opts.BlockingRules, sameSide: true)
+                .Where(p => InOneScope(records[p.I], records[p.J], comparisonScope)))
             {
                 ownPairs.Add((records[i], records[j]));
             }
@@ -163,6 +173,7 @@ public static class LinkagePipeline
 
         var knownSide = knownRecords.Select(k => k.Record).ToList();
         var crossPairs = CandidatePairs(records, knownSide, opts.BlockingRules, sameSide: false)
+            .Where(p => InOneScope(records[p.I], knownSide[p.J], comparisonScope))
             .Select(p => (Record: records[p.I], knownRecords[p.J].Key, Known: knownRecords[p.J].Record))
             .ToList();
 
@@ -197,6 +208,17 @@ public static class LinkagePipeline
         var clustering = EntityClusterer.Cluster(recordIds, pairLinkages);
         var errorRates = pairLinkages.Count > 0 ? LinkageErrorRateEstimator.Estimate(pairLinkages, parameters) : null;
         return new LinkageAnalysis(clustering, pairLinkages, parameters, errorRates) { KnownCandidates = knownCandidates };
+    }
+
+    /// <summary>Whether two records may be the same thing as far as their scopes go: unless both are set and differ.</summary>
+    private static bool InOneScope(RawRecord a, RawRecord b, Func<RawRecord, string?>? scope)
+    {
+        if (scope is null)
+        {
+            return true;
+        }
+
+        return scope(a) is not { } left || scope(b) is not { } right || string.Equals(left, right, StringComparison.Ordinal);
     }
 
     /// <summary>

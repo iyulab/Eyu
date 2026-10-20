@@ -8,6 +8,25 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Fixed
+
+- **Rows of a repeated section are no longer pre-linked across their parents.** A subject declared as
+  the target of a `Child` relation holds rows owned by a parent (the items checked on an inspection
+  sheet); with the parent key left out of what the pre-filter compares, rows of different sheets that
+  agreed on their cells — the same unit, the same verdict — were pre-linked as one entity, and the
+  prompt told the model not to re-decide, even for rows of two different items. The pre-filter now
+  compares such rows only within one parent, on one side and against a known entity's rows alike;
+  rows of one parent are still compared, and a `Reference` alone owns nothing. The prompt's fixed
+  text is unchanged, so its fingerprint stays.
+
+### Added
+
+- **`LinkageEvidence.OwnershipScope`** reads, from the declarations, the parent each record is owned
+  by, and `LinkagePipeline.Analyze` takes it as `comparisonScope`: two records whose scopes are both set
+  and differ are never compared. `SinglePassOntologyProposer` passes it.
+
 ## 0.15.0
 
 A minor. The base prompt says a source is a record's id, never a value written in a record, so a

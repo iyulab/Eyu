@@ -22,9 +22,11 @@
   </ItemGroup>
 
   <!--
-    Entity-resolution accuracy on a labeled public benchmark (Benchmark/FebrlLinkageMeasurement):
+    Entity-resolution accuracy on labeled public benchmarks (Benchmark/):
       dotnet test -p:IncludeEyuBenchmarks=true [EYU_BENCHMARK_REPORT=<file>]
-    Excluded by default: it downloads its (third-party-licensed) data and measures rather than gates.
+    FebrlLinkageMeasurement downloads its (third-party-licensed) data; DeepMatcherLinkageMeasurement reads
+    the DeepMatcher benchmarks from EYU_DEEPMATCHER_ROOT and skips without it.
+    Excluded by default: they need data from outside the repository and measure rather than gate.
   -->
   <ItemGroup Condition="'$(IncludeEyuBenchmarks)' != 'true'">
     <Compile Remove="Benchmark/**/*.cs" />

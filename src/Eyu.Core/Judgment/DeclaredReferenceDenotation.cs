@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Eyu.Core.Declared;
+using Eyu.Core.Linkage;
 using Eyu.Core.Proposals;
 using Eyu.Core.Records;
 
@@ -31,17 +32,27 @@ internal static partial class DeclaredReferenceDenotation
         IReadOnlyList<RawRecord> records,
         IReadOnlyList<Claim> claims)
     {
-        var referenceFields = declaredStructures
+        // A record whose subject is known is read by its subject's declared references only (an
+        // equipment register's own asset_tag is not the inspection log's reference of the same name).
+        // One without a subject falls back to every relation's field, by name — the guard below keeps
+        // that from leaving a record denoting nothing.
+        var anyRelationField = declaredStructures
             .SelectMany(s => s.Relations)
             .Select(r => r.ViaField)
             .Where(f => !string.IsNullOrWhiteSpace(f))
             .Select(f => f!)
             .Distinct(StringComparer.Ordinal)
             .ToList();
-        if (referenceFields.Count == 0)
+        if (anyRelationField.Count == 0)
         {
             return [];
         }
+
+        var bySubject = LinkageEvidence.ReferenceFieldsBySubject(declaredStructures);
+        IEnumerable<string> ReferenceFieldsOf(RawRecord record) =>
+            record.Subject is not { } subject ? anyRelationField
+            : bySubject.TryGetValue(subject, out var fields) ? anyRelationField.Where(fields.Contains)
+            : [];
 
         var recordsById = records.ToDictionary(r => r.Id, StringComparer.Ordinal);
         var candidates = new List<DemotedDenotation>();
@@ -50,8 +61,9 @@ internal static partial class DeclaredReferenceDenotation
             var name = Normalize(claim.Name);
             foreach (var recordId in claim.DenotedBy)
             {
-                var field = referenceFields.FirstOrDefault(f =>
-                    recordsById[recordId].Fields.TryGetValue(f, out var value) && value is not null && Normalize(value) == name);
+                var record = recordsById[recordId];
+                var field = ReferenceFieldsOf(record).FirstOrDefault(f =>
+                    record.Fields.TryGetValue(f, out var value) && value is not null && Normalize(value) == name);
                 if (field is not null)
                 {
                     candidates.Add(new DemotedDenotation(claim.EntityId, recordId, field));

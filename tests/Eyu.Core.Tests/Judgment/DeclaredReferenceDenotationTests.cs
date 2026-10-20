@@ -153,6 +153,47 @@ public class DeclaredReferenceDenotationTests
         Assert.Empty(proposal.DemotedDenotations);
     }
 
+    // The machine register's own "machine" column shares its name with the work order's reference.
+    // Read by name, the register entry's claim on its machine was withdrawn — it still denoted its
+    // owner, so the guard did not save it. With subjects known, only a work order's "machine" is a
+    // reference.
+    [Fact]
+    public async Task A_records_own_field_named_like_another_subjects_reference_keeps_its_claim_once_subjects_are_known()
+    {
+        var answer = Response(
+            Entity("press", "Press 3", "Machine", ["m-01"], ["m-01"]),
+            Entity("kim", "Kim", "Person", ["m-01"], ["m-01"]));
+        DeclaredStructure[] declared = [WorkOrderDeclaration, new(SubjectRef.Create("machine"), [new DeclaredField("machine"), new DeclaredField("owner")], [])];
+        RawRecord Register(SubjectRef? subject) =>
+            new("m-01", new Dictionary<string, string?> { ["machine"] = "Press 3", ["owner"] = "Kim" }, subject);
+
+        var byName = await new SinglePassOntologyProposer(new StubModelClient(answer))
+            .ProposeAsync(declared, [Register(null)], TestContext.Current.CancellationToken);
+        Assert.Equal([new DemotedDenotation("press", "m-01", "machine")], byName.DemotedDenotations);
+
+        var bySubject = await new SinglePassOntologyProposer(new StubModelClient(answer))
+            .ProposeAsync(declared, [Register(SubjectRef.Create("machine"))], TestContext.Current.CancellationToken);
+        Assert.Empty(bySubject.DemotedDenotations);
+        Assert.Equal(["m-01"], bySubject.Entities.Single(e => e.EntityId == "press").DenotedBy);
+    }
+
+    [Fact]
+    public async Task A_work_order_with_its_subject_known_is_still_demoted()
+    {
+        var model = new StubModelClient(Response(
+            Entity("wo1", "WO-2024-0311", "WorkOrder", ["w-01"], ["w-01"]),
+            Entity("press", "Press 3", "Machine", ["w-01", "m-01"], ["w-01", "m-01"])));
+        RawRecord[] records =
+        [
+            WorkOrdersAndMachine()[0] with { Subject = SubjectRef.Create("work_order") },
+            WorkOrdersAndMachine()[2] with { Subject = SubjectRef.Create("machine") },
+        ];
+
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([WorkOrderDeclaration], records, TestContext.Current.CancellationToken);
+
+        Assert.Equal([new DemotedDenotation("press", "w-01", "machine")], proposal.DemotedDenotations);
+    }
+
     private static RawRecord[] WorkOrdersAndMachine() =>
     [
         new("w-01", new Dictionary<string, string?> { ["order_no"] = "WO-2024-0311", ["machine"] = "Press 3", ["operator"] = "Kim" }),

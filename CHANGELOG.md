@@ -21,6 +21,12 @@ every published version has a section here.
   relation's `ViaField` on its target). A register entry keeps its own key; two form types that both
   record one thing's own facts can still be linked. A relation that does not say its side is not
   read. Prompts for records without a subject, and the prompt fingerprint, are unchanged.
+- **A record's own field named like another subject's reference no longer withdraws its claim.** The
+  check that withdraws a record's denotation of an entity it only names in a reference field read
+  every relation's field by name, so an equipment register's own `machine` column counted as the
+  work order's reference of the same name, and the register entry lost its claim on its machine
+  whenever it denoted anything else too. For a record whose subject is known, only that subject's
+  declared references are read; a record without one is read as before.
 
 ### Added
 

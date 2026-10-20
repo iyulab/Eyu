@@ -76,7 +76,7 @@ public sealed partial class SinglePassOntologyProposer(
     // single source both use, so the fingerprint cannot silently disagree with the prompt.
     private const string PromptInstruction = "Propose entities and relations grounded in the input below.";
     private const string PromptSchema = "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"denotedBy\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.";
-    private const string PromptReferenceRule = "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id. In an entity's \"denotedBy\", list the source ids that are records of that entity itself, not those that only refer to it.";
+    private const string PromptReferenceRule = "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id. In an entity's \"denotedBy\", list the source ids that are records of that entity itself, not those that only refer to it. A source id is always the id of one of the records, never a value written in them.";
 
     // The same response shape as PromptSchema, as a JSON Schema handed to the model client for
     // structured output. The prompt sentence stays: a client that ignores the schema has only the

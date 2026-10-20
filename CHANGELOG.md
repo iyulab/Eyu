@@ -8,6 +8,16 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Changed
+
+- **The base prompt says a source is a record's id, never a value written in a record.** A model that
+  cited the name of something a record only mentions (an organization in a field, with no record of its
+  own) produced a citation no record resolves, and the whole response was refused for it. The prompt
+  still says nothing about what counts as an entity. The base prompt fingerprint moves (`2bc32b71` →
+  `98229faf`): measurements taken before it are not comparable with those after.
+
 ## 0.14.0
 
 A minor. A declared structure can carry the name a person reads it by (`DeclaredStructure.BusinessName`),

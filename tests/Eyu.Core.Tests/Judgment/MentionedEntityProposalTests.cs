@@ -62,7 +62,9 @@ public sealed class MentionedEntityProposalTests
     {
         // Reports taken before merge candidates existed stamp these two; adding the feature must not move
         // them, or a run without mentioned entities would read as incomparable with every earlier one.
-        Assert.Equal("2bc32b71", SinglePassOntologyProposer.PromptFingerprint);
+        // The reference rule says a source is a record id, never a value, since the version after 0.14.0
+        // — a deliberate move: measurements before it stamp 2bc32b71.
+        Assert.Equal("98229faf", SinglePassOntologyProposer.PromptFingerprint);
         // The known-entity clause asks for a known type on an entity of the same kind since the version
         // after 0.12.0 — a deliberate move: measurements with known entities before it stamp 2bc58427.
         Assert.Equal("d911c6a8", SinglePassOntologyProposer.KnownEntitiesPromptFingerprint);

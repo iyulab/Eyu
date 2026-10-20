@@ -723,7 +723,10 @@ public class SinglePassOntologyProposerTests
         // fact and is never shown to the model; a sentence steering it here would be that decision
         // made in the wrong place, and it would turn the competency-question harness from a
         // measurement of the model's modelling choices into a target the prompt is tuned against. This test pins the preamble so the sentence cannot arrive by accident --
-        // changing it is a design decision, and the failure is the reminder.
+        // changing it is a design decision, and the failure is the reminder. The last sentence of the
+        // reference rule is about citing, not modelling: a source is a record's id, never a value a
+        // record holds (a model that cites the name of an organization a record mentions has produced
+        // a citation nobody can resolve, and the whole response is refused for it).
         var model = new StubModelClient("""{"entities":[],"relations":[]}""");
         var proposer = new SinglePassOntologyProposer(model);
 
@@ -733,7 +736,7 @@ public class SinglePassOntologyProposerTests
         [
             "Propose entities and relations grounded in the input below.",
             "Respond with JSON only: {\"entities\":[{\"id\",\"name\",\"type\",\"claim\",\"sources\",\"denotedBy\",\"confidence\"}],\"relations\":[{\"name\",\"from\",\"to\",\"claim\",\"sources\",\"confidence\"}]}.",
-            "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id. In an entity's \"denotedBy\", list the source ids that are records of that entity itself, not those that only refer to it.",
+            "An entity's \"id\" only links relations to it within this response; its \"name\" is the entity as the records write it. Every claim must cite at least one source id. In an entity's \"denotedBy\", list the source ids that are records of that entity itself, not those that only refer to it. A source id is always the id of one of the records, never a value written in them.",
             "",
             "Records:",
         ]) + Environment.NewLine;

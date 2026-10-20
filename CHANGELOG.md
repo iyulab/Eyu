@@ -8,7 +8,14 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.17.0
+
+A minor, with one breaking change. Field comparison in the pre-filter can read a value as words
+(`FieldComparison.TokenJaccard`, `FieldComparison.MongeElkan`) and can be chosen per field
+(`LinkageOptions.FieldComparisons`). A comparison is now one value — method and threshold — so the
+separate similarity flag and threshold options are gone: replace `UseStringSimilarityComparator: true`
+with `Comparison: FieldComparison.JaroWinkler()`. Behaviour without options is unchanged, and the
+prompt's fixed text is unchanged, so its fingerprint stays (`98229faf`). Built against Formbase 0.30.0.
 
 ### Added
 

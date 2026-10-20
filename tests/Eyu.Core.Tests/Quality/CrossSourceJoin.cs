@@ -1,3 +1,5 @@
+using Eyu.Core.Linkage;
+
 namespace Eyu.Core.Tests.Quality;
 
 /// <summary>
@@ -29,6 +31,25 @@ internal static class CrossSourceJoin
         var key = Lenient(name);
         var carried = crossSource.Things.Where(t => t.Names.Any(n => key.Contains(Lenient(n), StringComparison.Ordinal))).ToList();
         return carried.Count >= 2 ? carried : [];
+    }
+
+    /// <summary>
+    /// How many of the entities whose denoting records are <paramref name="denotations"/> are denoted by
+    /// records of two or more parents — rows of
+    /// different sheets made one entity. Ownership is read from the case's declarations
+    /// (<see cref="LinkageEvidence.OwnershipScope"/>), so it counts what the name join cannot see: rows
+    /// have no names of their own, and the same item checked on two sheets carries one name twice.
+    /// </summary>
+    public static int DenotedAcrossParents(CrossSourceCase crossSource, IEnumerable<IReadOnlyList<string>> denotations)
+    {
+        var records = crossSource.Sources.SelectMany(s => s.Records).ToList();
+        var scope = LinkageEvidence.OwnershipScope(records, [.. crossSource.Sources.SelectMany(s => s.Declarations)]);
+        var byId = records.GroupBy(r => r.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        return denotations.Count(denotedBy => denotedBy
+            .Select(id => byId.TryGetValue(id, out var record) ? scope(record) : null)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
+            .Count() >= 2);
     }
 
     private static string Lenient(string name) => new(name.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());

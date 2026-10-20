@@ -415,6 +415,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         /// <summary>Per parsed attempt: individuals whose name carries names of two or more things (<see cref="CrossSourceJoin.OverMerged"/>).</summary>
         public readonly List<int> OverMergedByAttempt = [];
 
+        /// <summary>Per parsed attempt: entities denoted by records of two or more parents (<see cref="CrossSourceJoin.DenotedAcrossParents"/>).</summary>
+        public readonly List<int> AcrossParentsByAttempt = [];
+
         /// <summary>
         /// Per parsed attempt («known» mode only): entities matched to a known entity whose name joins a
         /// different thing than the known entity's did — a match to the wrong thing.
@@ -698,8 +701,10 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var denoted = new HashSet<string>(StringComparer.Ordinal);
         var unmatched = new List<string>();
         var overMerged = 0;
+        var acrossParents = 0;
         foreach (var proposal in proposals)
         {
+            acrossParents += CrossSourceJoin.DenotedAcrossParents(crossSource, proposal.Entities.Select(e => e.DenotedBy));
             var individualIris = OntologyTurtle.IndividualIris(proposal, IdentityExport);
             foreach (var entity in proposal.Entities)
             {
@@ -728,6 +733,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         mode.DenotedByAttempt.Add(denoted);
         mode.UnmatchedByAttempt.Add(unmatched);
         mode.OverMergedByAttempt.Add(overMerged);
+        mode.AcrossParentsByAttempt.Add(acrossParents);
         mode.TypesByAttempt.Add(KnownTypeVocabulary.TypesByName(proposals));
     }
 
@@ -767,7 +773,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             .AppendLine()
             .AppendLine("Each source's records are proposed in their own call — what a connector per source gives a caller — and then all of them in one call. " +
                 "A thing is joined to the individuals named by any of its names (case and separators ignored); «individuals per found thing» is how many IRIs " +
-                "`Eyu.Rdf` would write that one thing under, so 1.00 means a store merging the exports holds it once; «over-merged individuals» counts, per attempt, individuals whose name carries the names of two or more things — several things made one. «Same IRI in both modes» asks whether an " +
+                "`Eyu.Rdf` would write that one thing under, so 1.00 means a store merging the exports holds it once; «over-merged individuals» counts, per attempt, individuals whose name carries the names of two or more things — several things made one. «Denoted across parents» counts, per attempt, entities whose denoting records belong to different parents by the case's declarations (rows of a repeated section on two sheets) — rows made one, which the name join cannot see since rows carry no names of their own. «Same IRI in both modes» asks whether an " +
                 "individual from the separate calls and one from the combined call share an IRI — whether the two ways of calling could be merged at all.")
             .AppendLine()
             .AppendLine("«Known» proposes the first source on its own, makes the entities it denoted known under the IRIs its export wrote, and proposes each later source with them " +
@@ -782,8 +788,8 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             .AppendLine("Both error columns are what the OAEI-LLM taxonomy calls a *false* mapping: an over-merged individual fuses two things, a wrong known match joins a thing to another. " +
                 "Its other kinds — *align-up* and *align-down* (joined to a broader or narrower thing, such as a line for the machine on it) and *disputed* — need the catalog to say which things contain which, which it does not yet; an individual of that kind shows up here only as unmatched.")
             .AppendLine()
-            .AppendLine("| case | mode | parsed | things found (per attempt) | things as one individual | individuals per found thing (mean) | denoting record kept | over-merged individuals | wrong known matches |")
-            .AppendLine("|---|---|---|---|---|---|---|---|---|");
+            .AppendLine("| case | mode | parsed | things found (per attempt) | things as one individual | individuals per found thing (mean) | denoting record kept | over-merged individuals | denoted across parents | wrong known matches |")
+            .AppendLine("|---|---|---|---|---|---|---|---|---|---|");
         foreach (var s in stats)
         {
             foreach (var (label, mode) in s.Modes)
@@ -797,6 +803,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                     $"{(found.Count == 0 ? "-" : found.Average(v => v.Count).ToString("0.00", CultureInfo.InvariantCulture))} | " +
                     $"{mode.DenotedByAttempt.Sum(d => d.Count)}/{denotable} | " +
                     $"{string.Join(" · ", mode.OverMergedByAttempt)} | " +
+                    $"{string.Join(" · ", mode.AcrossParentsByAttempt)} | " +
                     $"{(mode.WrongKnownByAttempt.Count == 0 ? "-" : string.Join(" · ", mode.WrongKnownByAttempt))} |");
             }
 

@@ -49,4 +49,19 @@ public class CrossSourceJoinTests
     {
         Assert.Empty(CrossSourceJoin.OverMerged(Plant, name));
     }
+
+    private static CrossSourceCase Sections => QualityCatalog.CrossSourceCases.Single(c => c.Name == "plant-inspection-log-sections");
+
+    // Rows of one item checked on two sheets carry one name, so only ownership can tell them apart.
+    [Fact]
+    public void An_entity_denoted_by_rows_of_two_sheets_is_counted_across_parents()
+    {
+        Assert.Equal(1, CrossSourceJoin.DenotedAcrossParents(Sections, [["IL-1001/0", "IL-1002/0"]]));
+    }
+
+    [Fact]
+    public void Rows_of_one_sheet_a_sheet_and_an_unknown_id_are_not_counted()
+    {
+        Assert.Equal(0, CrossSourceJoin.DenotedAcrossParents(Sections, [["IL-1001/0", "IL-1001/1"], ["IL-1001"], ["IL-1001/0", "nowhere"]]));
+    }
 }

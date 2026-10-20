@@ -7,10 +7,14 @@ namespace Eyu.Core.Declared;
 /// <paramref name="Required"/>, that is declared fact, and declared structure always wins over
 /// inference: a model is told it rather than left to guess it from a sample.
 /// <paramref name="SemanticHint"/> is a caller-supplied gloss (e.g. "monetary amount, minor units")
-/// that narrows judgment rather than replacing it.
+/// that narrows judgment rather than replacing it. <paramref name="BusinessName"/> is the name a
+/// person reads the field by («로트 번호» for <c>lot_no</c> — ODCS's <c>businessName</c>): declared, so
+/// the model is shown it beside the machine name instead of guessing what an abbreviation means. It is
+/// the caller's own name for the field, never a synonym Eyu infers.
 /// </summary>
 public sealed record DeclaredField(
     string Name,
     string? SemanticHint = null,
     DeclaredValueKind? Kind = null,
-    bool? Required = null);
+    bool? Required = null,
+    string? BusinessName = null);

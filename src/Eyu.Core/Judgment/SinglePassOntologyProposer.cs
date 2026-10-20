@@ -425,7 +425,8 @@ public sealed partial class SinglePassOntologyProposer(
 
     /// <summary>
     /// "qty (integer, required; monetary amount)" — every declared fact the caller supplied, so the
-    /// model is told what is declared rather than left to re-infer it from a sample.
+    /// model is told what is declared rather than left to re-infer it from a sample. A declared
+    /// business name follows the machine name in quotes: "lot_no \"로트 번호\" (text, required)".
     /// </summary>
     private static string DescribeField(DeclaredField field)
     {
@@ -446,7 +447,8 @@ public sealed partial class SinglePassOntologyProposer(
             detail = detail.Length == 0 ? field.SemanticHint : $"{detail}; {field.SemanticHint}";
         }
 
-        return detail.Length == 0 ? field.Name : $"{field.Name} ({detail})";
+        var name = string.IsNullOrWhiteSpace(field.BusinessName) ? field.Name : $"{field.Name} \"{field.BusinessName.Trim()}\"";
+        return detail.Length == 0 ? name : $"{name} ({detail})";
     }
 
     private static string Describe(DeclaredValueKind kind) => kind switch

@@ -8,6 +8,15 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Added
+
+- **A declared field can carry the name a person reads it by.** `DeclaredField.BusinessName`
+  («로트 번호» for `lot_no`, after ODCS's `businessName`) is shown to the model beside the machine
+  name — `lot_no "로트 번호" (text, required)` — so an abbreviation is not left for the model to guess.
+  It is the caller's own name for the field; Eyu still infers no synonyms.
+
 ## 0.12.0
 
 A minor. `Eyu.Formbase` reads a Formbase repeated section — a form type whose rows are cut from its

@@ -445,6 +445,31 @@ public class SinglePassOntologyProposerTests
     }
 
     [Fact]
+    public async Task ProposeAsync_shows_a_declared_business_name_beside_the_machine_name()
+    {
+        // lot_no says little to a reader who does not know the abbreviation; the caller declared what
+        // people call it, so the model is shown that name rather than left to guess it.
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model);
+        var structure = new DeclaredStructure(
+            SubjectRef.Create("inspection"),
+            Fields:
+            [
+                new DeclaredField("lot_no", Kind: DeclaredValueKind.Text, Required: true, BusinessName: "로트 번호"),
+                new DeclaredField("memo", BusinessName: "비고"),
+                new DeclaredField("qty", Kind: DeclaredValueKind.WholeNumber, BusinessName: " "),
+            ],
+            Relations: []);
+        var records = new[] { new RawRecord("rec-1", new Dictionary<string, string?> { ["lot_no"] = "L-1" }) };
+
+        await proposer.ProposeAsync([structure], records, TestContext.Current.CancellationToken);
+
+        Assert.Contains("lot_no \"로트 번호\" (text, required)", model.LastPrompt);
+        Assert.Contains("memo \"비고\"", model.LastPrompt);
+        Assert.Contains("qty (integer)", model.LastPrompt);
+    }
+
+    [Fact]
     public async Task ProposeAsync_tells_the_model_every_declared_type_including_types_declared_by_name_alone()
     {
         // A document names many kinds of thing, and a caller that knows the vocabulary its records

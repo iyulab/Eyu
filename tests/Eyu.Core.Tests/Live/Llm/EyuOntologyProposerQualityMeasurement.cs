@@ -402,6 +402,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         /// every merge candidate — each IRI replaced by its confirmed group's representative.
         /// </summary>
         public readonly List<Dictionary<string, HashSet<string>>> ConfirmedIrisByAttempt = [];
+
+        /// <summary>Per parsed attempt: the type names each entity name was written under (<see cref="KnownTypeVocabulary.TypesByName"/>).</summary>
+        public readonly List<Dictionary<string, HashSet<string>>> TypesByAttempt = [];
     }
 
     private sealed class CrossSourceStats(CrossSourceCase crossSource)
@@ -420,8 +423,17 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         /// <summary>«Mentioned», with the sources chained in the opposite order.</summary>
         public CrossSourceMode MentionedReversed { get; } = new();
 
+        /// <summary>
+        /// «Known», by a caller that already holds a type vocabulary (<see cref="KnownType"/>): every call,
+        /// the first included, is handed the names in use — the seed, then what the chain wrote.
+        /// </summary>
+        public CrossSourceMode Typed { get; } = new();
+
+        /// <summary>«Typed», with the sources chained in the opposite order.</summary>
+        public CrossSourceMode TypedReversed { get; } = new();
+
         public IEnumerable<(string Label, CrossSourceMode Mode)> Modes =>
-            [("separate", Separate), ("combined", Combined), ("known", Known), ("known reversed", KnownReversed), ("mentioned", Mentioned), ("mentioned reversed", MentionedReversed)];
+            [("separate", Separate), ("combined", Combined), ("known", Known), ("known reversed", KnownReversed), ("mentioned", Mentioned), ("mentioned reversed", MentionedReversed), ("typed", Typed), ("typed reversed", TypedReversed)];
     }
 
     /// <summary>
@@ -468,9 +480,18 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         // every candidate — what «one individual» would be if it did.
         await RunKnownChainAsync(proposer, crossSource, stats.Mentioned, parsedSeparately ? separate : null, reversed: false, handMentioned: true);
         await RunKnownChainAsync(proposer, crossSource, stats.MentionedReversed, parsedSeparately ? separate : null, reversed: true, handMentioned: true);
+
+        // «Typed»: the known chains run by a caller that already holds a type vocabulary — here the names
+        // the separate calls wrote, which both orders are seeded with alike, as a store that has seen the
+        // sources before would be. Typing that still depends on the order is what known types leave.
+        var seed = parsedSeparately
+            ? KnownTypeVocabulary.FromProposals(separate.Select((p, i) => (p, (IReadOnlyList<RawRecord>)crossSource.Sources[i].Records)))
+            : null;
+        await RunKnownChainAsync(proposer, crossSource, stats.Typed, parsedSeparately ? separate : null, reversed: false, seed: seed);
+        await RunKnownChainAsync(proposer, crossSource, stats.TypedReversed, parsedSeparately ? separate : null, reversed: true, seed: seed);
     }
 
-    private static async Task RunKnownChainAsync(SinglePassOntologyProposer proposer, CrossSourceCase crossSource, CrossSourceMode mode, List<OntologyProposal>? separate, bool reversed, bool handMentioned = false)
+    private static async Task RunKnownChainAsync(SinglePassOntologyProposer proposer, CrossSourceCase crossSource, CrossSourceMode mode, List<OntologyProposal>? separate, bool reversed, bool handMentioned = false, IReadOnlyList<KnownType>? seed = null)
     {
         mode.Attempts++;
         if (separate is null)
@@ -486,28 +507,47 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
 
         var first = order[0];
-        var chained = new List<OntologyProposal> { separate[first] };
+        var firstSource = crossSource.Sources[first];
+
+        // Without a vocabulary the first call is the separate mode's own; with one, the first call is made
+        // again with the vocabulary, since a caller holding names hands them to every call.
+        var opening = separate[first];
+        if (seed is not null)
+        {
+            if (await TryProposeAsync(proposer, firstSource.Declarations, firstSource.Records, mode, firstSource.Name, PriorKnowledge.Of(KnownTypeVocabulary.For(seed, firstSource.Records))) is not { } seeded)
+            {
+                return;
+            }
+
+            opening = seeded;
+        }
+
+        var chained = new List<OntologyProposal> { opening };
         var steps = new List<KnownChainStep>
         {
-            KnownEntityChain.Step(crossSource.Sources[first].Name, separate[first], crossSource.Sources[first].Records, KeyOf(separate[first]), [], crossSource),
+            KnownEntityChain.Step(firstSource.Name, opening, firstSource.Records, KeyOf(opening), [], crossSource),
         };
-        var known = KnownEntityChain.FromProposal(separate[first], crossSource.Sources[first].Records, KeyOf(separate[first])).ToList();
+        var known = KnownEntityChain.FromProposal(opening, firstSource.Records, KeyOf(opening)).ToList();
         var mentioned = new List<MentionedEntity>();
         if (handMentioned)
         {
-            KnownEntityChain.AccumulateMentioned(mentioned, KnownEntityChain.MentionedFromProposal(separate[first], crossSource.Sources[first].Records, KeyOf(separate[first])), known);
+            KnownEntityChain.AccumulateMentioned(mentioned, KnownEntityChain.MentionedFromProposal(opening, firstSource.Records, KeyOf(opening)), known);
         }
+
+        var written = new List<(OntologyProposal, IReadOnlyList<RawRecord>)> { (opening, firstSource.Records) };
 
         var identity = new ConfirmedIdentity();
         var (correct, wrong, unjudged, joined) = (0, 0, 0, new HashSet<string>(StringComparer.Ordinal));
         foreach (var source in order.Skip(1).Select(i => crossSource.Sources[i]))
         {
-            if (await TryProposeAsync(proposer, source.Declarations, source.Records, mode, source.Name, new PriorKnowledge(known, mentioned, [])) is not { } next)
+            var knownTypes = seed is null ? [] : KnownTypeVocabulary.For(KnownTypeVocabulary.Extend(seed, KnownTypeVocabulary.FromProposals(written)), source.Records);
+            if (await TryProposeAsync(proposer, source.Declarations, source.Records, mode, source.Name, new PriorKnowledge(known, mentioned, knownTypes)) is not { } next)
             {
                 return;
             }
 
             chained.Add(next);
+            written.Add((next, source.Records));
             steps.Add(KnownEntityChain.Step(source.Name, next, source.Records, KeyOf(next), known, crossSource));
             var iris = OntologyTurtle.IndividualIris(next, IdentityExport);
             foreach (var candidate in next.MergeCandidates)
@@ -646,6 +686,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         mode.DenotedByAttempt.Add(denoted);
         mode.UnmatchedByAttempt.Add(unmatched);
         mode.OverMergedByAttempt.Add(overMerged);
+        mode.TypesByAttempt.Add(KnownTypeVocabulary.TypesByName(proposals));
     }
 
     private static string RenderCrossSource(List<CrossSourceStats> stats)
@@ -669,7 +710,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 "«Known reversed» chains the sources the other way round, starting from the last source's own call; «one individual in both orders» counts the things that end up as a single individual whichever source came first — identity that does not depend on arrival order. " +
                 "Each known chain is listed call by call: known entities handed in, entities matched to one, entities made known, the things it made known, and the things it named only by mention — matched to nothing known and denoted by no record, so nothing of them is carried to the next call; «denotations withdrawn» counts records the call claimed denote an entity but that only name it in a field the source declares as a reference (`DemotedDenotations`). " +
                 "«Mentioned» and «mentioned reversed» are the same chains also handing forward what earlier calls only mentioned (`MentionedEntity`, added fingerprint `" + SinglePassOntologyProposer.MentionedEntitiesPromptFingerprint + "`), so a call meeting a record of such a thing can report a merge candidate; " +
-                "a candidate is correct when it and the mentioned entity join a common thing and wrong when they join different ones, and «every candidate confirmed» is the identity a caller that accepted all of them would hold.")
+                "a candidate is correct when it and the mentioned entity join a common thing and wrong when they join different ones, and «every candidate confirmed» is the identity a caller that accepted all of them would hold. " +
+                "«Typed» and «typed reversed» are the known chains run by a caller that already holds a type vocabulary (`KnownType`, added fingerprint `" + SinglePassOntologyProposer.KnownTypesPromptFingerprint + "`): the names the separate calls wrote, with records they denoted as specimens, seed every call of both orders alike, and each call also gets the names earlier calls of its chain wrote. " +
+                "«Names typed alike in both orders» counts, over the entity names both orders of a pair wrote (names compared leniently), those written under the same type names in both — typing that does not depend on which source came first.")
             .AppendLine()
             .AppendLine("Both error columns are what the OAEI-LLM taxonomy calls a *false* mapping: an over-merged individual fuses two things, a wrong known match joins a thing to another. " +
                 "Its other kinds — *align-up* and *align-down* (joined to a broader or narrower thing, such as a line for the machine on it) and *disputed* — need the catalog to say which things contain which, which it does not yet; an individual of that kind shows up here only as unmatched.")
@@ -701,6 +744,17 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             report.AppendLine()
                 .AppendLine(CultureInfo.InvariantCulture, $"- {s.Case.Name}: same IRI in both modes for {shared.Count(x => x)}/{shared.Count} thing-attempts (attempts where both modes parsed).")
                 .AppendLine(CultureInfo.InvariantCulture, $"- {s.Case.Name}: one individual in both orders for {bothOrders.Count(x => x)}/{bothOrders.Count} thing-attempts (attempts where both known orders parsed).");
+            foreach (var (label, forward, backward) in new[] { ("known", s.Known, s.KnownReversed), ("mentioned", s.Mentioned, s.MentionedReversed), ("typed", s.Typed, s.TypedReversed) })
+            {
+                var alike = forward.TypesByAttempt.Zip(backward.TypesByAttempt, KnownTypeVocabulary.TypedAlike).ToList();
+                if (alike.Count > 0)
+                {
+                    report.AppendLine(CultureInfo.InvariantCulture,
+                        $"- {s.Case.Name}: names typed alike in both orders, {label}: {string.Join(" · ", alike.Select(a => $"{a.Alike}/{a.Shared}"))} per attempt" +
+                        $" — typed differently: {string.Join("; ", forward.TypesByAttempt.Zip(backward.TypesByAttempt).SelectMany(pair => pair.First.Keys.Where(pair.Second.ContainsKey).Where(k => KnownTypeVocabulary.TypedAlike(new() { [k] = pair.First[k] }, new() { [k] = pair.Second[k] }).Alike == 0).Select(k => $"{k} {string.Join("/", pair.First[k])} vs {string.Join("/", pair.Second[k])}")).Distinct())}");
+                }
+            }
+
             if (s.Mentioned.CandidatesByAttempt.Count + s.MentionedReversed.CandidatesByAttempt.Count > 0)
             {
                 var confirmedBothOrders = s.Mentioned.ConfirmedIrisByAttempt.Zip(s.MentionedReversed.ConfirmedIrisByAttempt)

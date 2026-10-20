@@ -8,7 +8,14 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.11.0
+
+A minor. The linkage pre-filter no longer counts fields a caller declared as references as evidence
+that two records are one entity, and the check that withdraws a record's claim on an entity it only
+names reads the record's own subject. Both need to know which subject a record is of, so `RawRecord`
+gains an optional `Subject`, which `Eyu.Formbase` sets; a record without one is read as before.
+`RawRecord`'s constructor gains that parameter — source-compatible, not binary-compatible, so code
+compiled against 0.10.0 recompiles. Pairs with Formbase 0.25.0. No prompt fingerprint changes.
 
 ### Fixed
 

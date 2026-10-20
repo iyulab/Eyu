@@ -29,17 +29,16 @@ namespace Eyu.Core.Linkage;
 /// or more between two rounds. Must be positive.
 /// </param>
 /// <param name="Comparison">
-/// How two values of a field are judged to agree (<see cref="FieldComparison"/>): exact match (case-
-/// and surrounding-whitespace-insensitive), or a similarity at or above
-/// <paramref name="StringSimilarityAgreementThreshold"/> — Jaro-Winkler over the whole value for
-/// notation variants, or a word-token method for values whose words differ in order or number.
-/// Defaults to <see cref="FieldComparison.Exact"/>.
+/// How two values of a field are judged to agree (<see cref="FieldComparison"/>) when
+/// <paramref name="FieldComparisons"/> names no comparison for that field: exact match (case- and
+/// surrounding-whitespace-insensitive), Jaro-Winkler over the whole value for notation variants, or a
+/// word-token method for values whose words differ in order or number. <see langword="null"/> — the
+/// default — is <see cref="FieldComparison.Exact"/>.
 /// </param>
-/// <param name="StringSimilarityAgreementThreshold">
-/// The similarity at or above which two values agree under any <paramref name="Comparison"/> but
-/// <see cref="FieldComparison.Exact"/>; ignored for that one. One value serves every method, and the
-/// methods' scales differ — a Jaccard of 0.9 asks for nearly the same words, a Jaro-Winkler of 0.9 for
-/// nearly the same spelling — so a caller switching method chooses it again.
+/// <param name="FieldComparisons">
+/// A comparison per field name (looked up with the dictionary's own comparer), overriding <paramref name="Comparison"/> for the fields it
+/// names — a table whose title reads best as words, whose price must match exactly and whose maker's
+/// name varies by a letter is compared each way at once. Defaults to none.
 /// </param>
 /// <param name="RecordsDenoteEntities">
 /// The pre-filter's premise: each record is one mention of one real-world entity, so two records
@@ -79,8 +78,8 @@ public sealed record LinkageOptions(
     double NonMatchThreshold = LinkageClassifier.DefaultNonMatchThreshold,
     int MaxIterations = FellegiSunterEstimator.DefaultMaxIterations,
     double ConvergenceTolerance = FellegiSunterEstimator.DefaultConvergenceTolerance,
-    FieldComparison Comparison = FieldComparison.Exact,
-    double StringSimilarityAgreementThreshold = FieldComparator.DefaultStringSimilarityAgreementThreshold,
+    FieldComparison? Comparison = null,
+    IReadOnlyDictionary<string, FieldComparison>? FieldComparisons = null,
     bool RecordsDenoteEntities = true,
     int MaxGrayZonePairsInPrompt = LinkageOptions.DefaultMaxGrayZonePairsInPrompt,
     IReadOnlyList<IReadOnlyList<string>>? BlockingRules = null)
@@ -91,9 +90,21 @@ public sealed record LinkageOptions(
     public static readonly LinkageOptions Default = new();
 
     /// <summary>
+    /// The comparison <see cref="FieldComparator"/> applies to <paramref name="fieldName"/>: its entry in
+    /// <see cref="FieldComparisons"/>, else <see cref="Comparison"/>, else <see cref="FieldComparison.Exact"/>.
+    /// </summary>
+    public FieldComparison ComparisonFor(string fieldName)
+    {
+        ArgumentNullException.ThrowIfNull(fieldName);
+        return FieldComparisons is not null && FieldComparisons.TryGetValue(fieldName, out var perField)
+            ? perField
+            : Comparison ?? FieldComparison.Exact;
+    }
+
+    /// <summary>
     /// Throws when a value could not be honoured: thresholds that do not order, an iteration
-    /// count that would run EM zero times, a non-positive tolerance, an undefined comparison, a similarity threshold
-    /// outside [0, 1], a negative gray-zone pair cap, or a blocking rule that names no field. <see cref="LinkagePipeline.Analyze(IReadOnlyList{Eyu.Core.Records.RawRecord}, LinkageOptions)"/> calls this before it looks at the
+    /// count that would run EM zero times, a non-positive tolerance, a comparison with an undefined method or a
+    /// threshold outside [0, 1], a per-field comparison without a field name, a negative gray-zone pair cap, or a blocking rule that names no field. <see cref="LinkagePipeline.Analyze(IReadOnlyList{Eyu.Core.Records.RawRecord}, LinkageOptions)"/> calls this before it looks at the
     /// batch, so a bad option fails the same way whether the batch has one record or a thousand.
     /// </summary>
     public void Validate()
@@ -105,18 +116,19 @@ public sealed record LinkageOptions(
                 nameof(MatchThreshold));
         }
 
-        if (!Enum.IsDefined(Comparison))
+        Comparison?.Validate();
+        foreach (var (field, comparison) in FieldComparisons ?? new Dictionary<string, FieldComparison>())
         {
-            throw new ArgumentOutOfRangeException(nameof(Comparison), Comparison, "Not a defined comparison.");
+            if (string.IsNullOrWhiteSpace(field) || comparison is null)
+            {
+                throw new ArgumentException("Every per-field comparison names a field and a comparison.", nameof(FieldComparisons));
+            }
+
+            comparison.Validate();
         }
 
         ArgumentOutOfRangeException.ThrowIfLessThan(MaxIterations, 1, nameof(MaxIterations));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(ConvergenceTolerance, nameof(ConvergenceTolerance));
-        if (StringSimilarityAgreementThreshold is < 0.0 or > 1.0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(StringSimilarityAgreementThreshold), StringSimilarityAgreementThreshold, "Must be within [0, 1].");
-        }
-
         ArgumentOutOfRangeException.ThrowIfNegative(MaxGrayZonePairsInPrompt, nameof(MaxGrayZonePairsInPrompt));
 
         foreach (var rule in BlockingRules ?? [])

@@ -10,8 +10,9 @@ namespace Eyu.Core.Linkage;
 /// Agreement is exact-match by default — case-insensitive, ignoring leading and trailing whitespace
 /// (not whitespace inside the value), and comparing the values in one Unicode form
 /// (<see cref="TextForm.Fold"/>: decomposed Hangul, full-width digits); passing a
-/// <see cref="LinkageOptions"/> with another <see cref="LinkageOptions.Comparison"/> switches to a
-/// similarity threshold instead (<see cref="FieldComparison"/>) — a <see cref="JaroWinklerSimilarity"/>
+/// <see cref="LinkageOptions"/> with another <see cref="LinkageOptions.Comparison"/> — or one per field,
+/// <see cref="LinkageOptions.FieldComparisons"/> — switches to a similarity threshold instead
+/// (<see cref="FieldComparison"/>) — a <see cref="JaroWinklerSimilarity"/>
 /// over the whole value, Hangul spelled out as its jamo, so one changed letter of a syllable is one
 /// letter, not one of three characters; or a <see cref="TokenSimilarity"/> over its words, so words in
 /// another order or an extra word on one side still count — and notation variants that are not
@@ -20,8 +21,6 @@ namespace Eyu.Core.Linkage;
 /// </summary>
 public static class FieldComparator
 {
-    public const double DefaultStringSimilarityAgreementThreshold = 0.90;
-
     public static IReadOnlyDictionary<string, FieldAgreementLevel> Compare(
         RawRecord a, RawRecord b, LinkageOptions? options = null)
     {
@@ -44,24 +43,11 @@ public static class FieldComparator
             var trimmedA = TextForm.Fold(valueA).Trim();
             var trimmedB = TextForm.Fold(valueB).Trim();
 
-            var agrees = opts.Comparison switch
-            {
-                FieldComparison.Exact => string.Equals(trimmedA, trimmedB, StringComparison.OrdinalIgnoreCase),
-                _ => Similarity(opts.Comparison, trimmedA.ToUpperInvariant(), trimmedB.ToUpperInvariant())
-                    >= opts.StringSimilarityAgreementThreshold,
-            };
+            var agrees = opts.ComparisonFor(fieldName).Agrees(trimmedA, trimmedB);
 
             result[fieldName] = agrees ? FieldAgreementLevel.Agree : FieldAgreementLevel.Disagree;
         }
 
         return result;
     }
-
-    private static double Similarity(FieldComparison comparison, string a, string b) => comparison switch
-    {
-        FieldComparison.JaroWinkler => JaroWinklerSimilarity.Compute(TextForm.DecomposeHangul(a), TextForm.DecomposeHangul(b)),
-        FieldComparison.TokenJaccard => TokenSimilarity.Jaccard(a, b),
-        FieldComparison.MongeElkan => TokenSimilarity.MongeElkan(a, b),
-        _ => throw new ArgumentOutOfRangeException(nameof(comparison), comparison, "Not a similarity comparison."),
-    };
 }

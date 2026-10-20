@@ -60,7 +60,7 @@ public class DeepMatcherLinkageMeasurement(ITestOutputHelper output)
         // «u from random pairs»: each field's non-match agreement measured over random pairs of the two
         // tables pooled (nearly all non-matches — each table is free of duplicates) and held while EM fits
         // m and the prior — the fit the library documents for candidates that gather duplicates.
-        var similarity = LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler };
+        var similarity = LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler() };
         var configurations = new (string Name, LinkageOptions Options, bool FixU)[]
         {
             ("exact", LinkageOptions.Default, false),
@@ -70,8 +70,8 @@ public class DeepMatcherLinkageMeasurement(ITestOutputHelper output)
 
             // Word-token methods: Jaccard at half the words shared; Monge-Elkan at the Jaro-Winkler default,
             // since each word is scored by Jaro-Winkler. Settings reported side by side, not tuned on these sets.
-            ("token Jaccard ≥ 0.50", LinkageOptions.Default with { Comparison = FieldComparison.TokenJaccard, StringSimilarityAgreementThreshold = 0.5 }, false),
-            ("Monge-Elkan ≥ 0.90", LinkageOptions.Default with { Comparison = FieldComparison.MongeElkan }, false),
+            ("token Jaccard ≥ 0.50", LinkageOptions.Default with { Comparison = FieldComparison.TokenJaccard(0.5) }, false),
+            ("Monge-Elkan ≥ 0.90", LinkageOptions.Default with { Comparison = FieldComparison.MongeElkan() }, false),
         };
 
         var report = new StringBuilder()

@@ -14,8 +14,9 @@ public class LinkageOptionsTests
         Assert.Equal(LinkageClassifier.DefaultNonMatchThreshold, options.NonMatchThreshold);
         Assert.Equal(FellegiSunterEstimator.DefaultMaxIterations, options.MaxIterations);
         Assert.Equal(FellegiSunterEstimator.DefaultConvergenceTolerance, options.ConvergenceTolerance);
-        Assert.Equal(FieldComparison.Exact, options.Comparison);
-        Assert.Equal(FieldComparator.DefaultStringSimilarityAgreementThreshold, options.StringSimilarityAgreementThreshold);
+        Assert.Null(options.Comparison);
+        Assert.Null(options.FieldComparisons);
+        Assert.Equal(FieldComparison.Exact, options.ComparisonFor("any field"));
     }
 
     [Fact]
@@ -45,7 +46,28 @@ public class LinkageOptionsTests
     [Fact]
     public void An_undefined_comparison_is_refused()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => new LinkageOptions(Comparison: (FieldComparison)99).Validate());
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LinkageOptions(Comparison: new FieldComparison((FieldComparisonMethod)99, 0.9)).Validate());
+    }
+
+    [Theory]
+    [InlineData(-0.1)]
+    [InlineData(1.1)]
+    [InlineData(double.NaN)]
+    public void A_comparison_threshold_outside_zero_to_one_is_refused(double threshold)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LinkageOptions(Comparison: FieldComparison.TokenJaccard(threshold)).Validate());
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LinkageOptions(
+            FieldComparisons: new Dictionary<string, FieldComparison> { ["title"] = FieldComparison.MongeElkan(threshold) }).Validate());
+    }
+
+    [Theory]
+    [InlineData(" ", false)]
+    [InlineData("title", true)]
+    public void A_per_field_comparison_names_a_field_and_a_comparison(string field, bool nullComparison)
+    {
+        var comparisons = new Dictionary<string, FieldComparison> { [field] = nullComparison ? null! : FieldComparison.Exact };
+
+        Assert.Throws<ArgumentException>(() => new LinkageOptions(FieldComparisons: comparisons).Validate());
     }
 
     [Fact]

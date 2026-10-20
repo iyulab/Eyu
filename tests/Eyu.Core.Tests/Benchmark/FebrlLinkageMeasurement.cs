@@ -87,9 +87,9 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
         var configurations = new (string Name, LinkageOptions Options, string[] Dropped)[]
         {
             ("exact (default)", LinkageOptions.Default, []),
-            ("Jaro-Winkler ≥ 0.90", LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler }, []),
+            ("Jaro-Winkler ≥ 0.90", LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler() }, []),
             ("exact, without date of birth and identity number", LinkageOptions.Default, identifiers),
-            ("Jaro-Winkler ≥ 0.90, without date of birth and identity number", LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler }, identifiers),
+            ("Jaro-Winkler ≥ 0.90, without date of birth and identity number", LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler() }, identifiers),
         };
 
         foreach (var dataset in Datasets)
@@ -141,9 +141,9 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
         var configurations = new (string Name, LinkageOptions Options, string[] Dropped)[]
         {
             ("exact", LinkageOptions.Default, []),
-            ("JW", LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler }, []),
+            ("JW", LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler() }, []),
             ("exact, no ids", LinkageOptions.Default, identifiers),
-            ("JW, no ids", LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler }, identifiers),
+            ("JW, no ids", LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler() }, identifiers),
         };
 
         foreach (var dataset in Datasets)

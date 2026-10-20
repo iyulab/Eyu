@@ -38,7 +38,7 @@ B-cubed per record (clerical-review.md §1), precision / recall / F1:
 
 With a date of birth and an identity number on every record the sets are close to a ceiling. Names
 and addresses alone — the common real case — are where exact comparison starts to merge and split
-wrongly, and where the similarity comparator (`LinkageOptions.Comparison = FieldComparison.JaroWinkler`)
+wrongly, and where the similarity comparator (`LinkageOptions.Comparison = FieldComparison.JaroWinkler()`)
 recovers nearly all of it.
 
 ## The review protocol, checked against the census
@@ -207,7 +207,7 @@ What it says:
 ### Comparing values as words
 
 The same twelve sets (Company left out — see below) under the two word-token methods,
-`FieldComparison.TokenJaccard` at half the words shared and `FieldComparison.MongeElkan` at 0.90, read
+`FieldComparison.TokenJaccard(0.5)` (half the words shared) and `FieldComparison.MongeElkan()` (0.90), read
 the same way. The settings are reported side by side, not tuned on these labels, and the default
 comparison stays exact.
 
@@ -233,7 +233,8 @@ comparison stays exact.
 - **Where values are clean, whole-value comparison stays ahead.** On DBLP-ACM, iTunes-Amazon and
   DBLP-Scholar Jaro-Winkler separates slightly better (0.966 against 0.936 on DBLP-ACM), and exact
   comparison stays best on Walmart-Amazon (0.660). No single method wins everywhere, so none replaces the
-  default; a caller chooses by what its values look like.
+  default; a caller chooses by what its values look like, per field where a table holds both kinds
+  (`LinkageOptions.FieldComparisons`).
 - **Monge-Elkan sits between the two** and costs more — every word against every word, so Company's long
   text was not run under it.
 

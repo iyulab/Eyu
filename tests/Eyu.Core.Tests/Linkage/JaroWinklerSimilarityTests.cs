@@ -54,6 +54,6 @@ public class JaroWinklerSimilarityTests
             "NUCLEAR POWER LER CO., LTD.",
             "NUCLEAR POWER LER CO LTD");
 
-        Assert.True(similarity >= FieldComparator.DefaultStringSimilarityAgreementThreshold);
+        Assert.True(similarity >= FieldComparison.DefaultJaroWinklerThreshold);
     }
 }

@@ -85,7 +85,7 @@ What is still missing is a review by people on a corpus of the domains above.
 
 Field comparison inside the pre-filter is exact-match (case-insensitive, ignoring surrounding whitespace
 and Unicode form — decomposed Hangul, full-width digits) by default;
-`LinkageOptions.Comparison = FieldComparison.JaroWinkler` opts into a Jaro-Winkler threshold instead, so two records
+`LinkageOptions.Comparison = FieldComparison.JaroWinkler()` opts into a Jaro-Winkler threshold instead, so two records
 denoting the same entity but differing only in notation (punctuation, spacing) still register as agreeing
 on that field. On the entity-matching benchmarks its ratios separated matches better than exact comparison's
 on nine of thirteen sets and worse on two (Walmart-Amazon: 0.66 → 0.45 best single threshold), so the
@@ -93,7 +93,8 @@ default is unchanged. `FieldComparison.TokenJaccard` and `FieldComparison.MongeE
 words instead, for values whose words differ in order or number: on the same benchmarks token Jaccard
 separated best on seven of twelve sets (product titles, values moved between columns) and whole-value
 comparison stayed ahead on clean bibliographic ones, so no method replaces the default
-([linkage-benchmark.md](linkage-benchmark.md)).
+([linkage-benchmark.md](linkage-benchmark.md)); `LinkageOptions.FieldComparisons` sets a method per
+field, for tables that hold both kinds of value.
 
 A field the caller declared as a reference (an inspection log's machine tag) is not compared at all for
 records whose subject is known (`RawRecord.Subject`): it names another entity, so agreeing on it is not

@@ -12,19 +12,24 @@ every published version has a section here.
 
 ### Added
 
-- **Token-based field comparison.** `LinkageOptions.Comparison` chooses how two values of a field agree
-  (`FieldComparison`): `Exact` (the default, unchanged), `JaroWinkler` (the former similarity mode),
-  and two methods that read a value as words — `TokenJaccard` (shared words over all words) and
-  `MongeElkan` (each word matched to its closest counterpart by Jaro-Winkler, averaged both ways). They
-  agree on values whose words differ in order or number — a product title, an address — where reading
-  the whole value as one string does not. `TokenSimilarity` exposes the scores.
+- **Token-based field comparison.** Two methods read a value as words — `FieldComparison.TokenJaccard`
+  (shared words over all words) and `FieldComparison.MongeElkan` (each word matched to its closest
+  counterpart by Jaro-Winkler, averaged both ways). They agree on values whose words differ in order or
+  number — a product title, an address — where reading the whole value as one string does not.
+  `TokenSimilarity` exposes the scores.
+- **A comparison per field.** `LinkageOptions.FieldComparisons` maps field names to comparisons, overriding
+  `LinkageOptions.Comparison` for those fields — a title compared as words, a price exactly and a name by
+  Jaro-Winkler in one call. `LinkageOptions.ComparisonFor(field)` tells which applies.
 
 ### Changed
 
-- **Breaking: `LinkageOptions.UseStringSimilarityComparator` is replaced by `LinkageOptions.Comparison`.**
-  Replace `UseStringSimilarityComparator: true` with `Comparison: FieldComparison.JaroWinkler`; behaviour
-  is the same. `StringSimilarityAgreementThreshold` keeps its name and now serves every similarity
-  method — choose it again when switching method, since the methods' scales differ.
+- **Breaking: a comparison is one value — method and threshold.** `FieldComparison` (`Exact`,
+  `JaroWinkler(threshold = 0.90)`, `TokenJaccard(threshold)`, `MongeElkan(threshold = 0.90)`) replaces
+  `LinkageOptions.UseStringSimilarityComparator` and `LinkageOptions.StringSimilarityAgreementThreshold`,
+  and `FieldComparator.DefaultStringSimilarityAgreementThreshold` becomes
+  `FieldComparison.DefaultJaroWinklerThreshold`. Replace `UseStringSimilarityComparator: true` with
+  `Comparison: FieldComparison.JaroWinkler()`, and a threshold `t` with `FieldComparison.JaroWinkler(t)`;
+  behaviour is the same. `TokenJaccard` takes no default threshold — its scale is not Jaro-Winkler's.
 
 ### Documentation
 

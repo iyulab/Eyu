@@ -205,7 +205,7 @@ public class LinkagePipelineTests
         };
 
         var literalAnalysis = LinkagePipeline.Analyze(records);
-        var similarityAnalysis = LinkagePipeline.Analyze(records, new LinkageOptions(Comparison: FieldComparison.JaroWinkler));
+        var similarityAnalysis = LinkagePipeline.Analyze(records, new LinkageOptions(Comparison: FieldComparison.JaroWinkler()));
 
         Assert.Equal(LinkageClassification.NonMatch, Assert.Single(literalAnalysis.PairLinkages).Classification);
         Assert.Equal(LinkageClassification.Match, Assert.Single(similarityAnalysis.PairLinkages).Classification);

@@ -75,7 +75,7 @@ public class FieldComparatorTests
         var a = Record("rec-1", ("registrationNumber", "110111-1234567"));
         var b = Record("rec-2", ("registrationNumber", "1101111234567"));
 
-        var result = FieldComparator.Compare(a, b, new LinkageOptions(Comparison: FieldComparison.JaroWinkler));
+        var result = FieldComparator.Compare(a, b, new LinkageOptions(Comparison: FieldComparison.JaroWinkler()));
 
         Assert.Equal(FieldAgreementLevel.Agree, result["registrationNumber"]);
     }
@@ -86,7 +86,7 @@ public class FieldComparatorTests
         var a = Record("rec-1", ("city", "Springfield"));
         var b = Record("rec-2", ("city", "Portland"));
 
-        var result = FieldComparator.Compare(a, b, new LinkageOptions(Comparison: FieldComparison.JaroWinkler));
+        var result = FieldComparator.Compare(a, b, new LinkageOptions(Comparison: FieldComparison.JaroWinkler()));
 
         Assert.Equal(FieldAgreementLevel.Disagree, result["city"]);
     }
@@ -97,7 +97,7 @@ public class FieldComparatorTests
         var a = Record("rec-1", ("name", "Acme Corp"));
         var b = Record("rec-2", ("name", "  acme corp  "));
 
-        var result = FieldComparator.Compare(a, b, new LinkageOptions(Comparison: FieldComparison.JaroWinkler));
+        var result = FieldComparator.Compare(a, b, new LinkageOptions(Comparison: FieldComparison.JaroWinkler()));
 
         Assert.Equal(FieldAgreementLevel.Agree, result["name"]);
     }
@@ -108,23 +108,23 @@ public class FieldComparatorTests
         var a = Record("rec-1", ("name", "Springfield"));
         var b = Record("rec-2", ("name", "Springfield Heights"));
 
-        var options = new LinkageOptions(Comparison: FieldComparison.JaroWinkler, StringSimilarityAgreementThreshold: 0.99);
+        var options = new LinkageOptions(Comparison: FieldComparison.JaroWinkler(0.99));
 
         var result = FieldComparator.Compare(a, b, options);
 
         Assert.Equal(FieldAgreementLevel.Disagree, result["name"]);
     }
     [Theory]
-    [InlineData(FieldComparison.Exact)]
-    [InlineData(FieldComparison.JaroWinkler)]
-    [InlineData(FieldComparison.TokenJaccard)]
-    [InlineData(FieldComparison.MongeElkan)]
-    public void A_value_written_in_another_unicode_normalization_form_agrees(FieldComparison comparison)
+    [InlineData(FieldComparisonMethod.Exact)]
+    [InlineData(FieldComparisonMethod.JaroWinkler)]
+    [InlineData(FieldComparisonMethod.TokenJaccard)]
+    [InlineData(FieldComparisonMethod.MongeElkan)]
+    public void A_value_written_in_another_unicode_normalization_form_agrees(FieldComparisonMethod method)
     {
         // The same name, precomposed (NFC) and decomposed (NFD): identical on screen, different code units.
         var a = Record("rec-1", ("name", "김민지"), ("phone", "010-1234"));
         var b = Record("rec-2", ("name", "김민지".Normalize(NormalizationForm.FormD)), ("phone", "０１０-１２３４"));
-        var options = LinkageOptions.Default with { Comparison = comparison };
+        var options = LinkageOptions.Default with { Comparison = new FieldComparison(method, FieldComparison.DefaultJaroWinklerThreshold) };
 
         var result = FieldComparator.Compare(a, b, options);
 
@@ -154,7 +154,7 @@ public class FieldComparatorTests
     {
         // By syllable both first pairs differ in one character of three (0.822 each), so no threshold
         // could tell a mistyped final consonant from another person's name.
-        var options = LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler, StringSimilarityAgreementThreshold = 0.95 };
+        var options = LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler(0.95) };
 
         var result = FieldComparator.Compare(Record("rec-1", ("name", a)), Record("rec-2", ("name", b)), options);
 
@@ -171,30 +171,55 @@ public class FieldComparatorTests
     }
 
     [Theory]
-    [InlineData(FieldComparison.TokenJaccard, 0.8)]
-    [InlineData(FieldComparison.MongeElkan, 0.95)]
-    public void Token_methods_agree_on_the_same_words_in_another_order_and_case(FieldComparison comparison, double threshold)
+    [InlineData(FieldComparisonMethod.TokenJaccard, 0.8)]
+    [InlineData(FieldComparisonMethod.MongeElkan, 0.95)]
+    public void Token_methods_agree_on_the_same_words_in_another_order_and_case(FieldComparisonMethod method, double threshold)
     {
         var a = Record("rec-1", ("title", "Adobe Photoshop Elements 9 (Mac)"));
         var b = Record("rec-2", ("title", "photoshop elements 9 mac adobe"));
-        var options = LinkageOptions.Default with { Comparison = comparison, StringSimilarityAgreementThreshold = threshold };
+        var options = LinkageOptions.Default with { Comparison = new FieldComparison(method, threshold) };
 
         Assert.Equal(FieldAgreementLevel.Agree, FieldComparator.Compare(a, b, options)["title"]);
         // The whole value read as one string, the reordering is far apart.
         Assert.Equal(
             FieldAgreementLevel.Disagree,
-            FieldComparator.Compare(a, b, options with { Comparison = FieldComparison.JaroWinkler })["title"]);
+            FieldComparator.Compare(a, b, options with { Comparison = FieldComparison.JaroWinkler(threshold) })["title"]);
     }
 
     [Theory]
-    [InlineData(FieldComparison.TokenJaccard)]
-    [InlineData(FieldComparison.MongeElkan)]
-    public void Token_methods_disagree_on_different_words(FieldComparison comparison)
+    [InlineData(FieldComparisonMethod.TokenJaccard)]
+    [InlineData(FieldComparisonMethod.MongeElkan)]
+    public void Token_methods_disagree_on_different_words(FieldComparisonMethod method)
     {
         var a = Record("rec-1", ("title", "Adobe Photoshop Elements 9"));
         var b = Record("rec-2", ("title", "Microsoft Office Home 2010"));
-        var options = LinkageOptions.Default with { Comparison = comparison, StringSimilarityAgreementThreshold = 0.8 };
+        var options = LinkageOptions.Default with { Comparison = new FieldComparison(method, 0.8) };
 
         Assert.Equal(FieldAgreementLevel.Disagree, FieldComparator.Compare(a, b, options)["title"]);
+    }
+
+    [Fact]
+    public void A_per_field_comparison_overrides_the_default_for_that_field_only()
+    {
+        var a = Record("rec-1", ("title", "Adobe Photoshop Elements 9"), ("maker", "Adobe Systems"), ("price", "79.99"));
+        var b = Record("rec-2", ("title", "photoshop elements 9 adobe"), ("maker", "Adobe Systms"), ("price", "79.95"));
+        var options = LinkageOptions.Default with
+        {
+            Comparison = FieldComparison.JaroWinkler(),
+            FieldComparisons = new Dictionary<string, FieldComparison>
+            {
+                ["title"] = FieldComparison.TokenJaccard(0.8),
+                ["price"] = FieldComparison.Exact,
+            },
+        };
+
+        var result = FieldComparator.Compare(a, b, options);
+
+        Assert.Equal(FieldAgreementLevel.Agree, result["title"]);    // same words, another order
+        Assert.Equal(FieldAgreementLevel.Agree, result["maker"]);    // default: one letter dropped
+        Assert.Equal(FieldAgreementLevel.Disagree, result["price"]); // exact: close is not equal
+        Assert.Equal(
+            FieldAgreementLevel.Agree,
+            FieldComparator.Compare(a, b, options with { FieldComparisons = null })["price"]); // Jaro-Winkler alone would agree
     }
 }

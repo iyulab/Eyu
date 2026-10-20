@@ -1,3 +1,5 @@
+using Eyu.Core.Records;
+using Eyu.Core.Linkage;
 using Eyu.Core.Declared;
 using Eyu.Core.Primitives;
 using Formbase.Core.InMemory;
@@ -236,5 +238,33 @@ public class FormbaseStructureSourceTests
         var structure = await source.GetStructureAsync(SubjectRef.Create("work_order"), TestContext.Current.CancellationToken);
 
         Assert.Equal(["uses_machine", "machine"], structure!.Relations.Select(r => r.Name));
+    }
+
+    /// <summary>
+    /// A checklist row carries its sheet's number, which names the sheet — read with no sheet structure at
+    /// hand, the rows of one sheet would agree on it as identity evidence.
+    /// </summary>
+    [Fact]
+    public async Task A_repeated_section_declares_its_key_field_as_a_reference_to_its_parent()
+    {
+        var hints = new InMemoryFieldHintSource();
+        var item = FormTypeRef.Create("inspection-item");
+        hints.Declare(new FormTypeHints(item, "inspection_items", [new FieldHint("log_no", ColumnType.Text), new FieldHint("item", ColumnType.Text)]));
+        hints.Declare(new FormTypeHints(FormTypeRef.Create("inspection-log"), "inspection_logs", [new FieldHint("log_no", ColumnType.Text)],
+            [new RelationHint("items", RelationKind.Child, item, "log_no", "items")]));
+
+        var structure = await new FormbaseStructureSource(hints).GetStructureAsync(SubjectRef.Create(item.Value), TestContext.Current.CancellationToken);
+
+        var parent = Assert.Single(structure!.Relations);
+        Assert.Equal(SubjectRef.Create("inspection-log"), parent.Target);
+        Assert.Equal("log_no", parent.ViaField);
+        Assert.Equal(DeclaredRelationKind.Reference, parent.Kind);
+
+        var rows = new[]
+        {
+            new RawRecord("s/0", new Dictionary<string, string?> { ["log_no"] = "L-7", ["item"] = "유압 압력" }, SubjectRef.Create(item.Value)),
+            new RawRecord("s/1", new Dictionary<string, string?> { ["log_no"] = "L-7", ["item"] = "유압 온도" }, SubjectRef.Create(item.Value)),
+        };
+        Assert.All(LinkageEvidence.IdentityView(rows, [structure]), row => Assert.False(row.Fields.ContainsKey("log_no")));
     }
 }

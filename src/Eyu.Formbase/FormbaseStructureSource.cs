@@ -15,7 +15,8 @@ namespace Eyu.Formbase;
 /// Formbase's declaration is the answer and Eyu never re-infers what Formbase already declared
 /// (design rationale §A). Formbase's own type names stop here: they are mapped onto Eyu's declared
 /// vocabulary rather than passed through, so Eyu.Core never references Formbase.Core and this
-/// adapter stays the one place that bridges the two.
+/// adapter stays the one place that bridges the two. A repeated section also carries the reference
+/// back to its parent (<see cref="WithParent"/>).
 /// </summary>
 public sealed class FormbaseStructureSource(IFieldHintSource hintSource) : IStructureSource
 {
@@ -41,10 +42,23 @@ public sealed class FormbaseStructureSource(IFieldHintSource hintSource) : IStru
                 SubjectRef.Create(relation.Target.Value),
                 ViaField: relation.KeyField,
                 Kind: ToDeclaredKind(relation.Kind)));
-        var relations = WithBoundFields(declaredRelations, hints.Fields);
+        var section = await hintSource.GetSectionSourceAsync(type, cancellationToken).ConfigureAwait(false);
+        var relations = WithBoundFields(WithParent(declaredRelations, section), hints.Fields);
 
         return new DeclaredStructure(subject, fields, relations, hints.DeclarationVersion.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
+
+    /// <summary>
+    /// The declared relations, then — for a repeated section (<see cref="SectionSource"/>) — the link back to
+    /// the parent it was cut from: each row's key field holds the parent's value, so it names the parent
+    /// rather than the row. The parent declares that link, as its child relation; carrying it here keeps it
+    /// declared when the section is read without its parent, where two rows of one sheet would otherwise
+    /// agree on the sheet's number as if it were their own.
+    /// </summary>
+    private static IEnumerable<DeclaredRelation> WithParent(IEnumerable<DeclaredRelation> declared, SectionSource? section) =>
+        section is null
+            ? declared
+            : [.. declared, new DeclaredRelation(section.Relation.Name, SubjectRef.Create(section.Parent.Type.Value), ViaField: section.Relation.KeyField, Kind: DeclaredRelationKind.Reference)];
 
     /// <summary>
     /// The declared relations, then one for each field bound to another form type (<see cref="FieldHint.Target"/>):

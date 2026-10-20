@@ -8,6 +8,29 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Added
+
+- **`Eyu.Formbase` samples a repeated section's rows.** A Formbase form type that is a repeated section
+  of another has no documents of its own; `FormbaseRecordSample` now reads it the way Formbase projects
+  it — the parent's standing documents, cut into one record per row, each carrying the parent's key
+  value — under the parent document's id, a slash and the row's position. Before, sampling a section
+  returned nothing.
+- **A repeated section's structure declares its key field as a reference to its parent.**
+  `FormbaseStructureSource` adds the link the parent declares as its child relation, so the linkage
+  pre-filter does not count two rows of one sheet agreeing on the sheet's number as identity evidence
+  when the section is read without its parent.
+
+### Breaking
+
+- `FormbaseRecordSample` takes the `IFieldHintSource` as a second constructor argument, to tell a section
+  from a form type with documents of its own.
+
+### Dependencies
+
+- `Formbase.Core` 0.27.0 (was 0.25.0 in 0.11.0).
+
 ## 0.11.0
 
 A minor. The linkage pre-filter no longer counts fields a caller declared as references as evidence

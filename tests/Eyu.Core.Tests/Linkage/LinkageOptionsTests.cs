@@ -14,7 +14,7 @@ public class LinkageOptionsTests
         Assert.Equal(LinkageClassifier.DefaultNonMatchThreshold, options.NonMatchThreshold);
         Assert.Equal(FellegiSunterEstimator.DefaultMaxIterations, options.MaxIterations);
         Assert.Equal(FellegiSunterEstimator.DefaultConvergenceTolerance, options.ConvergenceTolerance);
-        Assert.False(options.UseStringSimilarityComparator);
+        Assert.Equal(FieldComparison.Exact, options.Comparison);
         Assert.Equal(FieldComparator.DefaultStringSimilarityAgreementThreshold, options.StringSimilarityAgreementThreshold);
     }
 
@@ -40,6 +40,12 @@ public class LinkageOptionsTests
     public void An_iteration_count_that_would_never_run_EM_is_refused()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new LinkageOptions(MaxIterations: 0).Validate());
+    }
+
+    [Fact]
+    public void An_undefined_comparison_is_refused()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LinkageOptions(Comparison: (FieldComparison)99).Validate());
     }
 
     [Fact]

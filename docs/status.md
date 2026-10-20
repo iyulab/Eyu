@@ -85,12 +85,13 @@ What is still missing is a review by people on a corpus of the domains above.
 
 Field comparison inside the pre-filter is exact-match (case-insensitive, ignoring surrounding whitespace
 and Unicode form — decomposed Hangul, full-width digits) by default;
-`LinkageOptions.UseStringSimilarityComparator` opts into a Jaro-Winkler threshold instead, so two records
+`LinkageOptions.Comparison = FieldComparison.JaroWinkler` opts into a Jaro-Winkler threshold instead, so two records
 denoting the same entity but differing only in notation (punctuation, spacing) still register as agreeing
 on that field. On the entity-matching benchmarks its ratios separated matches better than exact comparison's
 on nine of thirteen sets and worse on two (Walmart-Amazon: 0.66 → 0.45 best single threshold), so the
-default is unchanged. Neither
-compares tokens: two values agree as wholes or not at all.
+default is unchanged. `FieldComparison.TokenJaccard` and `FieldComparison.MongeElkan` read a value as
+words instead, for values whose words differ in order or number; they are not yet measured on the
+benchmarks.
 
 A field the caller declared as a reference (an inspection log's machine tag) is not compared at all for
 records whose subject is known (`RawRecord.Subject`): it names another entity, so agreeing on it is not

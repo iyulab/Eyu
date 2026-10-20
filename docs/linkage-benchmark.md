@@ -38,7 +38,7 @@ B-cubed per record (clerical-review.md §1), precision / recall / F1:
 
 With a date of birth and an identity number on every record the sets are close to a ceiling. Names
 and addresses alone — the common real case — are where exact comparison starts to merge and split
-wrongly, and where the similarity comparator (`LinkageOptions.UseStringSimilarityComparator`)
+wrongly, and where the similarity comparator (`LinkageOptions.Comparison = FieldComparison.JaroWinkler`)
 recovers nearly all of it.
 
 ## The review protocol, checked against the census

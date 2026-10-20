@@ -8,6 +8,24 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Added
+
+- **Token-based field comparison.** `LinkageOptions.Comparison` chooses how two values of a field agree
+  (`FieldComparison`): `Exact` (the default, unchanged), `JaroWinkler` (the former similarity mode),
+  and two methods that read a value as words — `TokenJaccard` (shared words over all words) and
+  `MongeElkan` (each word matched to its closest counterpart by Jaro-Winkler, averaged both ways). They
+  agree on values whose words differ in order or number — a product title, an address — where reading
+  the whole value as one string does not. `TokenSimilarity` exposes the scores.
+
+### Changed
+
+- **Breaking: `LinkageOptions.UseStringSimilarityComparator` is replaced by `LinkageOptions.Comparison`.**
+  Replace `UseStringSimilarityComparator: true` with `Comparison: FieldComparison.JaroWinkler`; behaviour
+  is the same. `StringSimilarityAgreementThreshold` keeps its name and now serves every similarity
+  method — choose it again when switching method, since the methods' scales differ.
+
 ## 0.16.0
 
 A minor. The pre-filter no longer pre-links the rows of a repeated section across their parents: rows

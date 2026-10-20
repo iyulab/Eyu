@@ -1338,7 +1338,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         double NonMatchThreshold,
         int MaxIterations,
         double ConvergenceTolerance,
-        bool UseStringSimilarityComparator,
+        string Comparison,
         double StringSimilarityAgreementThreshold);
 
     private sealed record LinkageSnapshot(
@@ -1435,7 +1435,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 linkageOptions.NonMatchThreshold,
                 linkageOptions.MaxIterations,
                 linkageOptions.ConvergenceTolerance,
-                linkageOptions.UseStringSimilarityComparator,
+                linkageOptions.Comparison.ToString(),
                 linkageOptions.StringSimilarityAgreementThreshold),
             cases);
 

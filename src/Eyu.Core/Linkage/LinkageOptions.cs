@@ -9,7 +9,7 @@ namespace Eyu.Core.Linkage;
 /// caller only needs this once observed precision/recall from a live validation cycle calls for
 /// different thresholds (design rationale §D of the base feature; decision 4 of the follow-up
 /// design), or once literal field comparison misses notation-variant duplicates (see
-/// <see cref="UseStringSimilarityComparator"/>), or because its records are not what the
+/// <see cref="Comparison"/>), or because its records are not what the
 /// pre-filter assumes they are (see <see cref="RecordsDenoteEntities"/>).
 /// </summary>
 /// <param name="MatchThreshold">
@@ -28,14 +28,18 @@ namespace Eyu.Core.Linkage;
 /// The fit is converged once no field's match or non-match agreement probability moves by this much
 /// or more between two rounds. Must be positive.
 /// </param>
-/// <param name="UseStringSimilarityComparator">
-/// Compare field values by Jaro-Winkler similarity instead of exact match (case- and
-/// whitespace-insensitive), so notation variants that are not literal duplicates still agree. Defaults
-/// to <see langword="false"/>.
+/// <param name="Comparison">
+/// How two values of a field are judged to agree (<see cref="FieldComparison"/>): exact match (case-
+/// and surrounding-whitespace-insensitive), or a similarity at or above
+/// <paramref name="StringSimilarityAgreementThreshold"/> — Jaro-Winkler over the whole value for
+/// notation variants, or a word-token method for values whose words differ in order or number.
+/// Defaults to <see cref="FieldComparison.Exact"/>.
 /// </param>
 /// <param name="StringSimilarityAgreementThreshold">
-/// The Jaro-Winkler similarity at or above which two values agree, when
-/// <paramref name="UseStringSimilarityComparator"/> is set; ignored otherwise.
+/// The similarity at or above which two values agree under any <paramref name="Comparison"/> but
+/// <see cref="FieldComparison.Exact"/>; ignored for that one. One value serves every method, and the
+/// methods' scales differ — a Jaccard of 0.9 asks for nearly the same words, a Jaro-Winkler of 0.9 for
+/// nearly the same spelling — so a caller switching method chooses it again.
 /// </param>
 /// <param name="RecordsDenoteEntities">
 /// The pre-filter's premise: each record is one mention of one real-world entity, so two records
@@ -75,7 +79,7 @@ public sealed record LinkageOptions(
     double NonMatchThreshold = LinkageClassifier.DefaultNonMatchThreshold,
     int MaxIterations = FellegiSunterEstimator.DefaultMaxIterations,
     double ConvergenceTolerance = FellegiSunterEstimator.DefaultConvergenceTolerance,
-    bool UseStringSimilarityComparator = false,
+    FieldComparison Comparison = FieldComparison.Exact,
     double StringSimilarityAgreementThreshold = FieldComparator.DefaultStringSimilarityAgreementThreshold,
     bool RecordsDenoteEntities = true,
     int MaxGrayZonePairsInPrompt = LinkageOptions.DefaultMaxGrayZonePairsInPrompt,
@@ -88,7 +92,7 @@ public sealed record LinkageOptions(
 
     /// <summary>
     /// Throws when a value could not be honoured: thresholds that do not order, an iteration
-    /// count that would run EM zero times, a non-positive tolerance, a similarity threshold
+    /// count that would run EM zero times, a non-positive tolerance, an undefined comparison, a similarity threshold
     /// outside [0, 1], a negative gray-zone pair cap, or a blocking rule that names no field. <see cref="LinkagePipeline.Analyze(IReadOnlyList{Eyu.Core.Records.RawRecord}, LinkageOptions)"/> calls this before it looks at the
     /// batch, so a bad option fails the same way whether the batch has one record or a thousand.
     /// </summary>
@@ -99,6 +103,11 @@ public sealed record LinkageOptions(
             throw new ArgumentException(
                 $"{nameof(MatchThreshold)} ({MatchThreshold}) must be greater than {nameof(NonMatchThreshold)} ({NonMatchThreshold}).",
                 nameof(MatchThreshold));
+        }
+
+        if (!Enum.IsDefined(Comparison))
+        {
+            throw new ArgumentOutOfRangeException(nameof(Comparison), Comparison, "Not a defined comparison.");
         }
 
         ArgumentOutOfRangeException.ThrowIfLessThan(MaxIterations, 1, nameof(MaxIterations));

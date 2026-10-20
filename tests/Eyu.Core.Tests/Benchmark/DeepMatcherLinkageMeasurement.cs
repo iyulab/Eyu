@@ -60,7 +60,7 @@ public class DeepMatcherLinkageMeasurement(ITestOutputHelper output)
         // «u from random pairs»: each field's non-match agreement measured over random pairs of the two
         // tables pooled (nearly all non-matches — each table is free of duplicates) and held while EM fits
         // m and the prior — the fit the library documents for candidates that gather duplicates.
-        var similarity = LinkageOptions.Default with { UseStringSimilarityComparator = true };
+        var similarity = LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler };
         var configurations = new (string Name, LinkageOptions Options, bool FixU)[]
         {
             ("exact", LinkageOptions.Default, false),

@@ -10,8 +10,8 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// Live-model regression guard for the notation-variant duplicate-miss defect:
 /// three synthetic company records where two (<c>company-a-1</c>/<c>company-a-2</c>) denote the
 /// same company under different punctuation/hyphenation, and one (<c>company-b</c>) is a
-/// genuinely distinct company. With <see cref="LinkageOptions.UseStringSimilarityComparator"/>
-/// enabled, Fellegi-Sunter's field comparison — not the model's judgment — classifies the a-1/a-2
+/// genuinely distinct company. With <see cref="LinkageOptions.Comparison"/> set to <see cref="FieldComparison.JaroWinkler"/>
+/// Fellegi-Sunter's field comparison — not the model's judgment — classifies the a-1/a-2
 /// pair as Match, and the model is told "merge them, do not re-decide" (README); this checks that
 /// a real model actually honors that instruction, not just that the classifier computes it (the
 /// classifier half is deterministic and already covered by
@@ -59,7 +59,7 @@ public class FieldComparatorNotationVariantLiveTests
     {
         var (httpClient, modelClient) = EyuLlmLiveClient.Create();
         using var _ = httpClient;
-        var proposer = new SinglePassOntologyProposer(modelClient, new LinkageOptions(UseStringSimilarityComparator: true));
+        var proposer = new SinglePassOntologyProposer(modelClient, new LinkageOptions(Comparison: FieldComparison.JaroWinkler));
 
         var proposal = await proposer.ProposeAsync(declaredStructures: [], Records, TestContext.Current.CancellationToken);
 

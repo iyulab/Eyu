@@ -371,6 +371,24 @@ public class HttpModelClientTests
     }
 
     [Fact]
+    public async Task A_connection_closed_mid_stream_ends_the_call_as_a_failed_request()
+    {
+        var cut = new CutShortStream(Encoding.UTF8.GetBytes("""data: {"choices":[{"delta":{"content":"par"}}]}""" + "\n"));
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(cut),
+        }));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", stream: true);
+
+        var failure = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpRequestError.ResponseEnded, failure.HttpRequestError);
+        Assert.IsType<HttpIOException>(failure.InnerException);
+        Assert.Contains("POST https://example.test/v1/chat/completions", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("after 3 chars", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_stream_with_no_content_is_refused_saying_how_it_began()
     {
         var handler = new FakeHandler(_ => Task.FromResult(Streamed(
@@ -410,6 +428,36 @@ public class HttpModelClientTests
             Encoding.UTF8,
             "application/json"),
     };
+
+    /// <summary>A body that yields its bytes and then fails as a connection closed early does.</summary>
+    private sealed class CutShortStream(byte[] head) : Stream
+    {
+        private int position;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => position; set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (position >= head.Length)
+            {
+                throw new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely.");
+            }
+
+            var n = Math.Min(count, head.Length - position);
+            Array.Copy(head, position, buffer, offset, n);
+            position += n;
+            return n;
+        }
+
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 
     private sealed class FakeHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond) : HttpMessageHandler
     {

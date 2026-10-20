@@ -41,7 +41,9 @@ namespace Eyu.Core.Inference.Http;
 /// response whose first byte is slow — commonly 100 seconds — when a thinking model reasons for longer
 /// than that before it answers: streamed, bytes flow while it thinks. Off by default, as in the
 /// OpenAI SDKs. The client owns <c>stream</c> and <c>stream_options</c> then; extra-body entries with
-/// either key are ignored.
+/// either key are ignored. A streamed call fails the way a non-streamed one does: an error the endpoint
+/// reports inside the stream, or a connection that closes before <c>[DONE]</c>, throws
+/// <see cref="HttpRequestException"/>.
 ///
 /// The response never carries a confidence score, and this type never invents one — see design
 /// rationale §D: an absent confidence is honest, a fabricated one is not.
@@ -116,7 +118,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
 
         if (stream)
         {
-            return await ReadStreamAsync(httpResponse, cancellationToken).ConfigureAwait(false);
+            return await ReadStreamAsync(httpRequest, httpResponse, cancellationToken).ConfigureAwait(false);
         }
 
         var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -139,52 +141,34 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
     /// the content in <c>delta.content</c> (a thinking model's <c>delta.reasoning_content</c> is not the
     /// answer and is left out), the last one before <c>[DONE]</c> may carry the usage, and a chunk that
     /// carries an <c>error</c> ends the call with it. Lines that are not <c>data:</c> — comments,
-    /// keep-alives, event names — are skipped, as the server-sent-events format says.
+    /// keep-alives, event names — are skipped, as the server-sent-events format says. A connection that
+    /// closes while the answer is still coming is a failed request too, as it is when a non-streamed
+    /// body is cut short.
     /// </summary>
-    private static async Task<ModelResponse> ReadStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken)
+    private static async Task<ModelResponse> ReadStreamAsync(HttpRequestMessage httpRequest, HttpResponseMessage httpResponse, CancellationToken cancellationToken)
     {
-        await using var content = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using var reader = new StreamReader(content, Encoding.UTF8);
         var text = new StringBuilder();
         var seen = new StringBuilder();
         TokenUsage? usage = null;
         var done = false;
-        while (!done && await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        try
         {
-            if (!line.StartsWith("data:", StringComparison.Ordinal))
+            await using var content = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var reader = new StreamReader(content, Encoding.UTF8);
+            while (!done && await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
             {
-                continue;
+                done = ReadChunk(line, text, seen, ref usage);
             }
-
-            var data = line["data:".Length..].Trim();
-            if (data == "[DONE]")
-            {
-                done = true;
-                continue;
-            }
-
-            if (seen.Length < DiagnosticExcerptLength)
-            {
-                seen.AppendLine(data);
-            }
-
-            var chunk = JsonSerializer.Deserialize(data, WireJsonContext.Default.ChatCompletionChunk);
-            if (chunk?.Error is { } error)
-            {
-                // The endpoint failed the request after its 200 — the same failure a non-success status
-                // reports, so a caller handles it the same way (a retry, a call counted as failed).
-                throw new HttpRequestException($"The model endpoint reported an error in the stream: {Excerpt(error.GetRawText())}");
-            }
-
-            if (chunk?.Choices is [{ Delta.Content: { } piece }, ..])
-            {
-                text.Append(piece);
-            }
-
-            if (chunk?.Usage is { } u)
-            {
-                usage = new TokenUsage(u.PromptTokens, u.CompletionTokens, u.TotalTokens);
-            }
+        }
+        catch (IOException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Without this the cut shows as an IOException, which a caller handling failed requests
+            // does not expect from a call whose non-streamed form reports the same cut as one.
+            var error = ex is HttpIOException http ? http.HttpRequestError : HttpRequestError.Unknown;
+            throw new HttpRequestException(
+                error,
+                $"The connection to {DescribeTarget(httpRequest)} closed while the answer was streaming, after {text.Length} chars of content and before [DONE]: {ex.Message}",
+                ex);
         }
 
         if (text.Length == 0)
@@ -197,6 +181,48 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
     }
 
     /// <summary>
+    /// Takes one line of the stream into the answer; true when it is the closing <c>[DONE]</c>.
+    /// </summary>
+    private static bool ReadChunk(string line, StringBuilder text, StringBuilder seen, ref TokenUsage? usage)
+    {
+        if (!line.StartsWith("data:", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var data = line["data:".Length..].Trim();
+        if (data == "[DONE]")
+        {
+            return true;
+        }
+
+        if (seen.Length < DiagnosticExcerptLength)
+        {
+            seen.AppendLine(data);
+        }
+
+        var chunk = JsonSerializer.Deserialize(data, WireJsonContext.Default.ChatCompletionChunk);
+        if (chunk?.Error is { } error)
+        {
+            // The endpoint failed the request after its 200 — the same failure a non-success status
+            // reports, so a caller handles it the same way (a retry, a call counted as failed).
+            throw new HttpRequestException($"The model endpoint reported an error in the stream: {Excerpt(error.GetRawText())}");
+        }
+
+        if (chunk?.Choices is [{ Delta.Content: { } piece }, ..])
+        {
+            text.Append(piece);
+        }
+
+        if (chunk?.Usage is { } u)
+        {
+            usage = new TokenUsage(u.PromptTokens, u.CompletionTokens, u.TotalTokens);
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// What a failed call needs to be diagnosed without re-running it: where the request went (the
     /// relative path resolved against a base address the caller built) and what the server said
     /// about it. The query is left out — some providers carry a key there.
@@ -204,13 +230,21 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
     private static string DescribeFailure(HttpRequestMessage request, HttpResponseMessage response, string body)
     {
         var status = (int)response.StatusCode;
-        var uri = request.RequestUri is { IsAbsoluteUri: true } requested
-            ? requested.GetLeftPart(UriPartial.Path)
-            : request.RequestUri?.OriginalString ?? "(unknown)";
-        var message = $"The model endpoint answered {status} {response.ReasonPhrase} to POST {uri}. Response body: {Excerpt(body)}";
+        var message = $"The model endpoint answered {status} {response.ReasonPhrase} to {DescribeTarget(request)}. Response body: {Excerpt(body)}";
         return response.StatusCode == System.Net.HttpStatusCode.NotFound
             ? message + " The path is resolved against HttpClient.BaseAddress, which for an OpenAI-compatible server usually ends with the API version segment and a slash (https://host/v1/)."
             : message;
+    }
+
+    /// <summary>
+    /// The method and the path a request went to, without the query — some providers carry a key there.
+    /// </summary>
+    private static string DescribeTarget(HttpRequestMessage request)
+    {
+        var uri = request.RequestUri is { IsAbsoluteUri: true } requested
+            ? requested.GetLeftPart(UriPartial.Path)
+            : request.RequestUri?.OriginalString ?? "(unknown)";
+        return $"{request.Method.Method} {uri}";
     }
 
     /// <summary>

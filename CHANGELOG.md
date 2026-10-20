@@ -8,6 +8,16 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Fixed
+
+- **A connection that closes while a streamed answer is still coming is an `HttpRequestException`**,
+  as the same cut is for a non-streamed call, rather than an `IOException` escaping the client. The
+  exception carries the `HttpRequestError` (`ResponseEnded` for a body cut short), where the request
+  went, how much of the answer had arrived, and the transport failure as its inner exception — a
+  caller that retries or counts failed calls now does so for this failure too.
+
 ## 0.13.0
 
 A minor. A proposer takes type names the caller already uses (`KnownType`) and proposes an entity of a

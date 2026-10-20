@@ -292,6 +292,15 @@ seconds is a common limit). `stream: true` asks for the answer as it is written 
 streamed chunks, so bytes flow while the model thinks — `new HttpModelClient(httpClient, model,
 stream: true)`. It is off by default, as in the OpenAI SDKs.
 
+A failed call is an `HttpRequestException`, however it fails: a status outside the success
+range (the exception carries the status, where the request went and what the server answered),
+an error the endpoint reports inside a streamed answer, or a connection that closes before a
+streamed answer ends. The client does not retry; whether and how often to is the caller's call.
+A retry policy on the `HttpClient`'s handler pipeline covers what fails before the response
+arrives, but a streamed call has its response once the headers are in, so a cut in the middle of
+the answer surfaces from `CompleteAsync` after the pipeline is done — retry around the call to
+cover that too.
+
 The proposer describes the JSON it expects in the prompt, but a sentence in a prompt does not
 stop every model from wrapping its answer in a markdown code fence — some self-hosted
 instruction models do so routinely — and a fenced answer is refused as invalid JSON (the

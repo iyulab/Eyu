@@ -8,7 +8,11 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.15.0
+
+A minor. The base prompt says a source is a record's id, never a value written in a record, so a
+response that named something a record only mentions is no longer refused whole for citing it. The
+base prompt fingerprint moves; nothing in the API changes. Pairs with Formbase 0.30.0.
 
 ### Changed
 
@@ -17,6 +21,7 @@ every published version has a section here.
   own) produced a citation no record resolves, and the whole response was refused for it. The prompt
   still says nothing about what counts as an entity. The base prompt fingerprint moves (`2bc32b71` →
   `98229faf`): measurements taken before it are not comparable with those after.
+- **`Eyu.Formbase` builds on `Formbase.Core` 0.30.0** (was 0.29.0).
 
 ## 0.14.0
 

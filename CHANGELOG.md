@@ -10,6 +10,10 @@ every published version has a section here.
 
 ## Unreleased
 
+### Dependencies
+
+- **`Eyu.Formbase` builds on `Formbase.Core` 0.29.0** (was 0.28.0), for the form type's business name.
+
 ### Added
 
 - **A declared structure can carry the name a person reads it by** (`DeclaredStructure.BusinessName`),
@@ -17,6 +21,8 @@ every published version has a section here.
   type in quotes, as it shows a field's, and an entity proposed under the business name is written under
   the declared type's name, so the declared type stays the one name in use. The base prompt fingerprints
   do not move; only a call whose declarations carry a business name sends a different prompt.
+- **`Eyu.Formbase` carries a form type's business name** (`FormTypeHints.BusinessName`, Formbase 0.29.0)
+  into the declared structure, as it already carried each field's.
 
 ### Fixed
 

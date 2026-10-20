@@ -136,6 +136,25 @@ public class FormbaseStructureSourceTests
     }
 
     [Fact]
+    public async Task GetStructureAsync_carries_the_name_a_person_reads_the_form_by()
+    {
+        var hintSource = new InMemoryFieldHintSource();
+        hintSource.Declare(new FormTypeHints(
+            FormTypeRef.Create("inspection_log"),
+            TableName: "inspection_log",
+            Fields: [new FieldHint("lot_no", ColumnType.Text)],
+            BusinessName: "설비 점검일지"));
+        hintSource.Declare(new FormTypeHints(FormTypeRef.Create("defect"), TableName: "defect", Fields: [new FieldHint("code", ColumnType.Text)]));
+        var source = new FormbaseStructureSource(hintSource);
+
+        var named = await source.GetStructureAsync(SubjectRef.Create("inspection_log"), TestContext.Current.CancellationToken);
+        var unnamed = await source.GetStructureAsync(SubjectRef.Create("defect"), TestContext.Current.CancellationToken);
+
+        Assert.Equal("설비 점검일지", named!.BusinessName);
+        Assert.Null(unnamed!.BusinessName);
+    }
+
+    [Fact]
     public async Task GetStructureAsync_carries_the_relation_kind_and_the_field_that_realises_it()
     {
         // "asset -> asset" alone tells a model nothing about which record field *is* the relation;

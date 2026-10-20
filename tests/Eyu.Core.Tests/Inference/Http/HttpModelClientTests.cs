@@ -312,6 +312,97 @@ public class HttpModelClientTests
         Assert.Null(response.Usage);
     }
 
+    [Fact]
+    public async Task A_streaming_client_asks_for_a_stream_and_joins_the_answer_chunks()
+    {
+        string? capturedBody = null;
+        var handler = new FakeHandler(async request =>
+        {
+            capturedBody = await request.Content!.ReadAsStringAsync();
+            return Streamed(
+                ": keep-alive",
+                """data: {"choices":[{"delta":{"role":"assistant","reasoning_content":"thinking first"}}]}""",
+                """data: {"choices":[{"delta":{"content":"the "}}]}""",
+                "",
+                """data: {"choices":[{"delta":{"content":"answer"}}]}""",
+                """data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":3,"total_tokens":10}}""",
+                "data: [DONE]");
+        });
+        var extraBody = new Dictionary<string, JsonElement> { ["stream"] = JsonSerializer.SerializeToElement(false) };
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", extraBody, stream: true);
+
+        var response = await client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken);
+
+        Assert.Equal("the answer", response.Text);
+        Assert.Equal(new TokenUsage(7, 3, 10), response.Usage);
+        using var payload = JsonDocument.Parse(capturedBody!);
+        Assert.True(payload.RootElement.GetProperty("stream").GetBoolean(), "the client owns stream; an extra-body value does not turn it off");
+        Assert.True(payload.RootElement.GetProperty("stream_options").GetProperty("include_usage").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_client_that_does_not_stream_sends_no_stream_field()
+    {
+        string? capturedBody = null;
+        var handler = new FakeHandler(async request =>
+        {
+            capturedBody = await request.Content!.ReadAsStringAsync();
+            return CannedResponse("ok");
+        });
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+
+        await client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken);
+
+        using var payload = JsonDocument.Parse(capturedBody!);
+        Assert.False(payload.RootElement.TryGetProperty("stream", out _));
+    }
+
+    [Fact]
+    public async Task An_error_in_the_stream_ends_the_call_with_it()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(Streamed(
+            """data: {"choices":[{"delta":{"content":"par"}}]}""",
+            """data: {"error":{"message":"context length exceeded"}}""")));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", stream: true);
+
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+
+        Assert.Contains("context length exceeded", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_stream_with_no_content_is_refused_saying_how_it_began()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(Streamed(
+            """data: {"choices":[{"delta":{"reasoning_content":"only thinking"}}]}""")));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", stream: true);
+
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+
+        Assert.Contains("ended before [DONE]", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("only thinking", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_streaming_client_still_reports_a_failed_status_with_the_body()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.GatewayTimeout)
+        {
+            Content = new StringContent("""{"error":{"code":"upstream_timeout"}}"""),
+        }));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", stream: true);
+
+        var failure = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.GatewayTimeout, failure.StatusCode);
+        Assert.Contains("upstream_timeout", failure.Message, StringComparison.Ordinal);
+    }
+
+    private static HttpResponseMessage Streamed(params string[] lines) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(string.Join("\n", lines) + "\n", Encoding.UTF8, "text/event-stream"),
+    };
+
     private static HttpResponseMessage CannedResponse(string content) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(

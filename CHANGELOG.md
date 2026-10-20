@@ -21,6 +21,11 @@ every published version has a section here.
 
 ### Added
 
+- **`HttpModelClient` can stream the answer.** `stream: true` sends `"stream": true` (with
+  `stream_options.include_usage`) and joins the server-sent chunks' `delta.content` until `[DONE]`,
+  so a thinking model behind a gateway that closes slow-to-start responses (commonly after 100
+  seconds) still answers. An error chunk ends the call with its message; a stream with no content is
+  refused, quoting how it began. Off by default; the client then owns `stream` and `stream_options`.
 - **A declared field can carry the name a person reads it by.** `DeclaredField.BusinessName`
   («로트 번호» for `lot_no`, after ODCS's `businessName`) is shown to the model beside the machine
   name — `lot_no "로트 번호" (text, required)` — so an abbreviation is not left for the model to guess.

@@ -35,10 +35,18 @@ namespace Eyu.Core.Inference.Http;
 /// honour, so an extra-body <c>response_format</c> replaces the mapped one — the caller knows its
 /// server, and <c>{"type": "text"}</c> turns structured output off for one that rejects it.
 ///
+/// With <paramref name="stream"/> the request asks for the answer as it is written (<c>"stream": true</c>,
+/// with <c>stream_options.include_usage</c>) and the client reads the server-sent events, joining each
+/// chunk's <c>delta.content</c> until <c>data: [DONE]</c>. Use it behind a proxy or gateway that closes a
+/// response whose first byte is slow — commonly 100 seconds — when a thinking model reasons for longer
+/// than that before it answers: streamed, bytes flow while it thinks. Off by default, as in the
+/// OpenAI SDKs. The client owns <c>stream</c> and <c>stream_options</c> then; extra-body entries with
+/// either key are ignored.
+///
 /// The response never carries a confidence score, and this type never invents one — see design
 /// rationale §D: an absent confidence is honest, a fabricated one is not.
 /// </summary>
-public sealed partial class HttpModelClient(HttpClient httpClient, string model, IReadOnlyDictionary<string, JsonElement>? extraBody = null) : IModelClient
+public sealed partial class HttpModelClient(HttpClient httpClient, string model, IReadOnlyDictionary<string, JsonElement>? extraBody = null, bool stream = false) : IModelClient
 {
     private const int DiagnosticExcerptLength = 500;
 
@@ -73,13 +81,19 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
             {
                 // The client owns model and messages; opaque extras add sibling fields, and replace
                 // the mapped response_format when they carry one.
-                if (key is "model" or "messages")
+                if (key is "model" or "messages" || (stream && key is "stream" or "stream_options"))
                 {
                     continue;
                 }
 
                 body[key] = JsonSerializer.SerializeToNode(value, WireJsonContext.Default.JsonElement);
             }
+        }
+
+        if (stream)
+        {
+            body["stream"] = true;
+            body["stream_options"] = new JsonObject { ["include_usage"] = true };
         }
 
         var payload = body.ToJsonString();
@@ -90,12 +104,22 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
         {
             Content = new StringContent(payload, Encoding.UTF8, "application/json"),
         };
-        using var httpResponse = await httpClient.SendAsync(httpRequest, cancellationToken).ConfigureAwait(false);
-        var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        using var httpResponse = await httpClient.SendAsync(
+            httpRequest,
+            stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead,
+            cancellationToken).ConfigureAwait(false);
         if (!httpResponse.IsSuccessStatusCode)
         {
-            throw new HttpRequestException(DescribeFailure(httpRequest, httpResponse, responseBody), inner: null, httpResponse.StatusCode);
+            var failureBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            throw new HttpRequestException(DescribeFailure(httpRequest, httpResponse, failureBody), inner: null, httpResponse.StatusCode);
         }
+
+        if (stream)
+        {
+            return await ReadStreamAsync(httpResponse, cancellationToken).ConfigureAwait(false);
+        }
+
+        var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
         var parsed = JsonSerializer.Deserialize(responseBody, WireJsonContext.Default.ChatCompletionResponse);
         var messageText = parsed?.Choices is [{ Message.Content: { Length: > 0 } text }, ..] ? text : null;
@@ -108,6 +132,66 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
 
         var usage = parsed?.Usage is { } u ? new TokenUsage(u.PromptTokens, u.CompletionTokens, u.TotalTokens) : null;
         return new ModelResponse(messageText, Usage: usage);
+    }
+
+    /// <summary>
+    /// Joins a streamed answer: each <c>data:</c> line is a chunk whose first choice carries a piece of
+    /// the content in <c>delta.content</c> (a thinking model's <c>delta.reasoning_content</c> is not the
+    /// answer and is left out), the last one before <c>[DONE]</c> may carry the usage, and a chunk that
+    /// carries an <c>error</c> ends the call with it. Lines that are not <c>data:</c> — comments,
+    /// keep-alives, event names — are skipped, as the server-sent-events format says.
+    /// </summary>
+    private static async Task<ModelResponse> ReadStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken)
+    {
+        await using var content = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var reader = new StreamReader(content, Encoding.UTF8);
+        var text = new StringBuilder();
+        var seen = new StringBuilder();
+        TokenUsage? usage = null;
+        var done = false;
+        while (!done && await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        {
+            if (!line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var data = line["data:".Length..].Trim();
+            if (data == "[DONE]")
+            {
+                done = true;
+                continue;
+            }
+
+            if (seen.Length < DiagnosticExcerptLength)
+            {
+                seen.AppendLine(data);
+            }
+
+            var chunk = JsonSerializer.Deserialize(data, WireJsonContext.Default.ChatCompletionChunk);
+            if (chunk?.Error is { } error)
+            {
+                throw new InvalidOperationException($"The model endpoint reported an error in the stream: {Excerpt(error.GetRawText())}");
+            }
+
+            if (chunk?.Choices is [{ Delta.Content: { } piece }, ..])
+            {
+                text.Append(piece);
+            }
+
+            if (chunk?.Usage is { } u)
+            {
+                usage = new TokenUsage(u.PromptTokens, u.CompletionTokens, u.TotalTokens);
+            }
+        }
+
+        if (text.Length == 0)
+        {
+            throw new InvalidOperationException(
+                $"The streamed completion carried no message content{(done ? "" : " and ended before [DONE]")}. Stream began: {Excerpt(seen.ToString())}");
+        }
+
+        return new ModelResponse(text.ToString(), Usage: usage);
     }
 
     /// <summary>
@@ -146,6 +230,10 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
 
     private sealed record ChatResponseMessage(string? Content);
 
+    private sealed record ChatCompletionChunk(IReadOnlyList<ChatChunkChoice>? Choices, ChatUsage? Usage, JsonElement? Error);
+
+    private sealed record ChatChunkChoice(ChatResponseMessage? Delta);
+
     private sealed record ChatUsage(
         [property: JsonPropertyName("prompt_tokens")] int? PromptTokens,
         [property: JsonPropertyName("completion_tokens")] int? CompletionTokens,
@@ -157,6 +245,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
     /// </summary>
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
     [JsonSerializable(typeof(ChatCompletionResponse))]
+    [JsonSerializable(typeof(ChatCompletionChunk))]
     [JsonSerializable(typeof(JsonElement))]
     private sealed partial class WireJsonContext : JsonSerializerContext;
 }

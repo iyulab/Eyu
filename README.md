@@ -278,6 +278,12 @@ client). When the provider reports token counts, `ModelResponse.Usage` carries t
 (prompt / completion / total, each optional) verbatim, so a caller can budget context or
 bill against the server's own numbers.
 
+A thinking model can reason for minutes before the first word of its answer, and a proxy or
+gateway in front of the server may close a response whose first byte is that slow (100
+seconds is a common limit). `stream: true` asks for the answer as it is written and joins the
+streamed chunks, so bytes flow while the model thinks — `new HttpModelClient(httpClient, model,
+stream: true)`. It is off by default, as in the OpenAI SDKs.
+
 The proposer describes the JSON it expects in the prompt, but a sentence in a prompt does not
 stop every model from wrapping its answer in a markdown code fence — some self-hosted
 instruction models do so routinely — and a fenced answer is refused as invalid JSON (the

@@ -43,7 +43,10 @@ internal static class EyuLlmLiveClient
         };
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-        IModelClient client = new HttpModelClient(httpClient, model);
+        // EYU_LLM_STREAM=true streams the answer — for an endpoint behind a gateway that closes a
+        // response whose first byte takes longer than its limit while a thinking model reasons.
+        var stream = bool.TryParse(Environment.GetEnvironmentVariable("EYU_LLM_STREAM"), out var streamed) && streamed;
+        IModelClient client = new HttpModelClient(httpClient, model, stream: stream);
         if (Environment.GetEnvironmentVariable("EYU_LLM_RAW_RESPONSE_DIR") is { Length: > 0 } raw)
         {
             client = new RecordingModelClient(client, raw);

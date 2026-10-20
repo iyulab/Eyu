@@ -8,7 +8,16 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.13.0
+
+A minor. A proposer takes type names the caller already uses (`KnownType`) and proposes an entity of a
+kind one of them names under that name, spelled as it is in use; a known entity's type counts as a name
+in use too. What earlier calls found — known entities, mentioned entities, known types — is passed as one
+`PriorKnowledge`: the overloads that took the first two are gone (breaking; migration below). A matched
+known entity keeps its type, a declared field can carry the name a person reads it by, `HttpModelClient`
+can stream, and an error inside a streamed answer is reported as a failed request. Pairs with Formbase
+0.28.0. The known-entities prompt fingerprint moves (`2bc58427` → `d911c6a8`); calls with known types
+stamp `KnownTypesPromptFingerprint`.
 
 ### Changed
 
@@ -52,7 +61,7 @@ every published version has a section here.
 
 ### Dependencies
 
-- `Eyu.Formbase`: `Formbase.Core` 0.27.0 → 0.28.0.
+- `Formbase.Core` 0.28.0 (was 0.27.0 in 0.12.0).
 
 ## 0.12.0
 

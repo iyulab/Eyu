@@ -8,7 +8,15 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.12.0
+
+A minor. `Eyu.Formbase` reads a Formbase repeated section — a form type whose rows are cut from its
+parent's documents — as records of its own, and declares the section's key field as a reference to the
+parent so rows of one sheet are not linked by the sheet's number. A proposer can take linkage parameters
+fitted once on the population and score every call with them. `Eyu.Rdf` can write the previous rule's
+term IRIs as deprecated and replaced by the current ones. Two constructors change — source-compatible,
+not binary-compatible, so code compiled against 0.11.0 recompiles. Pairs with Formbase 0.27.0. No
+prompt fingerprint changes.
 
 ### Added
 

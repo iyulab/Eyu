@@ -192,7 +192,7 @@ What it says:
   rarely agree as whole values, exactly or at Jaro-Winkler 0.90 (Amazon-Google oracle 0.29–0.34, Abt-Buy
   0.19–0.25); a single long `content` field carries no signal (Company: the oracle equals calling every
   pair a match). Dirty sets move values between columns, which column-aligned comparison cannot follow.
-  Token-level comparison, a standard feature for such data, is not among the comparators.
+  Comparing values as words lifts part of that ceiling (below).
 - **EM often does not converge on these candidate sets** (reported as `EstimationStatus.NotConverged`),
   and where it inflates the match prior (Walmart-Amazon, Jaro-Winkler: 0.31 against a true share of 0.09)
   precision falls with it — the same family as the unsupervised Fellegi-Sunter baseline (ECM) reported at
@@ -203,6 +203,39 @@ What it says:
   do; EM puts the excess into the match component (fitted priors 0.86–0.99 where the true share is
   0.09–0.25) and precision collapses (Fodors-Zagats, Jaro-Winkler: 1.000 → 0.301 alone). The joint fit is
   the better one on such candidates.
+
+### Comparing values as words
+
+The same twelve sets (Company left out — see below) under the two word-token methods,
+`FieldComparison.TokenJaccard` at half the words shared and `FieldComparison.MongeElkan` at 0.90, read
+the same way. The settings are reported side by side, not tuned on these labels, and the default
+comparison stays exact.
+
+| set | token Jaccard ≥ 0.50: alone F1 · gray · oracle | Monge-Elkan ≥ 0.90: alone F1 · gray · oracle |
+|---|---|---|
+| Structured / Fodors-Zagats | 0.952 · 0.02 · 1.000 | 1.000 · 0.02 · 1.000 |
+| Structured / DBLP-ACM | 0.922 · 0.20 · 0.936 | 0.894 · 0.08 · 0.947 |
+| Structured / iTunes-Amazon | 0.875 · 0.39 · 0.945 | 0.868 · 0.26 · 0.929 |
+| Structured / DBLP-Scholar | 0.785 · 0.22 · 0.823 | 0.771 · 0.17 · 0.799 |
+| Structured / Beer | 0.815 · 0.37 · 0.933 | 0.667 · 0.89 · 0.828 |
+| Structured / Walmart-Amazon | 0.401 · 0.93 · 0.588 | 0.393 · 0.96 · 0.530 |
+| Structured / Amazon-Google | 0.136 · 0.99 · 0.494 | 0.073 · 0.96 · 0.481 |
+| Dirty / DBLP-ACM | 0.707 · 0.69 · 0.775 | 0.613 · 0.83 · 0.702 |
+| Dirty / DBLP-Scholar | 0.344 · 0.94 · 0.693 | 0.236 · 0.93 · 0.584 |
+| Dirty / iTunes-Amazon | 0.200 · 0.97 · 0.581 | 0.000 · 0.99 · 0.526 |
+| Dirty / Walmart-Amazon | 0.117 · 0.98 · 0.466 | 0.235 · 0.96 · 0.419 |
+| Textual / Abt-Buy | 0.019 · 1.00 · 0.438 | 0.019 · 1.00 · 0.392 |
+
+- **Where words move, words help.** Token Jaccard separates best of the four comparisons on seven of the
+  twelve sets — the product sets (Amazon-Google oracle 0.34 → 0.49, Abt-Buy 0.25 → 0.44, Beer 0.83 → 0.93)
+  and every Dirty set — and leaves less to the model on most of them (Beer 0.96 → 0.37 gray share,
+  DBLP-Scholar 0.60 → 0.22).
+- **Where values are clean, whole-value comparison stays ahead.** On DBLP-ACM, iTunes-Amazon and
+  DBLP-Scholar Jaro-Winkler separates slightly better (0.966 against 0.936 on DBLP-ACM), and exact
+  comparison stays best on Walmart-Amazon (0.660). No single method wins everywhere, so none replaces the
+  default; a caller chooses by what its values look like.
+- **Monge-Elkan sits between the two** and costs more — every word against every word, so Company's long
+  text was not run under it.
 
 Reproducing:
 

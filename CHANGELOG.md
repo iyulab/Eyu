@@ -26,6 +26,12 @@ every published version has a section here.
   is the same. `StringSimilarityAgreementThreshold` keeps its name and now serves every similarity
   method — choose it again when switching method, since the methods' scales differ.
 
+### Documentation
+
+- **The entity-matching benchmarks under the word-token methods** (`docs/linkage-benchmark.md`): token
+  Jaccard separates best on seven of twelve DeepMatcher sets — product titles and values moved between
+  columns — and whole-value comparison stays ahead on clean bibliographic sets, so the default is unchanged.
+
 ## 0.16.0
 
 A minor. The pre-filter no longer pre-links the rows of a repeated section across their parents: rows

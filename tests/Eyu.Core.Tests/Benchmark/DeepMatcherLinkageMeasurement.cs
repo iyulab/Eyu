@@ -67,6 +67,11 @@ public class DeepMatcherLinkageMeasurement(ITestOutputHelper output)
             ("Jaro-Winkler ≥ 0.90", similarity, false),
             ("exact, u from random pairs", LinkageOptions.Default, true),
             ("Jaro-Winkler ≥ 0.90, u from random pairs", similarity, true),
+
+            // Word-token methods: Jaccard at half the words shared; Monge-Elkan at the Jaro-Winkler default,
+            // since each word is scored by Jaro-Winkler. Settings reported side by side, not tuned on these sets.
+            ("token Jaccard ≥ 0.50", LinkageOptions.Default with { Comparison = FieldComparison.TokenJaccard, StringSimilarityAgreementThreshold = 0.5 }, false),
+            ("Monge-Elkan ≥ 0.90", LinkageOptions.Default with { Comparison = FieldComparison.MongeElkan }, false),
         };
 
         var report = new StringBuilder()

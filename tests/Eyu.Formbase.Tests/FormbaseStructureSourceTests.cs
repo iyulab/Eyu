@@ -116,6 +116,26 @@ public class FormbaseStructureSourceTests
     }
 
     [Fact]
+    public async Task GetStructureAsync_carries_the_name_a_person_reads_a_field_by()
+    {
+        var hintSource = new InMemoryFieldHintSource();
+        hintSource.Declare(new FormTypeHints(
+            FormTypeRef.Create("inspection"),
+            TableName: "inspection",
+            Fields:
+            [
+                new FieldHint("lot_no", ColumnType.Text, BusinessName: "로트 번호"),
+                new FieldHint("qty", ColumnType.Integer),
+            ]));
+        var source = new FormbaseStructureSource(hintSource);
+
+        var structure = await source.GetStructureAsync(SubjectRef.Create("inspection"), TestContext.Current.CancellationToken);
+
+        Assert.Equal("로트 번호", structure!.Fields.Single(f => f.Name == "lot_no").BusinessName);
+        Assert.Null(structure.Fields.Single(f => f.Name == "qty").BusinessName);
+    }
+
+    [Fact]
     public async Task GetStructureAsync_carries_the_relation_kind_and_the_field_that_realises_it()
     {
         // "asset -> asset" alone tells a model nothing about which record field *is* the relation;

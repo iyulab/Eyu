@@ -9,8 +9,8 @@ namespace Eyu.Formbase;
 
 /// <summary>
 /// Adapts a Formbase <see cref="IFieldHintSource"/> to Eyu's <see cref="IStructureSource"/>.
-/// Declared field hints carry through unchanged in meaning — the name, the value type, whether the
-/// field is required, for a relation which field carries its key and on which side, and for a field
+/// Declared field hints carry through unchanged in meaning — the name, the name a person reads it by,
+/// the value type, whether the field is required, for a relation which field carries its key and on which side, and for a field
 /// bound to another form type the reference that binding declares — because
 /// Formbase's declaration is the answer and Eyu never re-infers what Formbase already declared
 /// (design rationale §A). Formbase's own type names stop here: they are mapped onto Eyu's declared
@@ -33,7 +33,8 @@ public sealed class FormbaseStructureSource(IFieldHintSource hintSource) : IStru
             .Select(field => new DeclaredField(
                 field.Name,
                 Kind: ToDeclaredKind(field.Type),
-                Required: !field.Nullable))
+                Required: !field.Nullable,
+                BusinessName: field.BusinessName))
             .ToList();
 
         var declaredRelations = (hints.Relations ?? [])

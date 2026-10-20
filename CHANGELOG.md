@@ -29,7 +29,12 @@ every published version has a section here.
 - **A declared field can carry the name a person reads it by.** `DeclaredField.BusinessName`
   («로트 번호» for `lot_no`, after ODCS's `businessName`) is shown to the model beside the machine
   name — `lot_no "로트 번호" (text, required)` — so an abbreviation is not left for the model to guess.
-  It is the caller's own name for the field; Eyu still infers no synonyms.
+  It is the caller's own name for the field; Eyu still infers no synonyms. `Eyu.Formbase`'s
+  `FormbaseStructureSource` carries a Formbase field's `BusinessName` into it (Formbase `0.28.0`).
+
+### Dependencies
+
+- `Eyu.Formbase`: `Formbase.Core` 0.27.0 → 0.28.0.
 
 ## 0.12.0
 

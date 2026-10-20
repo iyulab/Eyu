@@ -96,6 +96,15 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         /// <summary>Attempts whose model call itself failed — a timeout, a dropped connection. Not a parse failure: nothing came back to parse.</summary>
         public int ModelFailures;
 
+        /// <summary>
+        /// Of <see cref="ModelFailures"/>, the calls that failed some way other than a parse failure or a
+        /// failed request — a defect in how the client classifies the failure, not something the model
+        /// did. Each is kept as one failed attempt so the round goes on and its report is written, and the
+        /// test fails after the report: twice a single such call ended a round and lost every attempt
+        /// measured before it.
+        /// </summary>
+        public int UnexpectedFailures;
+
         /// <summary>Elements the proposer left out of parsed attempts, by reason — the per-element failures a whole-response parse count no longer sees.</summary>
         public readonly SortedDictionary<RejectionReason, int> Rejections = [];
         public int GroundingViolations;
@@ -278,6 +287,10 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             await File.WriteAllTextAsync(logPath, BuildStructuredLogJson(timestamp, runs, linkageOptions, stats), TestContext.Current.CancellationToken);
         }
 
+        var unexpected = stats.Values.Sum(s => s.UnexpectedFailures) + crossSourceStats.Sum(c => c.Modes.Sum(m => m.Mode.UnexpectedFailures));
+        Assert.True(unexpected == 0,
+            $"{unexpected} model call(s) failed with an exception a failed call should not throw — the report keeps their notes; fix how the client classifies that failure");
+
         // The instrument's own sanity floor, not a graduation gate: a run where nothing ever
         // parsed measured the transport, not the model.
         Assert.True(stats.Values.Sum(s => s.Attempts - s.ParseFailures - s.ModelFailures) + crossSourceStats.Sum(c => c.Separate.Parsed + c.Combined.Parsed) > 0,
@@ -305,6 +318,13 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             // and threw away every attempt already measured.
             stats.ModelFailures++;
             stats.FailureNotes.Add($"model call failed: {ex.GetType().Name}: {ex.Message}");
+            return;
+        }
+        catch (Exception ex) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
+        {
+            stats.ModelFailures++;
+            stats.UnexpectedFailures++;
+            stats.FailureNotes.Add($"model call failed unexpectedly: {ex.GetType().Name}: {ex.Message}");
             return;
         }
 
@@ -377,6 +397,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
     {
         public int Attempts;
         public int Parsed;
+        public int UnexpectedFailures;
         public readonly List<string> FailureNotes = [];
 
         /// <summary>Per parsed attempt: thing label -> the IRIs of the individuals named by any of its names.</summary>
@@ -655,6 +676,12 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !TestContext.Current.CancellationToken.IsCancellationRequested)
         {
             mode.FailureNotes.Add($"{label}: model call failed: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+        catch (Exception ex) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
+        {
+            mode.UnexpectedFailures++;
+            mode.FailureNotes.Add($"{label}: model call failed unexpectedly: {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }

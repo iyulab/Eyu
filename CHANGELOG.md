@@ -8,7 +8,14 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.14.0
+
+A minor. A declared structure can carry the name a person reads it by (`DeclaredStructure.BusinessName`),
+and `Eyu.Formbase` fills it from a Formbase form type's (Formbase 0.29.0). A streamed call whose
+connection closes before the answer ends is reported as an `HttpRequestException`, as every other
+failed call is — in 0.13.0 it surfaced as an `IOException`. Source-compatible: `DeclaredStructure`
+gains an optional last parameter (a positional deconstruction takes one more variable). The base prompt
+fingerprints do not move. Pairs with Formbase 0.29.0.
 
 ### Dependencies
 

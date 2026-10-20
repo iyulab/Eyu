@@ -1,3 +1,5 @@
+using Eyu.Core.Linkage;
+using Eyu.Core.Primitives;
 using Xunit;
 
 namespace Eyu.Core.Tests.Quality;
@@ -57,5 +59,24 @@ public class QualityCatalogTests
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// The section case's rows hold their sheet's number, which is the sheet's identity and not theirs:
+    /// declared as a reference back to the sheet, it is left out of what the pre-filter compares, so two
+    /// rows of one sheet do not look like one thing for sharing it.
+    /// </summary>
+    [Fact]
+    public void The_section_case_leaves_the_sheet_number_out_of_what_identifies_a_row()
+    {
+        var sections = QualityCatalog.CrossSourceCases.Single(c => c.Name == "plant-inspection-log-sections");
+        var declared = sections.Sources.SelectMany(s => s.Declarations).ToList();
+        var rows = sections.Sources.Single(s => s.Name == "inspection-items").Records;
+
+        var view = LinkageEvidence.IdentityView(rows, declared);
+
+        Assert.All(rows, row => Assert.Equal(SubjectRef.Create("inspection_item"), row.Subject));
+        Assert.All(view, row => Assert.DoesNotContain("sheet_no", row.Fields.Keys));
+        Assert.All(view, row => Assert.Contains("item", row.Fields.Keys));
     }
 }

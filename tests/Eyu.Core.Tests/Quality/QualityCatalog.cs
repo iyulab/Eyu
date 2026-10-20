@@ -74,6 +74,10 @@ internal sealed record SameThing(string Label, string[] Names, string? DenotingR
 /// </summary>
 internal static class QualityCatalog
 {
+    // Declared before the cases that use them: static fields initialize in the order they are written.
+    private static readonly SubjectRef Sheet = SubjectRef.Create("inspection_log");
+    private static readonly SubjectRef Item = SubjectRef.Create("inspection_item");
+
     public static readonly QualityCase[] Cases =
     [
         // Real NRC Licensee Event Reports -- public US Nuclear Regulatory Commission filings.
@@ -260,6 +264,54 @@ internal static class QualityCatalog
             new("conveyor 12", ["컨베이어 12", "CNV-012", "컨베이어#12"], "erp-eq-2"),
             new("compressor 2", ["공기압축기 2호", "CMP-002", "압축기2"], "erp-eq-3"),
         ]),
+        // An equipment inspection log with a repeated section, written for this catalog: each sheet is a
+        // record, and each checked item on it is a row of the sheet's «점검 항목» table, handed over the
+        // way a form store's section adapter hands section rows — one record per row, id
+        // "{sheet}/{position}", the row's cells plus the key field that holds the sheet number, and a
+        // declared reference back to the sheet. The same item («유압 압력») is checked on several sheets;
+        // what the case asks is whether each sheet stays one individual while its rows point at it.
+        new("plant-inspection-log-sections",
+        [
+            new("inspection-sheets",
+            [
+                Row(Sheet, "IL-1001", ("sheet_no", "IL-1001"), ("equipment", "프레스 2호기"), ("inspected_on", "2024-10-07"), ("inspector", "박준호")),
+                Row(Sheet, "IL-1002", ("sheet_no", "IL-1002"), ("equipment", "프레스 2호기"), ("inspected_on", "2024-10-14"), ("inspector", "김민지")),
+                Row(Sheet, "IL-1003", ("sheet_no", "IL-1003"), ("equipment", "공기압축기 1호"), ("inspected_on", "2024-10-14"), ("inspector", "박준호")),
+            ],
+            [
+                new(SubjectRef.Create("inspection_log"),
+                    [
+                        new DeclaredField("sheet_no", "the inspection sheet's number", DeclaredValueKind.Identifier, Required: true, BusinessName: "점검일지 번호"),
+                        new DeclaredField("equipment", "the equipment the sheet inspects", DeclaredValueKind.Text, BusinessName: "설비"),
+                    ],
+                    [
+                        new DeclaredRelation("inspects", SubjectRef.Create("equipment"), ViaField: "equipment", DeclaredRelationKind.Reference),
+                        new DeclaredRelation("items", SubjectRef.Create("inspection_item"), ViaField: "sheet_no", DeclaredRelationKind.Child),
+                    ],
+                    BusinessName: "설비 점검일지"),
+            ]),
+            new("inspection-items",
+            [
+                Row(Item, "IL-1001/0", ("sheet_no", "IL-1001"), ("item", "유압 압력"), ("reading", "142"), ("unit", "bar"), ("judgment", "적합")),
+                Row(Item, "IL-1001/1", ("sheet_no", "IL-1001"), ("item", "오일 온도"), ("reading", "48"), ("unit", "°C"), ("judgment", "적합")),
+                Row(Item, "IL-1001/2", ("sheet_no", "IL-1001"), ("item", "소음"), ("reading", "82"), ("unit", "dB"), ("judgment", "부적합")),
+                Row(Item, "IL-1002/0", ("sheet_no", "IL-1002"), ("item", "유압 압력"), ("reading", "128"), ("unit", "bar"), ("judgment", "부적합")),
+                Row(Item, "IL-1002/1", ("sheet_no", "IL-1002"), ("item", "오일 온도"), ("reading", "51"), ("unit", "°C"), ("judgment", "적합")),
+                Row(Item, "IL-1003/0", ("sheet_no", "IL-1003"), ("item", "토출 압력"), ("reading", "7.2"), ("unit", "bar"), ("judgment", "적합")),
+                Row(Item, "IL-1003/1", ("sheet_no", "IL-1003"), ("item", "드레인 상태"), ("reading", "정상"), ("unit", ""), ("judgment", "적합")),
+            ],
+            [
+                new(SubjectRef.Create("inspection_item"),
+                    [new DeclaredField("sheet_no", "the sheet this row belongs to", DeclaredValueKind.Identifier, Required: true, BusinessName: "점검일지 번호")],
+                    [new DeclaredRelation("items", SubjectRef.Create("inspection_log"), ViaField: "sheet_no", DeclaredRelationKind.Reference)],
+                    BusinessName: "점검 항목"),
+            ]),
+        ],
+        [
+            new("sheet IL-1001", ["IL-1001"], "IL-1001"),
+            new("sheet IL-1002", ["IL-1002"], "IL-1002"),
+            new("sheet IL-1003", ["IL-1003"], "IL-1003"),
+        ]),
     ];
 
     /// <summary>
@@ -296,6 +348,10 @@ internal static class QualityCatalog
     // A record as a source system would hold it: an id and its fields.
     private static RawRecord Row(string id, params (string Field, string Value)[] fields) =>
         new(id, fields.ToDictionary(f => f.Field, f => (string?)f.Value));
+
+    // A record a form store's adapter hands over carries the form it was read from as its subject.
+    private static RawRecord Row(SubjectRef subject, string id, params (string Field, string Value)[] fields) =>
+        Row(id, fields) with { Subject = subject };
 
     // A document chunk as a caller holding text would pass it: the text under one field.
     private static RawRecord Chunk(string id, string text) => new(id, new Dictionary<string, string?> { ["content"] = text });

@@ -29,6 +29,12 @@ every published version has a section here.
   stranger sharing only a common value (a school) with two known people was put to the model as possibly
   either; on the population's scale they are no candidate.
 
+- **`Eyu.Rdf` can retire the previous rule's term IRIs.** With `RdfExportOptions.BridgeRetiredIris`, each
+  acquired class and property is also written under the IRI the rule before 0.5.0 minted for its spelling,
+  `owl:deprecated true` and `dcterms:isReplacedBy` the current term — the retirement a store that merged
+  older exports into its default graph has no other way to read. Off by default; the default output is
+  unchanged. An old IRI that a current term holds is never deprecated.
+
 ### Breaking
 
 - `SinglePassOntologyProposer`'s constructor gains a third optional parameter (`linkageParameters`) —

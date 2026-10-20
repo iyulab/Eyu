@@ -53,6 +53,7 @@ public static class OntologyTurtle
     private const string Rdfs = "http://www.w3.org/2000/01/rdf-schema#";
     private const string Owl = "http://www.w3.org/2002/07/owl#";
     private const string Xsd = "http://www.w3.org/2001/XMLSchema#";
+    private const string DcTerms = "http://purl.org/dc/terms/";
 
     /// <summary>
     /// The value of <see cref="EyuVocabulary.IriRule"/>: the release that introduced the rules this
@@ -85,6 +86,11 @@ public static class OntologyTurtle
         writer.Write("@prefix owl: <" + Owl + "> .\n");
         writer.Write("@prefix xsd: <" + Xsd + "> .\n");
         writer.Write("@prefix eyu: <" + EyuVocabulary.Namespace + "> .\n");
+        if (options.BridgeRetiredIris)
+        {
+            writer.Write("@prefix dcterms: <" + DcTerms + "> .\n");
+        }
+
         writer.Write("@prefix : <" + baseIri + "> .\n\n");
 
         writer.Write(Iri(baseIri.TrimEnd('#')) + " a owl:Ontology ;\n");
@@ -113,6 +119,11 @@ public static class OntologyTurtle
             {
                 WriteTerm(writer, iri, "owl:ObjectProperty", relation.RelationName, relation.Origin);
             }
+        }
+
+        if (options.BridgeRetiredIris)
+        {
+            WriteRetiredTerms(writer, proposal, baseIri, classes, properties);
         }
 
         foreach (var entity in proposal.Entities)
@@ -253,6 +264,59 @@ public static class OntologyTurtle
     private static string Hash(string key)
         => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(key)).AsSpan(0, 16));
 
+    /// <summary>
+    /// The previous rule's IRI for each acquired class and property spelling, deprecated and replaced by
+    /// the current one (<see cref="RdfExportOptions.BridgeRetiredIris"/>). An old IRI that is the current
+    /// one, or that any current term has, is left alone — a retired name must never deprecate a live term.
+    /// </summary>
+    private static void WriteRetiredTerms(
+        TextWriter writer,
+        OntologyProposal proposal,
+        string baseIri,
+        Dictionary<string, string> classes,
+        Dictionary<string, string> properties)
+    {
+        var live = classes.Values.Concat(properties.Values).ToHashSet(StringComparer.Ordinal);
+        var retired = new List<(string Old, string Kind, string Current)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        void Consider(string name, VocabularyOrigin origin, string kind, Dictionary<string, string> current)
+        {
+            if (origin == VocabularyOrigin.Innate)
+            {
+                return;
+            }
+
+            var old = TermSet.PreviousRule(baseIri, name);
+            if (!live.Contains(old) && seen.Add(old))
+            {
+                retired.Add((old, kind, current[Normalize(name)]));
+            }
+        }
+
+        foreach (var entity in proposal.Entities)
+        {
+            Consider(entity.EntityType, entity.Origin, "owl:Class", classes);
+        }
+
+        foreach (var relation in proposal.Relations)
+        {
+            Consider(relation.RelationName, relation.Origin, "owl:ObjectProperty", properties);
+        }
+
+        if (retired.Count == 0)
+        {
+            return;
+        }
+
+        writer.Write("dcterms:isReplacedBy a owl:AnnotationProperty .\n\n");
+        foreach (var (old, kind, current) in retired)
+        {
+            writer.Write(old + " a " + kind + " ;\n");
+            writer.Write("    owl:deprecated true ;\n");
+            writer.Write("    dcterms:isReplacedBy " + current + " .\n\n");
+        }
+    }
+
     private static void WriteTerm(TextWriter writer, string iri, string kind, string label, VocabularyOrigin origin)
     {
         writer.Write(iri + " a " + kind + " ;\n");
@@ -366,6 +430,12 @@ public static class OntologyTurtle
 
         // A prefixed name when the local part is plainly safe in one; the full IRI otherwise, so no
         // name — Korean, spaced, punctuated — depends on the prefixed-name escaping rules.
+        /// <summary>
+        /// The IRI the rule before 0.5.0 minted for an acquired <paramref name="name"/>: the spelling as
+        /// it came, not the name as Eyu compares it.
+        /// </summary>
+        public static string PreviousRule(string baseIri, string name) => Term(baseIri, ":", name);
+
         private static string Term(string ns, string prefix, string name)
         {
             var local = LocalName(name);

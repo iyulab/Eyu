@@ -477,6 +477,13 @@ triple came from where.) An export without it was written by 0.5.0, under the ru
 but before the annotation existed, or by 0.4.0 or earlier, whose rules differ (see the changelog) —
 so a graph without it is not by that alone one to drop.
 
+A store that merged older exports into its default graph cannot drop them that way. For it,
+`new RdfExportOptions(baseIri) { BridgeRetiredIris = true }` also writes each acquired class and
+property under the IRI the previous rule minted for its spelling (`:Work%20Order`), marked
+`owl:deprecated true` and pointing at the current term with `dcterms:isReplacedBy` (`:Workorder`) — the
+way published ontologies retire a renamed term, so the store can tell the retired term from the live
+one. Only the previous rule is bridged, and only from the spellings the export itself uses.
+
 ## Further reading
 
 [Design rationale](docs/philosophy.md) — why judgment requires structure

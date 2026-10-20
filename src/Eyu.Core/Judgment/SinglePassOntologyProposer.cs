@@ -442,12 +442,16 @@ public sealed partial class SinglePassOntologyProposer(
     /// <summary>
     /// "Declared type: work_order (fields: wo_no (text, required), qty (integer))", or just
     /// "Declared type: Organization" when the caller declared the name alone — a type known only by
-    /// name is still declared vocabulary the model is to use.
+    /// name is still declared vocabulary the model is to use. A declared business name follows the type
+    /// in quotes, as a field's does: "Declared type: inspection_log \"설비 점검일지\" (fields: …)".
     /// </summary>
     private static string DescribeType(DeclaredStructure declared)
-        => declared.Fields.Count == 0
-            ? $"Declared type: {declared.Subject}"
-            : $"Declared type: {declared.Subject} (fields: {string.Join(", ", declared.Fields.Select(DescribeField))})";
+    {
+        var name = string.IsNullOrWhiteSpace(declared.BusinessName) ? declared.Subject.Value : $"{declared.Subject} \"{declared.BusinessName.Trim()}\"";
+        return declared.Fields.Count == 0
+            ? $"Declared type: {name}"
+            : $"Declared type: {name} (fields: {string.Join(", ", declared.Fields.Select(DescribeField))})";
+    }
 
     /// <summary>
     /// "qty (integer, required; monetary amount)" — every declared fact the caller supplied, so the
@@ -503,7 +507,7 @@ public sealed partial class SinglePassOntologyProposer(
         var (knownEntities, mentionedEntities, _) = prior;
         var knownKeys = knownEntities.Select(k => k.Key).ToHashSet(StringComparer.Ordinal);
         var knownEntityTypes = knownEntities.ToDictionary(k => k.Key, k => k.EntityType, StringComparer.Ordinal);
-        var namesInUse = NamesInUse(prior);
+        var namesInUse = NamesInUse(declaredStructures, prior);
         ProposalResponse parsed;
         try
         {
@@ -603,13 +607,20 @@ public sealed partial class SinglePassOntologyProposer(
     }
 
     /// <summary>
-    /// The type names in use, by spelling key: known types first (the names the caller keeps), then known
-    /// entities' types. Where two of them spell one name, the first is the spelling kept — earlier calls
-    /// may have written one name two ways, and that is no reason to refuse the call.
+    /// The type names in use, by spelling key: a declared business name first, standing for its declared
+    /// type (the declaration is authoritative, and the model was shown both names), then known types (the
+    /// names the caller keeps), then known entities' types. Where two of them spell one name, the first is
+    /// the spelling kept — earlier calls may have written one name two ways, and that is no reason to
+    /// refuse the call.
     /// </summary>
-    private static Dictionary<string, string> NamesInUse(PriorKnowledge prior)
+    private static Dictionary<string, string> NamesInUse(IReadOnlyList<DeclaredStructure> declaredStructures, PriorKnowledge prior)
     {
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var declared in declaredStructures.Where(d => !string.IsNullOrWhiteSpace(d.BusinessName)))
+        {
+            names.TryAdd(TypeNames.Key(declared.BusinessName!.Trim()), declared.Subject.Value);
+        }
+
         foreach (var name in prior.KnownTypes.Select(t => t.Name.Trim()).Concat(prior.KnownEntities.Select(k => k.EntityType.Trim())))
         {
             names.TryAdd(TypeNames.Key(name), name);

@@ -10,6 +10,14 @@ every published version has a section here.
 
 ## Unreleased
 
+### Added
+
+- **A declared structure can carry the name a person reads it by** (`DeclaredStructure.BusinessName`),
+  as a declared field can — «설비 점검일지» for `inspection_log`. The prompt shows it beside the declared
+  type in quotes, as it shows a field's, and an entity proposed under the business name is written under
+  the declared type's name, so the declared type stays the one name in use. The base prompt fingerprints
+  do not move; only a call whose declarations carry a business name sends a different prompt.
+
 ### Fixed
 
 - **A connection that closes while a streamed answer is still coming is an `HttpRequestException`**,

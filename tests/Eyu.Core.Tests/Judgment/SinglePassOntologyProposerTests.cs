@@ -470,6 +470,30 @@ public class SinglePassOntologyProposerTests
     }
 
     [Fact]
+    public async Task ProposeAsync_shows_a_declared_type_business_name_and_keeps_the_declared_type_name()
+    {
+        // inspection_log is the machine name of a form; the caller declared what people call it. The
+        // model sees both, and an entity it proposes under the business name is the declared type.
+        var model = new StubModelClient(
+            """{"entities":[{"id":"E1","type":"설비 점검일지","name":"점검 L-1","confidence":0.9,"claim":"점검 기록","sources":["rec-1"]}],"relations":[]}""");
+        var proposer = new SinglePassOntologyProposer(model);
+        DeclaredStructure[] declared =
+        [
+            new(SubjectRef.Create("inspection_log"), Fields: [new DeclaredField("lot_no")], Relations: [], BusinessName: "설비 점검일지"),
+            new(SubjectRef.Create("Organization"), Fields: [], Relations: [], BusinessName: " "),
+        ];
+        var records = new[] { new RawRecord("rec-1", new Dictionary<string, string?> { ["lot_no"] = "L-1" }) };
+
+        var proposal = await proposer.ProposeAsync(declared, records, TestContext.Current.CancellationToken);
+
+        Assert.Contains("Declared type: inspection_log \"설비 점검일지\" (fields: lot_no)", model.LastPrompt);
+        Assert.Contains("Declared type: Organization" + Environment.NewLine, model.LastPrompt);
+        var entity = Assert.Single(proposal.Entities);
+        Assert.Equal("inspection_log", entity.EntityType);
+        Assert.Equal(ProposalBasis.Declared, entity.Basis);
+    }
+
+    [Fact]
     public async Task ProposeAsync_tells_the_model_every_declared_type_including_types_declared_by_name_alone()
     {
         // A document names many kinds of thing, and a caller that knows the vocabulary its records

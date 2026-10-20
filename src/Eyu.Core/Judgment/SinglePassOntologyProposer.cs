@@ -44,8 +44,27 @@ namespace Eyu.Core.Judgment;
 /// This class still only proves the wiring is correct; it makes no claim about judgment quality
 /// on its own, which no unit test can verify without a real model behind
 /// <see cref="IModelClient"/>.
+/// <para>
+/// By default each call fits the pre-filter's parameters on its own record pairs. A caller comparing
+/// new records against entities it already knows, a few records at a time, fits once on the population
+/// instead and passes the result as <c>linkageParameters</c>: every call is then scored with those
+/// parameters and runs no estimate (<see cref="LinkagePipeline.Analyze(IReadOnlyList{RawRecord}, IReadOnlyList{KnownEntity}, FieldLinkageParameters, LinkageOptions)"/>)
+/// — a call of one record against its known entities holds about one true match, too little for an
+/// estimate to tell what a match looks like, and the same record would otherwise be judged against a
+/// different scale on every call.
+/// </para>
 /// </summary>
-public sealed partial class SinglePassOntologyProposer(IModelClient modelClient, LinkageOptions? linkageOptions = null) : IOntologyProposer
+/// <param name="modelClient">The model the proposal is asked of.</param>
+/// <param name="linkageOptions">The pre-filter's thresholds and limits; defaults when null.</param>
+/// <param name="linkageParameters">
+/// Parameters fitted once on the population — <see cref="FieldLinkageParameters.FromNonMatchAgreement"/>, or
+/// <see cref="FellegiSunterEstimator.Estimate"/> over pairs where duplicates gather — to score every call
+/// with; null fits each call on its own pairs. A field the parameters do not name carries no evidence.
+/// </param>
+public sealed partial class SinglePassOntologyProposer(
+    IModelClient modelClient,
+    LinkageOptions? linkageOptions = null,
+    FieldLinkageParameters? linkageParameters = null) : IOntologyProposer
 {
     private const int DiagnosticExcerptLength = 500;
 
@@ -224,7 +243,10 @@ public sealed partial class SinglePassOntologyProposer(IModelClient modelClient,
         DeclaredStructureMerge.EnsureDistinctSubjects(declaredStructures);
         KnownEntity.Validate(knownEntities, records);
         MentionedEntity.Validate(mentionedEntities, knownEntities, records);
-        var linkageAnalysis = LinkagePipeline.Analyze(LinkageEvidence.IdentityView(records, declaredStructures), knownEntities, options);
+        var identity = LinkageEvidence.IdentityView(records, declaredStructures);
+        var linkageAnalysis = linkageParameters is null
+            ? LinkagePipeline.Analyze(identity, knownEntities, options)
+            : LinkagePipeline.Analyze(identity, knownEntities, linkageParameters, options);
         var promptedPairs = SelectPromptedPairs(linkageAnalysis.Clustering.GrayZonePairs, options.MaxGrayZonePairsInPrompt);
         var prompt = BuildPrompt(declaredStructures, records, knownEntities, mentionedEntities, linkageAnalysis, promptedPairs);
         var schema = ResponseSchemaFor(knownEntities.Count > 0, mentionedEntities.Count > 0);

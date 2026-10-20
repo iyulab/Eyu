@@ -380,7 +380,11 @@ field's `u` over random pairs of it, `m` comes from a reviewed sample or a fixed
 (`FellegiSunterEstimator.Estimate` with `fixedNonMatchAgreement`), and
 `FieldLinkageParameters.FromNonMatchAgreement` puts them together. Then
 `LinkagePipeline.Analyze(records, knownEntities, parameters)` scores each new record against the
-known ones without fitting anything; the matches are in `LinkageAnalysis.KnownCandidates`.
+known ones without fitting anything; the matches are in `LinkageAnalysis.KnownCandidates`. A proposal
+that compares a few records with known entities on every call takes the same parameters once —
+`new SinglePassOntologyProposer(model, linkageParameters: parameters)` — and scores each call's
+pre-filter with them, so every call judges on the population's scale rather than on a fit over its own
+handful of pairs.
 
 Without blocking every pair is compared — the square of a batch, or the whole known population for
 each record. `LinkageOptions.BlockingRules` narrows that: each rule is a set of fields, a pair is

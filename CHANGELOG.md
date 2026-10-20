@@ -22,8 +22,17 @@ every published version has a section here.
   pre-filter does not count two rows of one sheet agreeing on the sheet's number as identity evidence
   when the section is read without its parent.
 
+- **A proposer takes linkage parameters fitted once on the population.** `SinglePassOntologyProposer`'s
+  new `linkageParameters` scores every call's pre-filter with them and runs no estimate, as
+  `LinkagePipeline.Analyze(records, knownEntities, parameters)` already did for linkage alone. A call of a
+  few records against known entities had too few pairs to fit and fell back to default parameters — a
+  stranger sharing only a common value (a school) with two known people was put to the model as possibly
+  either; on the population's scale they are no candidate.
+
 ### Breaking
 
+- `SinglePassOntologyProposer`'s constructor gains a third optional parameter (`linkageParameters`) —
+  source-compatible, not binary-compatible.
 - `FormbaseRecordSample` takes the `IFieldHintSource` as a second constructor argument, to tell a section
   from a form type with documents of its own.
 

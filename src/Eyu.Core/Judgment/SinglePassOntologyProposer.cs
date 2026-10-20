@@ -224,7 +224,7 @@ public sealed partial class SinglePassOntologyProposer(IModelClient modelClient,
         DeclaredStructureMerge.EnsureDistinctSubjects(declaredStructures);
         KnownEntity.Validate(knownEntities, records);
         MentionedEntity.Validate(mentionedEntities, knownEntities, records);
-        var linkageAnalysis = LinkagePipeline.Analyze(records, knownEntities, options);
+        var linkageAnalysis = LinkagePipeline.Analyze(LinkageEvidence.IdentityView(records, declaredStructures), knownEntities, options);
         var promptedPairs = SelectPromptedPairs(linkageAnalysis.Clustering.GrayZonePairs, options.MaxGrayZonePairsInPrompt);
         var prompt = BuildPrompt(declaredStructures, records, knownEntities, mentionedEntities, linkageAnalysis, promptedPairs);
         var schema = ResponseSchemaFor(knownEntities.Count > 0, mentionedEntities.Count > 0);

@@ -59,7 +59,10 @@ decomposed Hangul, full-width digits) by default; `LinkageOptions.
 UseStringSimilarityComparator` opts into a Jaro-Winkler threshold instead, so two records
 denoting the same entity but differing only in notation (punctuation, spacing) still register as
 agreeing on that field — still no ground truth to say which mode classifies better on any given
-dataset, so the option exists but the default is unchanged.
+dataset, so the option exists but the default is unchanged. A field the caller declared as a
+reference (an inspection log's machine tag) is not compared at all for records whose subject is
+known (`RawRecord.Subject`): it names another entity, so agreeing on it is not evidence that two
+records are one.
 `Eyu.Core` and `Eyu.Formbase` are published on NuGet, and the package is referenced by the
 external consumer named above; inside this repository the
 [coupling smoke test](tests/Eyu.IntegrationSmoke.Tests/SchemaProposerCouplingSmokeTests.cs)

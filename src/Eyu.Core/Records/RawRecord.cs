@@ -1,3 +1,5 @@
+using Eyu.Core.Primitives;
+
 namespace Eyu.Core.Records;
 
 /// <summary>
@@ -11,5 +13,13 @@ namespace Eyu.Core.Records;
 /// still proposes and grounds correctly, but must say so through
 /// <see cref="Eyu.Core.Linkage.LinkageOptions.RecordsDenoteEntities"/>, or its batch is linked
 /// on a premise it does not meet.
+/// <para>
+/// <paramref name="Subject"/> is the declared subject the record is of — the form type a document
+/// was filed under, the table a row came from — when the caller knows it (a sample taken per subject
+/// does). It is what lets a field's declared role be read for this record rather than guessed from
+/// its name: the same <c>asset_tag</c> is an equipment register's own key and an inspection log's
+/// reference to the equipment, and only the subject says which one a record holds
+/// (<see cref="Eyu.Core.Linkage.LinkageEvidence"/>). Without it the record is read as before.
+/// </para>
 /// </summary>
-public sealed record RawRecord(string Id, IReadOnlyDictionary<string, string?> Fields);
+public sealed record RawRecord(string Id, IReadOnlyDictionary<string, string?> Fields, SubjectRef? Subject = null);

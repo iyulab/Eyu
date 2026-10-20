@@ -35,6 +35,21 @@ public class FormbaseRecordSampleTests
         Assert.Null(record.Fields["note"]);
     }
 
+    /// <summary>
+    /// A sample is taken per form type, so each record knows its subject — what lets the linkage
+    /// pre-filter read a field's declared role for this record rather than guess it from the name.
+    /// </summary>
+    [Fact]
+    public async Task SampleAsync_records_the_subject_each_record_was_sampled_under()
+    {
+        var rawStore = new InMemoryRawStore();
+        await rawStore.AppendAsync(FormTypeRef.Create("invoice"), DocumentId.New(), DocumentBody.Parse("""{"lot":"L1"}"""), cancellationToken: TestContext.Current.CancellationToken);
+
+        var records = await new FormbaseRecordSample(rawStore).SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);
+
+        Assert.Equal(SubjectRef.Create("invoice"), Assert.Single(records).Subject);
+    }
+
     [Fact]
     public async Task SampleAsync_returns_a_corrected_record_once_as_its_latest_document()
     {

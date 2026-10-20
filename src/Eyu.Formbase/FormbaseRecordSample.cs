@@ -35,7 +35,7 @@ public sealed class FormbaseRecordSample(IRawStore rawStore) : IRecordSample
         // A standing record is never a retirement, so its body is present.
         return RecordFold.Latest(documents)
             .Take(maxCount)
-            .Select(document => new RawRecord(document.Id.ToString(), Flatten(document.Body!.Root)))
+            .Select(document => new RawRecord(document.Id.ToString(), Flatten(document.Body!.Root), subject))
             .ToList();
     }
 

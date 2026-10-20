@@ -8,6 +8,33 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Fixed
+
+- **Fields declared as references are no longer counted as evidence that two records are the same
+  entity.** Inspection logs of one machine agree on the machine's tag, name and location — fields
+  that name the machine, not the log — and the linkage pre-filter read that agreement as identity:
+  distinct logs, and the machine's register entry with them, were pre-linked as one entity and the
+  model was told not to re-decide. The proposer now compares each record without the fields its
+  subject declares as references (a `Reference` relation's `ViaField` on the subject, a `Child`
+  relation's `ViaField` on its target). A register entry keeps its own key; two form types that both
+  record one thing's own facts can still be linked. A relation that does not say its side is not
+  read. Prompts for records without a subject, and the prompt fingerprint, are unchanged.
+
+### Added
+
+- **`RawRecord.Subject`** — the declared subject a record is of, optional. `FormbaseRecordSample`
+  sets it to the form type it sampled. Without it a record is read as before: a field name alone
+  cannot say whether it is a record's own key or its reference to another.
+- **`LinkageEvidence`** — `IdentityView(records, declaredStructures)` and
+  `ReferenceFieldsBySubject(declaredStructures)`, for callers that run `LinkagePipeline` themselves
+  over declared records.
+
+### Dependencies
+
+- `Eyu.Formbase` builds on `Formbase.Core` 0.25.0 (was 0.24.0).
+
 ## 0.10.0
 
 A minor. Linkage can match new records against known entities with parameters fitted once on the

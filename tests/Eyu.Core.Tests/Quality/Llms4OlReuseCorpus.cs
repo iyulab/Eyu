@@ -18,7 +18,9 @@ namespace Eyu.Core.Tests.Quality;
 /// towards its object, and an <c>instance-of</c> triple's type is a type in use. The sample's types are
 /// types in use too (<see cref="KnownType"/>); its terms have no channel of their own — they are in the
 /// text. The text is one record of the document-fragment kind. Proposals come back as triples: an inferred
-/// type relation as <c>is-a</c>, an entity as <c>instance-of</c> its type, a relation under a declared name
+/// type relation as <c>is-a</c>, an entity one of the sample's terms names as <c>instance-of</c> its type (the
+/// task's typing step is of the terms it gives — the first pilot also typed every other entity the text named,
+/// and with no term to type none was right), a relation under a declared name
 /// as itself. What the initial ontology already held is not an extension and is left out.
 /// </para>
 /// <para>
@@ -147,7 +149,8 @@ internal static class Llms4OlReuseCorpus
             Add(t.SubType, IsA, t.SuperType, t.SuperType);
         }
 
-        foreach (var e in proposal.Entities)
+        var terms = sample.Terms.Select(Key).ToHashSet(StringComparer.Ordinal);
+        foreach (var e in proposal.Entities.Where(e => terms.Contains(Key(e.Name))))
         {
             Add(e.Name, InstanceOf, e.EntityType, e.EntityType);
         }

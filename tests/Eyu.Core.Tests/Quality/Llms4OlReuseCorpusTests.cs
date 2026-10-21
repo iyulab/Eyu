@@ -11,7 +11,7 @@ public sealed class Llms4OlReuseCorpusTests
           {
             "id": "s1",
             "context": "Title: Poultry\n\nContent:\nA turkey processed carcass is a piece of turkey.",
-            "terms": [],
+            "terms": ["turkey processed carcass"],
             "types": ["piece of turkey", "turkey processed carcass"],
             "initial-primitive-ontology-triples": [
               ["turkey fat", "is-a", "piece of turkey"],
@@ -87,8 +87,9 @@ public sealed class Llms4OlReuseCorpusTests
         var all = Llms4OlReuseCorpus.Extension(sample, proposal, Llms4OlReuseCorpus.Variant.All);
         var vocabulary = Llms4OlReuseCorpus.Extension(sample, proposal, Llms4OlReuseCorpus.Variant.Vocabulary);
 
+        // Line 4 is no term the sample gives to type, so it is not typed.
         Assert.Equal(
-            [["turkey processed carcass", "is-a", "piece of turkey"], ["Carcass", "is-a", "Animal Product"], ["turkey processed carcass", "instance-of", "piece of turkey"], ["Line 4", "instance-of", "ProductionLine"]],
+            [["turkey processed carcass", "is-a", "piece of turkey"], ["Carcass", "is-a", "Animal Product"], ["turkey processed carcass", "instance-of", "piece of turkey"]],
             all);
         Assert.Equal(
             [["turkey processed carcass", "is-a", "piece of turkey"], ["turkey processed carcass", "instance-of", "piece of turkey"]],

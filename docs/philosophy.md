@@ -108,6 +108,17 @@ of every call, deciding for every caller what counts as an entity, while a
 declaration is one caller's own structure and only that caller's calls carry
 it.
 
+A proposal may also say that one type is a kind of another — a *type
+relation*, `is-a` — when the caller asks for it or declares a super type. It is
+the one claim Eyu makes about types rather than about what the records hold,
+and it is held to the same rule as every other: it cites the records that say
+so, and a pair no record supports is not proposed. A declared super type is a
+floor, as a declared type is: other super types may still be proposed, and a
+proposed pair that inverts a declared one is left out. Nothing here aligns a
+type to another vocabulary's, and two names for one kind stay two types — the
+ends are spelled as the names already in use, which is a rule about spelling,
+not about meaning.
+
 
 Gilles Kassel's *epistemic ontology* position — "we advocate the use of
 'epistemic' ontologies, i.e., systems of categories representing our
@@ -145,7 +156,8 @@ ontology — the form a knowledge-graph practice's tools already read — and an
 OWL file is ordinarily read as a set of assertions. So nothing is written
 bare: every individual carries its claim, the records it cites, its
 confidence and whether its type was declared, and every relation carries the
-same as an OWL axiom annotation on the assertion itself. A consumer that strips those
+same as an OWL axiom annotation on the assertion itself (a type relation too,
+written as `rdfs:subClassOf` and annotated the same way). A consumer that strips those
 annotations to get a "clean" graph has turned claims into assertions by
 subtraction, which is exactly the detachment the paragraph above warns
 against. Two more choices follow from this section rather than from
@@ -301,7 +313,11 @@ place, one that also turns the harness from an instrument into a target.
 Closing the innate vocabulary (§C) did not change this: that list classifies
 what the model proposed, after the fact, and is never shown to it. The
 preamble stays silent, and a test pins it so that silence cannot end by
-accident.
+accident. The type-relations channel keeps the silence: a call that asks for
+type relations is told what one is and that the records must support it, and
+nothing about which kinds should be types — so a kind the model folded into an
+instance is still a kind no type relation can name, and the measurement still
+sees the model's choice.
 
 ## What this document deliberately does not claim 🔴
 

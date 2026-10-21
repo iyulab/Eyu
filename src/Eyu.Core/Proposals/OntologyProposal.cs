@@ -31,4 +31,11 @@ public sealed record OntologyProposal(
     /// <see cref="Declared.DeclaredRelation.ViaField"/>, or the answer made no such claim.
     /// </summary>
     public IReadOnlyList<DemotedDenotation> DemotedDenotations { get; init; } = [];
+
+    /// <summary>
+    /// Proposed <c>is-a</c> relations between types (<see cref="TypeRelationProposal"/>). Empty unless the
+    /// call asked for them — a proposer that proposes type relations, or a declaration that names a super
+    /// type (<see cref="Declared.DeclaredStructure.SuperTypes"/>).
+    /// </summary>
+    public IReadOnlyList<TypeRelationProposal> TypeRelations { get; init; } = [];
 }

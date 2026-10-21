@@ -8,6 +8,9 @@ public enum ProposalElement
 
     /// <summary>A <see cref="MergeCandidate"/>; the rejection's id is the candidate's entity id.</summary>
     MergeCandidate,
+
+    /// <summary>A <see cref="TypeRelationProposal"/>; the rejection's id is its sub type.</summary>
+    TypeRelation,
 }
 
 /// <summary>
@@ -32,7 +35,7 @@ public enum RejectionReason
     /// <summary>A relation end names an entity the response proposed but that was itself rejected.</summary>
     EndpointRejected,
 
-    /// <summary>A relation uses a declared relation's name for ends the declaration does not describe — "Declared always wins".</summary>
+    /// <summary>A relation uses a declared relation's name for ends the declaration does not describe, or a type relation inverts a declared one — "Declared always wins".</summary>
     ContradictsDeclaration,
 
     /// <summary>An entity was matched to a known entity key the call did not supply.</summary>
@@ -46,6 +49,9 @@ public enum RejectionReason
 
     /// <summary>A merge candidate's entity is denoted by no record of the call, so the call holds no evidence of what it is to set against a mention.</summary>
     CandidateEntityNotDenoted,
+
+    /// <summary>A type relation's two ends name one type (case and separators aside) — a type is not a kind of itself.</summary>
+    ReflexiveTypeRelation,
 }
 
 /// <summary>
@@ -55,8 +61,8 @@ public enum RejectionReason
 /// all-or-nothing behavior checks <c>Rejections.Count</c> and a caller that measures counts
 /// <see cref="Reason"/>.
 /// </summary>
-/// <param name="Element">Whether an entity, a relation or a merge candidate was left out.</param>
-/// <param name="Id">The entity's response-local id, the relation's name, or the merge candidate's entity id; <c>null</c> when the model omitted it.</param>
+/// <param name="Element">Whether an entity, a relation, a merge candidate or a type relation was left out.</param>
+/// <param name="Id">The entity's response-local id, the relation's name, the merge candidate's entity id, or the type relation's sub type; <c>null</c> when the model omitted it.</param>
 /// <param name="Reason">The check the element failed.</param>
 /// <param name="Detail">A human-readable account naming the offending values.</param>
 public sealed record ProposalRejection(ProposalElement Element, string? Id, RejectionReason Reason, string Detail);

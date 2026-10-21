@@ -8,6 +8,21 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Added
+
+- **Type relations** — a proposal can say that one type is a kind of another (`is-a`):
+  `OntologyProposal.TypeRelations`, each a `TypeRelationProposal` (sub type, super type, grounded
+  claim, confidence, basis). Asked for with `SinglePassOntologyProposer(…, proposeTypeRelations: true)`
+  or by declaring a super type (`DeclaredStructure.SuperTypes`); otherwise the request is unchanged.
+  The ends are type names spelled as the names in use; a declared pair is stamped declared, one that
+  inverts a declaration is rejected (`ContradictsDeclaration`), and a type said to be a kind of itself
+  is rejected (`RejectionReason.ReflexiveTypeRelation`, `ProposalElement.TypeRelation`). A report
+  stamps `SinglePassOntologyProposer.TypeRelationsPromptFingerprint`.
+- `Eyu.Rdf` writes a type relation as `rdfs:subClassOf` between the two classes, annotated with its
+  claim, cited records, confidence and basis.
+
 ## 0.18.0
 
 A minor, with breaking changes. A field comparison can sort a pair into levels of agreement rather

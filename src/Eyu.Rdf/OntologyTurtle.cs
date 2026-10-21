@@ -17,7 +17,9 @@ namespace Eyu.Rdf;
 /// distinct relation name an <c>owl:ObjectProperty</c>, every entity an <c>owl:NamedIndividual</c> of
 /// its class, and every relation an assertion between two individuals. Names are grouped the way Eyu
 /// compares them, case, separators and Unicode form ignored, so <c>WorkOrder</c> and <c>work_order</c>
-/// are one class, <c>:Workorder</c>, labelled with the first spelling seen. No domain or range is asserted: the proposal shows which
+/// are one class, <c>:Workorder</c>, labelled with the first spelling seen. A type relation
+/// (<see cref="OntologyProposal.TypeRelations"/>) is an <c>rdfs:subClassOf</c> between two classes, an end no
+/// entity carries becoming a class of its own, annotated as a relation is. No domain or range is asserted: the proposal shows which
 /// types a relation was seen between, which is evidence, not the axiom a range would state.
 /// </para>
 /// <para>
@@ -112,6 +114,20 @@ public static class OntologyTurtle
             }
         }
 
+        // A type relation's ends are classes whether or not an entity carries them: a record may say what
+        // a kind of thing is without being a record of one.
+        foreach (var typeRelation in proposal.TypeRelations)
+        {
+            foreach (var type in new[] { typeRelation.SubType, typeRelation.SuperType })
+            {
+                var origin = InnateVocabulary.OfEntityType(type);
+                if (terms.TryAdd(classes, type, origin, isClass: true, out var iri))
+                {
+                    WriteTerm(writer, iri, "owl:Class", type, origin);
+                }
+            }
+        }
+
         var properties = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var relation in proposal.Relations)
         {
@@ -151,6 +167,19 @@ public static class OntologyTurtle
             writer.Write("    owl:annotatedProperty " + predicate + " ;\n");
             writer.Write("    owl:annotatedTarget " + to + " ;\n");
             WriteProvenance(writer, relation.Claim, relation.Confidence, relation.Basis);
+        }
+
+        foreach (var typeRelation in proposal.TypeRelations)
+        {
+            var sub = classes[Normalize(typeRelation.SubType)];
+            var super = classes[Normalize(typeRelation.SuperType)];
+
+            writer.Write(sub + " rdfs:subClassOf " + super + " .\n");
+            writer.Write("[] a owl:Axiom ;\n");
+            writer.Write("    owl:annotatedSource " + sub + " ;\n");
+            writer.Write("    owl:annotatedProperty rdfs:subClassOf ;\n");
+            writer.Write("    owl:annotatedTarget " + super + " ;\n");
+            WriteProvenance(writer, typeRelation.Claim, typeRelation.Confidence, typeRelation.Basis);
         }
     }
 

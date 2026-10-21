@@ -55,6 +55,62 @@ internal static class DeclaredStructureMerge
         }
     }
 
+    /// <summary>
+    /// Refuses declared super types no merge could honor — a blank name, or a subject declared a kind of
+    /// itself — before the model is called. A super type is a type name; it need not be a declared subject.
+    /// </summary>
+    public static void EnsureValidSuperTypes(IReadOnlyList<DeclaredStructure> declared)
+    {
+        foreach (var structure in declared)
+        {
+            ArgumentNullException.ThrowIfNull(structure.SuperTypes, nameof(declared));
+            foreach (var superType in structure.SuperTypes)
+            {
+                if (string.IsNullOrWhiteSpace(superType) || Normalize(superType).Length == 0)
+                {
+                    throw new ArgumentException($"A declared super type of \"{structure.Subject.Value}\" needs a name with at least one letter or digit.", nameof(declared));
+                }
+
+                if (Normalize(superType) == Normalize(structure.Subject.Value))
+                {
+                    throw new ArgumentException($"\"{structure.Subject.Value}\" is declared a kind of itself (\"{superType}\") — a type is not a kind of itself.", nameof(declared));
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The type relations' half of "Declared always wins": a proposed pair the caller declared is stamped
+    /// <see cref="ProposalBasis.Declared"/>, and one that inverts a declared pair — the declared super type
+    /// proposed as a kind of its declared sub type — is left out and reported as
+    /// <see cref="RejectionReason.ContradictsDeclaration"/>. Any other pair is returned as inferred: a
+    /// declared super type is a floor, and a type may be a kind of more than one other.
+    /// </summary>
+    public static List<TypeRelationProposal> StampTypeRelations(IReadOnlyList<DeclaredStructure> declared, IReadOnlyList<TypeRelationProposal> proposed, List<ProposalRejection> rejections)
+    {
+        var declaredPairs = declared
+            .SelectMany(d => d.SuperTypes.Select(t => (Sub: Normalize(d.Subject.Value), Super: Normalize(t))))
+            .ToHashSet();
+        var stamped = new List<TypeRelationProposal>(proposed.Count);
+        foreach (var relation in proposed)
+        {
+            var pair = (Sub: Normalize(relation.SubType), Super: Normalize(relation.SuperType));
+            if (declaredPairs.Contains((pair.Super, pair.Sub)))
+            {
+                rejections.Add(new ProposalRejection(
+                    ProposalElement.TypeRelation,
+                    relation.SubType,
+                    RejectionReason.ContradictsDeclaration,
+                    $"type relation {relation.SubType} is-a {relation.SuperType} inverts the declared {relation.SuperType} is-a {relation.SubType}"));
+                continue;
+            }
+
+            stamped.Add(declaredPairs.Contains(pair) ? relation.WithBasis(ProposalBasis.Declared) : relation);
+        }
+
+        return stamped;
+    }
+
     public static OntologyProposal Apply(IReadOnlyList<DeclaredStructure> declared, IReadOnlyList<EntityProposal> entities, IReadOnlyList<RelationProposal> relations, IReadOnlyList<ProposalRejection> rejections)
     {
         if (declared.Count == 0)

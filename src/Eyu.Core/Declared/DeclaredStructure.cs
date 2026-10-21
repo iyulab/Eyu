@@ -16,4 +16,14 @@ public sealed record DeclaredStructure(
     IReadOnlyList<DeclaredField> Fields,
     IReadOnlyList<DeclaredRelation> Relations,
     string? Version = null,
-    string? BusinessName = null);
+    string? BusinessName = null)
+{
+    /// <summary>
+    /// The types <see cref="Subject"/> is declared a kind of (<c>is-a</c>) — declared fact, as the rest of
+    /// the declaration is. A declaration is a floor: other super types may still be proposed. A call
+    /// whose declarations name any super type is asked for type relations
+    /// (<see cref="Proposals.OntologyProposal.TypeRelations"/>), and one proposed for a declared pair is
+    /// stamped declared.
+    /// </summary>
+    public IReadOnlyList<string> SuperTypes { get; init; } = [];
+}

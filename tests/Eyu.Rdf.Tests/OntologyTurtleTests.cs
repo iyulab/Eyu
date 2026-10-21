@@ -405,4 +405,30 @@ public class OntologyTurtleTests
 
         Assert.Contains(SubjectsOfType(g, Owl + "Class"), n => n.Equals(U(g, "https://example.org/plant/Equipment")));
     }
+
+    // A type relation is the one triple of a proposal that is about classes: an rdfs:subClassOf between the
+    // classes its ends name — an end no entity carries is a class of its own — annotated as a relation is.
+    [Fact]
+    public void A_type_relation_is_a_subclass_axiom_between_classes_annotated_with_its_evidence()
+    {
+        var proposal = Plant with
+        {
+            TypeRelations =
+            [
+                TypeRelationProposal.Create("equipment", "Asset", Cite("equipment is an asset", new SourceRef("r-e1")), 0.7, ProposalBasis.Declared),
+            ],
+        };
+
+        var g = Parse(proposal);
+
+        var equipment = U(g, Base + "Equipment");
+        var asset = U(g, Base + "Asset");
+        Assert.Single(g.GetTriplesWithSubjectPredicate(equipment, U(g, Rdfs + "subClassOf")), t => t.Object.Equals(asset));
+        Assert.Contains(asset, SubjectsOfType(g, Owl + "Class"));
+        var annotated = SubjectsOfType(g, Owl + "Axiom").Single(s =>
+            g.GetTriplesWithSubjectPredicate(s, U(g, Owl + "annotatedProperty")).Single().Object.Equals(U(g, Rdfs + "subClassOf")));
+        Assert.Equal(equipment, g.GetTriplesWithSubjectPredicate(annotated, U(g, Owl + "annotatedSource")).Single().Object);
+        Assert.Equal(asset, g.GetTriplesWithSubjectPredicate(annotated, U(g, Owl + "annotatedTarget")).Single().Object);
+        Assert.Equal("declared", ((ILiteralNode)g.GetTriplesWithSubjectPredicate(annotated, U(g, EyuVocabulary.Basis)).Single().Object).Value);
+    }
 }

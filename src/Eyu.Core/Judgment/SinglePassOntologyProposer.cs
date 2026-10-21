@@ -61,10 +61,18 @@ namespace Eyu.Core.Judgment;
 /// <see cref="FellegiSunterEstimator.Estimate"/> over pairs where duplicates gather — to score every call
 /// with; null fits each call on its own pairs. A field the parameters do not name carries no evidence.
 /// </param>
+/// <param name="proposeTypeRelations">
+/// Whether every call is asked for type relations (<see cref="OntologyProposal.TypeRelations"/>) — which
+/// types the records show to be kinds of others. Off, a call is asked for them only when its declarations
+/// name a super type (<see cref="DeclaredStructure.SuperTypes"/>), and otherwise sends the request it
+/// always sent. Either way the prompt asks only for type relations the records support; it does not say
+/// which kinds should be types (design rationale §E).
+/// </param>
 public sealed partial class SinglePassOntologyProposer(
     IModelClient modelClient,
     LinkageOptions? linkageOptions = null,
-    FieldLinkageParameters? linkageParameters = null) : IOntologyProposer
+    FieldLinkageParameters? linkageParameters = null,
+    bool proposeTypeRelations = false) : IOntologyProposer
 {
     private const int DiagnosticExcerptLength = 500;
 
@@ -153,6 +161,32 @@ public sealed partial class SinglePassOntologyProposer(
     private const string PromptSchemaMergeCandidates = "Also include in the same object \"mergeCandidates\":[{\"entity\",\"mentionedKey\",\"claim\",\"sources\",\"confidence\"}].";
     private const string MentionedEntitiesClause = "Mentioned entities are ones earlier work saw only named by records that refer to them, never in a record of the thing itself, so what they are is not settled; each is listed with its key, type, name and the records that mentioned it. When an entity you propose is denoted by one of the Records and may be the same thing as a mentioned entity, add a merge candidate: its \"entity\" is your entity's id, its \"mentionedKey\" the mentioned entity's key, and its claim says why, citing only the Records. A mentioned entity's key is never a \"knownEntityKey\". Mentioned entities' records are shown for comparison only and cannot be cited as sources.";
 
+    // Only when type relations are asked for (the proposer's option, or a declared super type): the schema
+    // sentence for the top-level "typeRelations" array, the clause, and that array in the response schema.
+    // A call without them sends the request it sent before, so every fingerprint above holds. The clause
+    // asks for the type relations the records support and names no kind of thing: which kinds become types
+    // stays the model's modelling choice (design rationale §E).
+    private const string PromptSchemaTypeRelations = "Also include in the same object \"typeRelations\":[{\"sub\",\"super\",\"claim\",\"sources\",\"confidence\"}].";
+    private const string TypeRelationsClause = "A type relation says that one type is a kind of another: its \"sub\" is the narrower type and its \"super\" the broader, each a type name as you write types, and its claim says why, citing the Records. Propose a type relation only where the records support it; an entity's own type stays in its \"type\". Answer [] when the records show none.";
+
+    private static readonly JsonElement TypeRelationsSchema = JsonElement.Parse("""
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sub": { "type": "string" },
+              "super": { "type": "string" },
+              "claim": { "type": "string" },
+              "sources": { "type": "array", "items": { "type": "string" } },
+              "confidence": { "type": "number" }
+            },
+            "required": ["sub", "super", "claim", "sources", "confidence"],
+            "additionalProperties": false
+          }
+        }
+        """);
+
     // Only when known types are supplied: the clause and the list. The response shape does not change —
     // the answer still names a type per entity, and the parse reads it against the names in use.
     private const string KnownTypesClause = "Known types are type names earlier work already uses, each listed with records of its kind where there are any. When an entity you propose is of a kind a known type names, give it that type, written as listed, rather than a new name for the same kind; a kind no known type names gets a type of your own. Known types' records are shown for comparison only and cannot be cited as sources.";
@@ -179,21 +213,38 @@ public sealed partial class SinglePassOntologyProposer(
     private static readonly JsonElement ResponseSchemaWithKnownAndMentionedEntities = WithMergeCandidates(ResponseSchemaWithKnownEntities);
 
     /// <summary>The schema with the top-level "mergeCandidates" array added — required, so a strict provider answers it (with [] when there is none).</summary>
-    private static JsonElement WithMergeCandidates(JsonElement schema)
+    private static JsonElement WithMergeCandidates(JsonElement schema) => WithArray(schema, "mergeCandidates", MergeCandidatesSchema);
+
+    /// <summary>The schema with a top-level array added — required, so a strict provider answers it (with [] when there is none).</summary>
+    private static JsonElement WithArray(JsonElement schema, string name, JsonElement arraySchema)
     {
         var node = JsonNode.Parse(schema.GetRawText())!.AsObject();
-        node["properties"]!.AsObject()["mergeCandidates"] = JsonNode.Parse(MergeCandidatesSchema.GetRawText());
-        node["required"]!.AsArray().Add((JsonNode)"mergeCandidates");
+        node["properties"]!.AsObject()[name] = JsonNode.Parse(arraySchema.GetRawText());
+        node["required"]!.AsArray().Add((JsonNode)name);
         return JsonElement.Parse(node.ToJsonString());
     }
 
-    private static JsonElement ResponseSchemaFor(bool knownEntities, bool mentionedEntities) => (knownEntities, mentionedEntities) switch
+    private static readonly JsonElement[] ResponseSchemasWithTypeRelations =
+    [
+        WithArray(ResponseSchema, "typeRelations", TypeRelationsSchema),
+        WithArray(ResponseSchemaWithKnownEntities, "typeRelations", TypeRelationsSchema),
+        WithArray(ResponseSchemaWithMentionedEntities, "typeRelations", TypeRelationsSchema),
+        WithArray(ResponseSchemaWithKnownAndMentionedEntities, "typeRelations", TypeRelationsSchema),
+    ];
+
+    private static JsonElement ResponseSchemaFor(bool knownEntities, bool mentionedEntities, bool typeRelations)
     {
-        (false, false) => ResponseSchema,
-        (true, false) => ResponseSchemaWithKnownEntities,
-        (false, true) => ResponseSchemaWithMentionedEntities,
-        (true, true) => ResponseSchemaWithKnownAndMentionedEntities,
-    };
+        var index = (knownEntities ? 1 : 0) + (mentionedEntities ? 2 : 0);
+        return typeRelations
+            ? ResponseSchemasWithTypeRelations[index]
+            : index switch
+            {
+                0 => ResponseSchema,
+                1 => ResponseSchemaWithKnownEntities,
+                2 => ResponseSchemaWithMentionedEntities,
+                _ => ResponseSchemaWithKnownAndMentionedEntities,
+            };
+    }
 
     private const string DeclarationClause = "Declared structure is authoritative: a declared type, field or relation is fact, not a hypothesis. Where a declared type describes an entity, propose the entity under that type; where a declared relation describes a relation, propose it under that name -- the quoted name alone, not the ends written after it; never contradict declared structure. A declaration is a floor, not a ceiling: the declared types and relations are not the only ones, so still propose every entity and relation the records show beyond what is declared, under types and names of your own.";
 
@@ -227,6 +278,13 @@ public sealed partial class SinglePassOntologyProposer(
     /// </summary>
     public static string KnownTypesPromptFingerprint { get; } = Fingerprint(KnownTypesClause);
 
+    /// <summary>
+    /// The fingerprint of the fixed part a call asked for type relations adds (the schema sentence, the
+    /// type-relations clause and the array the response schema gains). A report of such a call stamps it
+    /// beside the others, which this feature leaves unchanged.
+    /// </summary>
+    public static string TypeRelationsPromptFingerprint { get; } = Fingerprint(string.Join('\n', PromptSchemaTypeRelations, TypeRelationsClause, TypeRelationsSchema.GetRawText()));
+
     private static string ComputeFingerprint() =>
         Fingerprint(string.Join('\n', PromptInstruction, PromptSchema, PromptReferenceRule, DeclarationClause, ResponseSchema.GetRawText()));
 
@@ -251,7 +309,9 @@ public sealed partial class SinglePassOntologyProposer(
     {
         ArgumentNullException.ThrowIfNull(prior);
         DeclaredStructureMerge.EnsureDistinctSubjects(declaredStructures);
+        DeclaredStructureMerge.EnsureValidSuperTypes(declaredStructures);
         prior.Validate(records);
+        var typeRelations = proposeTypeRelations || declaredStructures.Any(d => d.SuperTypes.Count > 0);
         var knownEntities = prior.KnownEntities;
         var mentionedEntities = prior.MentionedEntities;
         var identity = LinkageEvidence.IdentityView(records, declaredStructures);
@@ -260,10 +320,10 @@ public sealed partial class SinglePassOntologyProposer(
             ? LinkagePipeline.Analyze(identity, knownEntities, options, scope)
             : LinkagePipeline.Analyze(identity, knownEntities, linkageParameters, options, scope);
         var promptedPairs = SelectPromptedPairs(linkageAnalysis.Clustering.GrayZonePairs, options.MaxGrayZonePairsInPrompt);
-        var prompt = BuildPrompt(declaredStructures, records, prior, linkageAnalysis, promptedPairs);
-        var schema = ResponseSchemaFor(knownEntities.Count > 0, mentionedEntities.Count > 0);
+        var prompt = BuildPrompt(declaredStructures, records, prior, linkageAnalysis, promptedPairs, typeRelations);
+        var schema = ResponseSchemaFor(knownEntities.Count > 0, mentionedEntities.Count > 0, typeRelations);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt, schema), cancellationToken).ConfigureAwait(false);
-        var parsed = ParseResponse(response.Text, declaredStructures, records, prior, linkageAnalysis, options.RecordsDenoteEntities);
+        var parsed = ParseResponse(response.Text, declaredStructures, records, prior, linkageAnalysis, options.RecordsDenoteEntities, typeRelations);
         var proposal = DeclaredStructureMerge.Apply(declaredStructures, parsed.Proposal.Entities, parsed.Proposal.Relations, parsed.Proposal.Rejections);
         return proposal with
         {
@@ -273,6 +333,7 @@ public sealed partial class SinglePassOntologyProposer(
                 linkageAnalysis.Clustering.GrayZonePairs.Count - promptedPairs.Count),
             MergeCandidates = parsed.MergeCandidates,
             DemotedDenotations = parsed.DemotedDenotations,
+            TypeRelations = parsed.TypeRelations,
         };
     }
 
@@ -314,7 +375,7 @@ public sealed partial class SinglePassOntologyProposer(
         return split;
     }
 
-    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, PriorKnowledge prior, LinkageAnalysis linkageAnalysis, IReadOnlyList<PairLinkage> promptedPairs)
+    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, PriorKnowledge prior, LinkageAnalysis linkageAnalysis, IReadOnlyList<PairLinkage> promptedPairs, bool typeRelations)
     {
         var (knownEntities, mentionedEntities, knownTypes) = prior;
         var text = new StringBuilder();
@@ -323,6 +384,11 @@ public sealed partial class SinglePassOntologyProposer(
         if (mentionedEntities.Count > 0)
         {
             text.AppendLine(PromptSchemaMergeCandidates);
+        }
+
+        if (typeRelations)
+        {
+            text.AppendLine(PromptSchemaTypeRelations);
         }
 
         text.AppendLine(PromptReferenceRule);
@@ -341,6 +407,14 @@ public sealed partial class SinglePassOntologyProposer(
                 foreach (var relation in declared.Relations)
                 {
                     text.AppendLine(CultureInfo.InvariantCulture, $"Declared relation {DeclaredStructureMerge.DescribeRelation(declared, relation)}");
+                }
+            }
+
+            foreach (var declared in declaredStructures)
+            {
+                foreach (var superType in declared.SuperTypes)
+                {
+                    text.AppendLine(CultureInfo.InvariantCulture, $"Declared type relation: {declared.Subject} is a kind of {superType.Trim()}");
                 }
             }
         }
@@ -385,6 +459,12 @@ public sealed partial class SinglePassOntologyProposer(
                     text.AppendLine(CultureInfo.InvariantCulture, $"  - {record.Id}: {DescribeFields(record)}");
                 }
             }
+        }
+
+        if (typeRelations)
+        {
+            text.AppendLine();
+            text.AppendLine(TypeRelationsClause);
         }
 
         text.AppendLine();
@@ -503,7 +583,7 @@ public sealed partial class SinglePassOntologyProposer(
     /// own and against the entities that survived. Origin is stamped from
     /// <see cref="InnateVocabulary"/>, not read from the model.
     /// </summary>
-    private static ParsedResponse ParseResponse(string responseText, IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, PriorKnowledge prior, LinkageAnalysis linkageAnalysis, bool recordsDenoteEntities)
+    private static ParsedResponse ParseResponse(string responseText, IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, PriorKnowledge prior, LinkageAnalysis linkageAnalysis, bool recordsDenoteEntities, bool typeRelations)
     {
         var (knownEntities, mentionedEntities, _) = prior;
         var knownKeys = knownEntities.Select(k => k.Key).ToHashSet(StringComparer.Ordinal);
@@ -525,7 +605,11 @@ public sealed partial class SinglePassOntologyProposer(
         var entityResponses = parsed.Entities ?? [];
         var relationResponses = parsed.Relations ?? [];
         var candidateResponses = parsed.MergeCandidates ?? [];
-        RejectUnknownSources(entityResponses, relationResponses, candidateResponses, records, responseText);
+
+        // Type relations the call did not ask for are not read at all: the request did not offer the
+        // channel, so whatever arrived there is not an answer to it.
+        var typeRelationResponses = typeRelations ? parsed.TypeRelations ?? [] : [];
+        RejectUnknownSources(entityResponses, relationResponses, candidateResponses, typeRelationResponses, records, responseText);
 
         var rejections = new List<ProposalRejection>();
         var duplicatedIds = entityResponses
@@ -604,8 +688,64 @@ public sealed partial class SinglePassOntologyProposer(
         }
 
         var mergeCandidates = ParseMergeCandidates(candidateResponses, mentionedEntities, entities, proposedIds, rejections);
-        return new ParsedResponse(new OntologyProposal(entities, relations, rejections), mergeCandidates, demotions);
+        var typeRelationProposals = ParseTypeRelations(typeRelationResponses, declaredStructures, namesInUse, entities, rejections);
+        return new ParsedResponse(new OntologyProposal(entities, relations, rejections), mergeCandidates, demotions, typeRelationProposals);
     }
+
+    /// <summary>
+    /// Type relations are checked one by one, like relations, but their ends are type names, not entities
+    /// of the response: a record may say what a kind of thing is without being a record of one. An end is
+    /// written the way the name is already in use — a declared subject, a declared super type, a known type,
+    /// or a type an entity of this answer carries — so <c>work order</c> and <c>WorkOrder</c> do not become
+    /// two types. A pair given twice is one type relation; the first is kept. Whether the pair was declared
+    /// is decided by <see cref="DeclaredStructureMerge.StampTypeRelations"/>.
+    /// </summary>
+    private static List<TypeRelationProposal> ParseTypeRelations(IReadOnlyList<TypeRelationResponse> responses, IReadOnlyList<DeclaredStructure> declaredStructures, Dictionary<string, string> namesInUse, IReadOnlyList<EntityProposal> entities, List<ProposalRejection> rejections)
+    {
+        var spellings = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var name in declaredStructures.Select(d => d.Subject.Value).Concat(declaredStructures.SelectMany(d => d.SuperTypes).Select(t => t.Trim())))
+        {
+            spellings.TryAdd(TypeNames.Key(name), name);
+        }
+
+        foreach (var (key, name) in namesInUse)
+        {
+            spellings.TryAdd(key, name);
+        }
+
+        foreach (var entity in entities)
+        {
+            spellings.TryAdd(TypeNames.Key(entity.EntityType), entity.EntityType);
+        }
+
+        var seen = new HashSet<(string, string)>();
+        var proposals = new List<TypeRelationProposal>();
+        foreach (var t in responses)
+        {
+            var defect = TypeRelationDefect(t);
+            if (defect is not null)
+            {
+                rejections.Add(new ProposalRejection(ProposalElement.TypeRelation, BlankToNull(t.Sub), defect.Reason, $"type relation {Describe(t.Sub)} is-a {Describe(t.Super)}: {defect.Detail}"));
+                continue;
+            }
+
+            var sub = InUseSpelling(t.Sub!.Trim(), spellings);
+            var super = InUseSpelling(t.Super!.Trim(), spellings);
+            if (seen.Add((TypeNames.Key(sub), TypeNames.Key(super))))
+            {
+                proposals.Add(TypeRelationProposal.Create(sub, super, ToClaim(t.Claim!, t.Sources!), t.Confidence!.Value));
+            }
+        }
+
+        return DeclaredStructureMerge.StampTypeRelations(declaredStructures, proposals, rejections);
+    }
+
+    private static Defect? TypeRelationDefect(TypeRelationResponse t) =>
+        MissingFields(("sub", t.Sub), ("super", t.Super), ("claim", t.Claim)) is { } missing ? new Defect(RejectionReason.MissingField, missing)
+        : TypeNames.Key(t.Sub!).Length == 0 || TypeNames.Key(t.Super!).Length == 0 ? new Defect(RejectionReason.MissingField, "a type name needs at least one letter or digit")
+        : !CitesSources(t.Sources) ? new Defect(RejectionReason.MissingField, "cites no source")
+        : TypeNames.SameType(t.Sub!, t.Super!) ? new Defect(RejectionReason.ReflexiveTypeRelation, "both ends name one type — a type is not a kind of itself")
+        : ConfidenceDefect(t.Confidence);
 
     /// <summary>
     /// The type names in use, by spelling key: a declared business name first, standing for its declared
@@ -633,7 +773,7 @@ public sealed partial class SinglePassOntologyProposer(
     private static string InUseSpelling(string type, Dictionary<string, string> namesInUse) =>
         namesInUse.TryGetValue(TypeNames.Key(type), out var inUse) ? inUse : type;
 
-    private sealed record ParsedResponse(OntologyProposal Proposal, IReadOnlyList<MergeCandidate> MergeCandidates, IReadOnlyList<DemotedDenotation> DemotedDenotations);
+    private sealed record ParsedResponse(OntologyProposal Proposal, IReadOnlyList<MergeCandidate> MergeCandidates, IReadOnlyList<DemotedDenotation> DemotedDenotations, IReadOnlyList<TypeRelationProposal> TypeRelations);
 
     /// <summary>
     /// Merge candidates are checked after the entities, against the ones that survived and the records
@@ -778,12 +918,13 @@ public sealed partial class SinglePassOntologyProposer(
     /// says, so a response that invented evidence once gives no ground for trusting its other
     /// citations.
     /// </summary>
-    private static void RejectUnknownSources(IReadOnlyList<EntityResponse> entities, IReadOnlyList<RelationResponse> relations, IReadOnlyList<MergeCandidateResponse> candidates, IReadOnlyList<RawRecord> records, string responseText)
+    private static void RejectUnknownSources(IReadOnlyList<EntityResponse> entities, IReadOnlyList<RelationResponse> relations, IReadOnlyList<MergeCandidateResponse> candidates, IReadOnlyList<TypeRelationResponse> typeRelations, IReadOnlyList<RawRecord> records, string responseText)
     {
         var known = records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var cited = entities.SelectMany(EntitySources)
             .Concat(relations.SelectMany(r => r.Sources ?? []))
             .Concat(candidates.SelectMany(c => c.Sources ?? []))
+            .Concat(typeRelations.SelectMany(t => t.Sources ?? []))
             .OfType<string>()
             .Where(id => !string.IsNullOrWhiteSpace(id));
         var unknown = cited.Where(id => !known.Contains(id)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
@@ -815,7 +956,9 @@ public sealed partial class SinglePassOntologyProposer(
         _ => $"{text[..DiagnosticExcerptLength]}… ({text.Length} chars total)",
     };
 
-    private sealed record ProposalResponse(IReadOnlyList<EntityResponse>? Entities, IReadOnlyList<RelationResponse>? Relations, IReadOnlyList<MergeCandidateResponse>? MergeCandidates = null);
+    private sealed record ProposalResponse(IReadOnlyList<EntityResponse>? Entities, IReadOnlyList<RelationResponse>? Relations, IReadOnlyList<MergeCandidateResponse>? MergeCandidates = null, IReadOnlyList<TypeRelationResponse>? TypeRelations = null);
+
+    private sealed record TypeRelationResponse(string? Sub, string? Super, string? Claim, IReadOnlyList<string?>? Sources, double? Confidence);
 
     private sealed record MergeCandidateResponse(string? Entity, string? MentionedKey, string? Claim, IReadOnlyList<string?>? Sources, double? Confidence);
 

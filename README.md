@@ -151,6 +151,17 @@ system" as the target the architecture is built toward, not as a track record.
   same kind. A known entity's type counts as a name in use too. Whether a kind
   is the one a name stands for stays the model's judgment — `part` and `item`
   are two names, not two spellings.
+- **Types can be proposed as kinds of other types.** Ask for it
+  (`new SinglePassOntologyProposer(model, proposeTypeRelations: true)`), or
+  declare a super type (`new DeclaredStructure(…) { SuperTypes = ["Equipment"] }`),
+  and the proposal carries `TypeRelations`: `HydraulicPress` is a kind of `Press`,
+  each a grounded claim citing the records that say so. The ends are type
+  names, not entities — a record may say what a kind of thing is without being
+  a record of one — and are spelled as the names already in use. A declared
+  pair comes back stamped declared, and one that inverts a declaration is left
+  out and reported. Not asked for, the request is the one a call always sent.
+  The prompt asks only for the type relations the records support; which kinds
+  become types at all stays the model's modelling choice.
 - **Declared always wins.** Where structure is explicitly declared, the
   declaration is the answer. Inference only fills what nothing declared.
   A call takes one declaration per subject, so a caller whose records name
@@ -441,6 +452,9 @@ triples to them. An entity matched to a known entity (`KnownEntityKey`) is writt
 instead: a key that is an absolute IRI is the IRI — pass the IRI an earlier export gave the entity and
 a match keeps it, however this call named it — and any other key is hashed under `entity/known/`.
 Merge candidates are not written: a candidate is not `owl:sameAs`, and joining it is the caller's call.
+A type relation is written as `rdfs:subClassOf` between the two classes — an end no entity carries
+becomes a class of its own — with its claim, cited records, confidence and basis as an axiom
+annotation, like a relation's.
 
 The ontology names the rule its IRIs were minted under — `<ontology> eyu:iriRule "0.5.0"`, the
 release that introduced the rule. The value changes only in a release that changes how a class,

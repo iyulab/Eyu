@@ -10,7 +10,9 @@ namespace Eyu.Core.Tests.Quality;
 /// Text2KGBench (Mihindukulasooriya et al., ISWC 2023) turned into what Eyu reads, and Eyu's answer turned
 /// back into what the benchmark's own scorer reads. The benchmark hands an ontology — concepts, and
 /// relations from a domain concept to a range concept — and sentences; it scores the triples extracted
-/// from each sentence. On Eyu's side the ontology is the declaration (one structure per concept, each
+/// from each sentence. A relation is written as the benchmark's system outputs write it — its label with
+/// spaces as underscores (<c>cast_member</c>), the form the scorer's ontology-conformance check compares
+/// against (precision and recall ignore the difference). On Eyu's side the ontology is the declaration (one structure per concept, each
 /// relation declared on its domain), and a sentence is a record of the document-fragment kind: it names
 /// several things and denotes none, so the proposer runs with
 /// <see cref="Linkage.LinkageOptions.RecordsDenoteEntities"/> off. A proposed relation becomes the triple
@@ -98,11 +100,12 @@ internal static class Text2KgBenchCorpus
                     continue;
                 }
 
+                var label = SystemLabel(relation.RelationName);
                 foreach (var sentence in relation.Claim.Sources.Select(s => s.RecordId).Distinct(StringComparer.Ordinal))
                 {
-                    if (triples.TryGetValue(sentence, out var list) && !list.Any(t => t[0] == from && t[1] == relation.RelationName && t[2] == to))
+                    if (triples.TryGetValue(sentence, out var list) && !list.Any(t => t[0] == from && t[1] == label && t[2] == to))
                     {
-                        list.Add([from, relation.RelationName, to]);
+                        list.Add([from, label, to]);
                     }
                 }
             }
@@ -110,6 +113,9 @@ internal static class Text2KgBenchCorpus
 
         return triples;
     }
+
+    /// <summary>A relation label as the benchmark's system outputs write it: spaces as underscores.</summary>
+    public static string SystemLabel(string relationName) => relationName.Replace(' ', '_');
 
     /// <summary>The scorer's system-output file: one <c>{"id", "triples"}</c> line per sentence, in the order given.</summary>
     public static string ToJsonLines(IEnumerable<string> sentenceIds, Dictionary<string, List<string[]>> triples) =>

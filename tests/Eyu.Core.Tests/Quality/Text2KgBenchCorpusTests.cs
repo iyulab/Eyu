@@ -71,4 +71,19 @@ public class Text2KgBenchCorpusTests
         Assert.Equal("""{"id":"s1","triples":[["Bleach: Hell Verse","director","Noriyuki Abe"]]}""", lines[0]);
         Assert.Equal("""{"id":"s3","triples":[]}""", lines[1]);
     }
+
+    // The scorer checks a system triple's relation against the ontology's labels with spaces as
+    // underscores — the form the benchmark's baselines write; a label with spaces reads as a hallucination.
+    [Fact]
+    public void A_relation_label_is_written_with_underscores_as_the_system_outputs_write_it()
+    {
+        var proposal = new OntologyProposal(
+            Proposal.Entities,
+            [RelationProposal.Create("cast member", "e1", "e2", Claim("s1"), VocabularyOrigin.Acquired, 0.9, ProposalBasis.Declared)],
+            []);
+
+        var triples = Text2KgBenchCorpus.Triples([proposal], ["s1"], declaredOnly: true);
+
+        Assert.Equal("cast_member", Assert.Single(triples["s1"])[1]);
+    }
 }

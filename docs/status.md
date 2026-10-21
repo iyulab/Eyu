@@ -36,6 +36,18 @@ when the particles differ. It is a heuristic signal to spot-check per run, not a
 (see the type's doc comment for why token overlap is not a semantic verifier); a run's own counts are in
 its report, not restated here, since the pre-filter below changes them run to run.
 
+## Type relations
+
+A proposal can say that one type is a kind of another (`TypeRelations`, asked for with
+`proposeTypeRelations` or by declaring a super type). The wiring — the request unchanged when not asked
+for, the declared pair stamped declared, an inverted one rejected — is held by unit tests; how often a real
+model proposes the type relations a text supports was first measured on the LLMs4OL 2026 Reuse task
+(ontology extension), whose expected additions are 93.5% `is-a` triples — a share that was out of reach before
+this channel existed. On the first ten test samples, with `qwen3.8-27b`, the sample's initial ontology
+declared and only triples on its own vocabulary kept: `is-a` precision 0.92, recall 0.56; the task's graph
+similarity 0.60 (exact match, the ten samples' triples scored together). Ten samples are a pilot, not the
+task's split.
+
 ## The record-linkage pre-filter
 
 `SinglePassOntologyProposer` takes an optional `LinkageOptions` (`Eyu.Core.Linkage`) that runs a

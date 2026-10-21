@@ -8,6 +8,17 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Fixed
+
+- `HttpModelClient` with `stream: true` no longer waits forever on a connection that stays open but
+  stops sending. Once response headers arrive, `HttpClient` stops applying its `Timeout` to the body,
+  so the client now applies it to each wait for the next piece of the stream. The limit applies to
+  silence, not to the whole answer, so a long answer that keeps arriving is not cut off. Running out
+  throws `TaskCanceledException` with an inner `TimeoutException`, as the client's own timeout does.
+  With `Timeout.InfiniteTimeSpan` the wait stays unbounded.
+
 ## 0.17.0
 
 A minor, with one breaking change. Field comparison in the pre-filter can read a value as words

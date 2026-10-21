@@ -389,6 +389,68 @@ public class HttpModelClientTests
     }
 
     [Fact]
+    public async Task A_stream_that_stops_sending_fails_within_the_client_timeout()
+    {
+        var stalled = new StalledStream(Encoding.UTF8.GetBytes("""data: {"choices":[{"delta":{"content":"par"}}]}""" + "\n"));
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(stalled),
+        }));
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/"), Timeout = TimeSpan.FromMilliseconds(200) };
+        var client = new HttpModelClient(http, "test-model", stream: true);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var failure = await Assert.ThrowsAsync<TaskCanceledException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"took {watch.Elapsed}");
+        Assert.IsType<TimeoutException>(failure.InnerException);
+        Assert.Contains("POST https://example.test/v1/chat/completions", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("after 3 chars", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_slow_stream_that_keeps_sending_is_not_cut_by_the_client_timeout()
+    {
+        string[] lines =
+        [
+            """data: {"choices":[{"delta":{"content":"a"}}]}""",
+            """data: {"choices":[{"delta":{"content":"b"}}]}""",
+            """data: {"choices":[{"delta":{"content":"c"}}]}""",
+            "data: [DONE]",
+        ];
+        var trickle = new TrickleStream(lines.Select(l => Encoding.UTF8.GetBytes(l + "\n")).ToArray(), TimeSpan.FromMilliseconds(150));
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(trickle),
+        }));
+        // Each gap (150 ms) is inside the timeout (400 ms); the whole answer (600 ms) is not.
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/"), Timeout = TimeSpan.FromMilliseconds(400) };
+        var client = new HttpModelClient(http, "test-model", stream: true);
+
+        var response = await client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken);
+
+        Assert.Equal("abc", response.Text);
+    }
+
+    [Fact]
+    public async Task Cancelling_a_stalled_stream_reports_the_cancellation_not_a_timeout()
+    {
+        var stalled = new StalledStream(Encoding.UTF8.GetBytes("""data: {"choices":[{"delta":{"content":"par"}}]}""" + "\n"));
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(stalled),
+        }));
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/"), Timeout = Timeout.InfiniteTimeSpan };
+        var client = new HttpModelClient(http, "test-model", stream: true);
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancel.CancelAfter(TimeSpan.FromMilliseconds(200));
+
+        var failure = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.CompleteAsync(new ModelRequest("q"), cancel.Token));
+
+        Assert.IsNotType<TimeoutException>(failure.InnerException);
+    }
+
+    [Fact]
     public async Task A_stream_with_no_content_is_refused_saying_how_it_began()
     {
         var handler = new FakeHandler(_ => Task.FromResult(Streamed(
@@ -453,6 +515,74 @@ public class HttpModelClientTests
             return n;
         }
 
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    /// <summary>A body that yields its bytes and then sends nothing more, with the connection left open.</summary>
+    private sealed class StalledStream(byte[] head) : Stream
+    {
+        private int position;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => position; set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (position >= head.Length)
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+            }
+
+            var n = Math.Min(buffer.Length, head.Length - position);
+            head.AsMemory(position, n).CopyTo(buffer);
+            position += n;
+            return n;
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    /// <summary>A body that yields one piece after each gap, then ends.</summary>
+    private sealed class TrickleStream(byte[][] pieces, TimeSpan gap) : Stream
+    {
+        private int next;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (next >= pieces.Length)
+            {
+                return 0;
+            }
+
+            await Task.Delay(gap, cancellationToken).ConfigureAwait(false);
+            var piece = pieces[next++];
+            piece.CopyTo(buffer);
+            return piece.Length;
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         public override void Flush() { }
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();

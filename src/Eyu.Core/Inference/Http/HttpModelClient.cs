@@ -43,7 +43,12 @@ namespace Eyu.Core.Inference.Http;
 /// OpenAI SDKs. The client owns <c>stream</c> and <c>stream_options</c> then; extra-body entries with
 /// either key are ignored. A streamed call fails the way a non-streamed one does: an error the endpoint
 /// reports inside the stream, or a connection that closes before <c>[DONE]</c>, throws
-/// <see cref="HttpRequestException"/>.
+/// <see cref="HttpRequestException"/>. <see cref="HttpClient.Timeout"/> bounds each wait for the next
+/// piece of the stream, as it bounds the wait for a non-streamed response: once headers arrive the
+/// client no longer applies it to the body, so without this a connection that stays open but stops
+/// sending would wait forever. The bound is on silence, not on the whole answer — a long answer that
+/// keeps arriving is never cut — and running out of it throws what the client throws for its own
+/// timeout, <see cref="TaskCanceledException"/> with an inner <see cref="TimeoutException"/>.
 ///
 /// The response never carries a confidence score, and this type never invents one — see design
 /// rationale §D: an absent confidence is honest, a fabricated one is not.
@@ -118,7 +123,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
 
         if (stream)
         {
-            return await ReadStreamAsync(httpRequest, httpResponse, cancellationToken).ConfigureAwait(false);
+            return await ReadStreamAsync(httpRequest, httpResponse, httpClient.Timeout, cancellationToken).ConfigureAwait(false);
         }
 
         var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -143,22 +148,42 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
     /// carries an <c>error</c> ends the call with it. Lines that are not <c>data:</c> — comments,
     /// keep-alives, event names — are skipped, as the server-sent-events format says. A connection that
     /// closes while the answer is still coming is a failed request too, as it is when a non-streamed
-    /// body is cut short.
+    /// body is cut short. <paramref name="idleTimeout"/> — the client's own timeout — bounds the silence
+    /// before each line; <see cref="Timeout.InfiniteTimeSpan"/> leaves it unbounded, as it does the client.
     /// </summary>
-    private static async Task<ModelResponse> ReadStreamAsync(HttpRequestMessage httpRequest, HttpResponseMessage httpResponse, CancellationToken cancellationToken)
+    private static async Task<ModelResponse> ReadStreamAsync(HttpRequestMessage httpRequest, HttpResponseMessage httpResponse, TimeSpan idleTimeout, CancellationToken cancellationToken)
     {
         var text = new StringBuilder();
         var seen = new StringBuilder();
         TokenUsage? usage = null;
         var done = false;
+        using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
         {
             await using var content = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             using var reader = new StreamReader(content, Encoding.UTF8);
-            while (!done && await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+            while (!done)
             {
+                if (idleTimeout != Timeout.InfiniteTimeSpan)
+                {
+                    idle.CancelAfter(idleTimeout);
+                }
+
+                if (await reader.ReadLineAsync(idle.Token).ConfigureAwait(false) is not { } line)
+                {
+                    break;
+                }
+
                 done = ReadChunk(line, text, seen, ref usage);
             }
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or IOException
+            && idle.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            // Worded and typed as HttpClient words its own timeout, so a caller that already handles
+            // that one handles this one.
+            var message = $"The request to {DescribeTarget(httpRequest)} was canceled: nothing arrived on the stream for the configured HttpClient.Timeout of {idleTimeout.TotalSeconds} seconds, after {text.Length} chars of content and before [DONE].";
+            throw new TaskCanceledException(message, new TimeoutException(message, ex));
         }
         catch (IOException ex) when (!cancellationToken.IsCancellationRequested)
         {

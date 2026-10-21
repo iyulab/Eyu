@@ -21,7 +21,8 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// <c>EYU_LLMS4OL_ROOT</c> names the directory holding the challenge checkout under <c>repo/</c> and a
 /// <c>SHA256SUMS</c> manifest (paths relative to <c>repo/</c>); <c>EYU_LLMS4OL_OUT</c> the output directory.
 /// <c>EYU_LLMS4OL_SPLIT</c> picks <c>test</c> (default) or <c>train</c>, <c>EYU_LLMS4OL_LIMIT</c> the first so
-/// many samples in file order (default 10 — a pilot, whose scores are not the task's over its whole split).
+/// many samples in file order (default 10 — a pilot, whose scores are not the task's over its whole split);
+/// <c>EYU_LLMS4OL_IDS</c> keeps only the named samples among them (a round's failed calls, run again for merging back).
 /// A call that fails leaves its sample with no prediction — scored as missed — and is counted in the report.
 /// </para>
 /// </summary>
@@ -44,7 +45,13 @@ public class Llms4OlReuseMeasurement(ITestOutputHelper output)
         var cancellation = TestContext.Current.CancellationToken;
 
         var relative = $"2026/TaskB-Reuse/{split}_task_b.json";
-        var samples = Llms4OlReuseCorpus.Parse(await ReadVerifiedAsync(root, relative, cancellation)).Take(limit).ToList();
+        var only = Environment.GetEnvironmentVariable("EYU_LLMS4OL_IDS") is { Length: > 0 } ids
+            ? ids.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal)
+            : null;
+        var samples = Llms4OlReuseCorpus.Parse(await ReadVerifiedAsync(root, relative, cancellation))
+            .Take(limit)
+            .Where(x => only is null || only.Contains(x.Id))
+            .ToList();
 
         var (httpClient, modelClient) = EyuLlmLiveClient.Create();
         using var _ = httpClient;
@@ -68,7 +75,7 @@ public class Llms4OlReuseMeasurement(ITestOutputHelper output)
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !cancellation.IsCancellationRequested)
             {
-                failures.Add($"{sample.Id}: {ex.GetType().Name}");
+                failures.Add($"{sample.Id}: {ex.GetType().Name}: {Text2KgBenchMeasurement.Excerpt(ex.Message)}");
                 output.WriteLine($"{sample.Id} failed: {ex.GetType().Name}: {ex.Message}");
             }
 

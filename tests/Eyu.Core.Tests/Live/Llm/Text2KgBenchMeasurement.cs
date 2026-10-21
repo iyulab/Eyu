@@ -115,7 +115,7 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException || !cancellation.IsCancellationRequested)
                 {
-                    failures.Add($"{batch[0]}: {ex.GetType().Name}");
+                    failures.Add($"{batch[0]}: {ex.GetType().Name}: {Excerpt(ex.Message)}");
                     output.WriteLine($"{ontology} call {calls} ({batch[0]}…) failed: {ex.GetType().Name}: {ex.Message}");
                 }
             }
@@ -155,6 +155,10 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
         output.WriteLine(report.ToString());
         await File.WriteAllTextAsync(Path.Combine(outDirectory, "report.md"), report.ToString(), cancellation);
     }
+
+    // A failed call's reason, short enough for a report line — the type alone does not tell a refused request
+    // from a stream cut short.
+    internal static string Excerpt(string message) => message.Length <= 300 ? message.ReplaceLineEndings(" ") : message[..300].ReplaceLineEndings(" ") + "…";
 
     private static readonly (string Name, bool DeclaredOnly)[] Variants = [("all", false), ("declared", true)];
 

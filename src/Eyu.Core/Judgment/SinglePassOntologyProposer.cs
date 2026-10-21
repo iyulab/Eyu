@@ -302,8 +302,9 @@ public sealed partial class SinglePassOntologyProposer(
     /// has a denoting record, so no merge candidate survives — by design, as no known-entity identity does.
     /// Known types reach the prompt, and the parse: a proposed type that is a spelling of a name in use
     /// (<see cref="TypeNames.SameType"/>) is written as that name, so <c>WorkOrder</c> answered for
-    /// <c>work_order</c> does not become a second type. Whether a kind is the one a name stands for stays
-    /// the model's judgment; only the spelling is settled deterministically.
+    /// <c>work_order</c> does not become a second type; a near misspelling of one name in use is written as
+    /// that name only when the records the answer cited carry its words (<see cref="OntologyProposal.RespelledTypeNames"/>).
+    /// Whether a kind is the one a name stands for stays the model's judgment; only the spelling is settled deterministically.
     /// </summary>
     public async Task<OntologyProposal> ProposeAsync(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, PriorKnowledge prior, CancellationToken cancellationToken = default)
     {
@@ -334,6 +335,7 @@ public sealed partial class SinglePassOntologyProposer(
             MergeCandidates = parsed.MergeCandidates,
             DemotedDenotations = parsed.DemotedDenotations,
             TypeRelations = parsed.TypeRelations,
+            RespelledTypeNames = parsed.RespelledTypeNames,
         };
     }
 
@@ -589,6 +591,8 @@ public sealed partial class SinglePassOntologyProposer(
         var knownKeys = knownEntities.Select(k => k.Key).ToHashSet(StringComparer.Ordinal);
         var knownEntityTypes = knownEntities.ToDictionary(k => k.Key, k => k.EntityType, StringComparer.Ordinal);
         var namesInUse = NamesInUse(declaredStructures, prior);
+        var recordsById = records.ToDictionary(r => r.Id, StringComparer.Ordinal);
+        var respellings = new List<RespelledTypeName>();
         ProposalResponse parsed;
         try
         {
@@ -667,7 +671,7 @@ public sealed partial class SinglePassOntologyProposer(
             // A known entity wins as a declaration does, its type included: the entity keeps the type it
             // was already exported under, or one thing would be stated as two kinds across calls. Any
             // other type that spells a name in use is written as that name.
-            var type = knownKey is not null ? knownEntityTypes[knownKey] : InUseSpelling(e.Type!, namesInUse);
+            var type = knownKey is not null ? knownEntityTypes[knownKey] : InUseSpelling(e.Type!, namesInUse, namesInUse.Values, EntitySources(e), recordsById, respellings);
             entities.Add(EntityProposal.Create(e.Id!, e.Name!.Trim(), type, claim, InnateVocabulary.OfEntityType(type), confidence, denotedBy: denotedBy, knownEntityKey: knownKey));
         }
 
@@ -688,8 +692,8 @@ public sealed partial class SinglePassOntologyProposer(
         }
 
         var mergeCandidates = ParseMergeCandidates(candidateResponses, mentionedEntities, entities, proposedIds, rejections);
-        var typeRelationProposals = ParseTypeRelations(typeRelationResponses, declaredStructures, namesInUse, entities, rejections);
-        return new ParsedResponse(new OntologyProposal(entities, relations, rejections), mergeCandidates, demotions, typeRelationProposals);
+        var typeRelationProposals = ParseTypeRelations(typeRelationResponses, declaredStructures, namesInUse, entities, recordsById, respellings, rejections);
+        return new ParsedResponse(new OntologyProposal(entities, relations, rejections), mergeCandidates, demotions, typeRelationProposals, respellings);
     }
 
     /// <summary>
@@ -697,10 +701,12 @@ public sealed partial class SinglePassOntologyProposer(
     /// of the response: a record may say what a kind of thing is without being a record of one. An end is
     /// written the way the name is already in use — a declared subject, a declared super type, a known type,
     /// or a type an entity of this answer carries — so <c>work order</c> and <c>WorkOrder</c> do not become
-    /// two types. A pair given twice is one type relation; the first is kept. Whether the pair was declared
+    /// two types. An end the answer misspelled is written as the name in use when its cited records settle it
+    /// (<see cref="GroundedRespelling"/>) — against the names given to the call, not the answer's own entity
+    /// types, which are the model's spellings. A pair given twice is one type relation; the first is kept. Whether the pair was declared
     /// is decided by <see cref="DeclaredStructureMerge.StampTypeRelations"/>.
     /// </summary>
-    private static List<TypeRelationProposal> ParseTypeRelations(IReadOnlyList<TypeRelationResponse> responses, IReadOnlyList<DeclaredStructure> declaredStructures, Dictionary<string, string> namesInUse, IReadOnlyList<EntityProposal> entities, List<ProposalRejection> rejections)
+    private static List<TypeRelationProposal> ParseTypeRelations(IReadOnlyList<TypeRelationResponse> responses, IReadOnlyList<DeclaredStructure> declaredStructures, Dictionary<string, string> namesInUse, IReadOnlyList<EntityProposal> entities, IReadOnlyDictionary<string, RawRecord> recordsById, List<RespelledTypeName> respellings, List<ProposalRejection> rejections)
     {
         var spellings = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var name in declaredStructures.Select(d => d.Subject.Value).Concat(declaredStructures.SelectMany(d => d.SuperTypes).Select(t => t.Trim())))
@@ -713,6 +719,7 @@ public sealed partial class SinglePassOntologyProposer(
             spellings.TryAdd(key, name);
         }
 
+        var given = spellings.Values.ToList();
         foreach (var entity in entities)
         {
             spellings.TryAdd(TypeNames.Key(entity.EntityType), entity.EntityType);
@@ -729,8 +736,8 @@ public sealed partial class SinglePassOntologyProposer(
                 continue;
             }
 
-            var sub = InUseSpelling(t.Sub!.Trim(), spellings);
-            var super = InUseSpelling(t.Super!.Trim(), spellings);
+            var sub = InUseSpelling(t.Sub!.Trim(), spellings, given, t.Sources!, recordsById, respellings);
+            var super = InUseSpelling(t.Super!.Trim(), spellings, given, t.Sources!, recordsById, respellings);
             if (seen.Add((TypeNames.Key(sub), TypeNames.Key(super))))
             {
                 proposals.Add(TypeRelationProposal.Create(sub, super, ToClaim(t.Claim!, t.Sources!), t.Confidence!.Value));
@@ -770,10 +777,33 @@ public sealed partial class SinglePassOntologyProposer(
         return names;
     }
 
-    private static string InUseSpelling(string type, Dictionary<string, string> namesInUse) =>
-        namesInUse.TryGetValue(TypeNames.Key(type), out var inUse) ? inUse : type;
+    /// <summary>
+    /// The type as written in the proposal: the name in use it spells, else the name in use its cited
+    /// records settle it as (<see cref="GroundedRespelling"/> — recorded in <paramref name="respellings"/>),
+    /// else as answered.
+    /// </summary>
+    private static string InUseSpelling(string type, Dictionary<string, string> spellings, IReadOnlyCollection<string> namesInUse, IEnumerable<string?> sources, IReadOnlyDictionary<string, RawRecord> recordsById, List<RespelledTypeName> respellings)
+    {
+        if (spellings.TryGetValue(TypeNames.Key(type), out var inUse))
+        {
+            return inUse;
+        }
 
-    private sealed record ParsedResponse(OntologyProposal Proposal, IReadOnlyList<MergeCandidate> MergeCandidates, IReadOnlyList<DemotedDenotation> DemotedDenotations, IReadOnlyList<TypeRelationProposal> TypeRelations);
+        var cited = sources.OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        if (GroundedRespelling.Find(type, namesInUse, GroundedRespelling.CitedWords(cited, recordsById)) is not { } respelled)
+        {
+            return type;
+        }
+
+        if (!respellings.Any(r => r.Answered == type && r.InUse == respelled))
+        {
+            respellings.Add(new RespelledTypeName(type, respelled, cited));
+        }
+
+        return respelled;
+    }
+
+    private sealed record ParsedResponse(OntologyProposal Proposal, IReadOnlyList<MergeCandidate> MergeCandidates, IReadOnlyList<DemotedDenotation> DemotedDenotations, IReadOnlyList<TypeRelationProposal> TypeRelations, IReadOnlyList<RespelledTypeName> RespelledTypeNames);
 
     /// <summary>
     /// Merge candidates are checked after the entities, against the ones that survived and the records

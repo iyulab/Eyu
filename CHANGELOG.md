@@ -10,6 +10,16 @@ every published version has a section here.
 
 ## Unreleased
 
+### Added
+
+- A type name the answer misspelled is written as the name in use when the records it cites settle it:
+  `saihe food product` answered beside a known type `saithe food product`, citing a record that says
+  "saithe", is proposed as `saithe food product` and listed in the new `OntologyProposal.RespelledTypeNames`
+  (answered name, name in use, the records that settled it). Nearness alone never respells a name — it
+  needs exactly one name in use within two letter edits, at least six letters, and cited records that carry
+  the name in use's words and not the answered ones; anything else is left as answered. Applies to entity
+  types and both ends of type relations. The prompt is unchanged.
+
 ### Changed
 
 - A relation proposed under a declared name now fits a declaration whose ends are declared super types

@@ -38,4 +38,11 @@ public sealed record OntologyProposal(
     /// type (<see cref="Declared.DeclaredStructure.SuperTypes"/>).
     /// </summary>
     public IReadOnlyList<TypeRelationProposal> TypeRelations { get; init; } = [];
+
+    /// <summary>
+    /// Type names the answer misspelled that the proposal writes as a name in use, each with the cited
+    /// records that settled it (<see cref="RespelledTypeName"/>). Empty when the call was given no names in
+    /// use, or every type the answer wrote either spelled one or was left as answered.
+    /// </summary>
+    public IReadOnlyList<RespelledTypeName> RespelledTypeNames { get; init; } = [];
 }

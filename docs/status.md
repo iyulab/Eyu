@@ -49,7 +49,10 @@ declared and only triples on its own vocabulary kept: `is-a` precision 0.92, rec
 similarity 0.80 (exact match, the forty samples' triples scored together). Of the 35 expected triples
 missed, 20 belong to three samples whose text never mentions them — their terms appear only in the
 sample's list of types, so no proposal grounded in the text can reach them — 2 to calls the model endpoint
-failed, and 5 to one type name the model misspelt. Forty samples are a pilot, not the task's split.
+failed, and 5 to one type name the model misspelt. A misspelt type name is now written as the name in
+use when the records the answer cites carry that name's words (`OntologyProposal.RespelledTypeNames`):
+replayed on the same answers, recall 0.83 and graph similarity 0.81, precision unchanged. Forty samples are a
+pilot, not the task's split.
 
 ## Triple extraction against a declared ontology
 

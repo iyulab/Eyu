@@ -44,10 +44,12 @@ A proposal can say that one type is a kind of another (`TypeRelations`, asked fo
 for, the declared pair stamped declared, an inverted one rejected — is held by unit tests; how often a real
 model proposes the type relations a text supports was first measured on the LLMs4OL 2026 Reuse task
 (ontology extension), whose expected additions are 93.5% `is-a` triples — a share that was out of reach before
-this channel existed. On the first ten test samples, with `qwen3.8-27b`, the sample's initial ontology
-declared and only triples on its own vocabulary kept: `is-a` precision 0.92, recall 0.56; the task's graph
-similarity 0.60 (exact match, the ten samples' triples scored together). Ten samples are a pilot, not the
-task's split.
+this channel existed. On the first forty test samples, with `qwen3.8-27b`, the sample's initial ontology
+declared and only triples on its own vocabulary kept: `is-a` precision 0.92, recall 0.82; the task's graph
+similarity 0.80 (exact match, the forty samples' triples scored together). Of the 35 expected triples
+missed, 20 belong to three samples whose text never mentions them — their terms appear only in the
+sample's list of types, so no proposal grounded in the text can reach them — 2 to calls the model endpoint
+failed, and 5 to one type name the model misspelt. Forty samples are a pilot, not the task's split.
 
 ## Triple extraction against a declared ontology
 

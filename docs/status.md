@@ -48,6 +48,46 @@ declared and only triples on its own vocabulary kept: `is-a` precision 0.92, rec
 similarity 0.60 (exact match, the ten samples' triples scored together). Ten samples are a pilot, not the
 task's split.
 
+## Triple extraction against a declared ontology
+
+Text2KGBench (Wikidata-TekGen) hands an ontology — concepts, and relations from a domain concept to a
+range concept — and sentences, and scores the triples extracted from each sentence. Each concept is
+declared as a structure with its relations; each sentence is a document-fragment record
+(`RecordsDenoteEntities = false`), ten to a call; the benchmark's own scorer scores the result. On its
+human-verified sentences, with `qwen3.8-27b`:
+
+| ontology | output | precision | recall | F1 | ontology conformance | relation hallucination | baseline F1 |
+|---|---|---|---|---|---|---|---|
+| movie (174 sentences) | everything proposed | 0.39 | 0.34 | 0.35 | 0.67 | 0.33 | 0.28 |
+| movie | declared basis only | 0.39 | 0.34 | 0.35 | 1.00 | 0.00 | |
+| sport (97 sentences) | everything proposed | 0.24 | 0.23 | 0.22 | 0.36 | 0.64 | 0.50 |
+| sport | declared basis only | 0.24 | 0.23 | 0.22 | 0.98 | 0.02 | |
+
+Precision and recall are the same for both outputs because the scorer compares only triples on the
+relations a sentence's gold triples use; what the declared-basis filter changes is conformance and
+hallucination — a consumer that keeps the declared basis gets the ontology's relations alone. The
+baseline is the Vicuna-13B result the benchmark ships, prompted with the most similar training sentence
+as a worked example; Eyu is given no example.
+
+What the sport numbers are made of, read sentence by sentence:
+
+- A quarter of the gold triples (37 of 141) sit on four declared relations the model never used. It
+  stated the same facts under names of its own — "the 28th edition of the Paris Masters" as
+  `edition_of` where `sports season of league or competition` is declared. Three of the four have a
+  range the ontology gives only as an unlabeled identifier or not at all; for the fourth, `occupation`,
+  half the gold objects are occupation labels the sentence does not spell out.
+- Most gold `sport` triples have a person as subject, while the ontology declares `sport` from a sports
+  competition; Eyu rejects a declared relation whose ends the declaration does not describe, and the
+  gold triples break the declaration here.
+- Gold names are the knowledge base's labels, not always the sentence's words ("Terrence Jones" for
+  "Terrence Alexander Jones", "athletics competitor" for "track and field athlete"); Eyu proposes the
+  surface form the record shows.
+- The model typed ends of declared relations more specifically than the declaration (an athlete where
+  `human` is declared, a film genre where `genre` is); those relations are rejected. Their exact gold
+  matches would add at most 7.5 points of recall on sport and 4 on movie. A declaration that names the
+  narrower type a kind of the declared one (`SuperTypes`) now admits them; this ontology declares no
+  such kinds.
+
 ## The record-linkage pre-filter
 
 `SinglePassOntologyProposer` takes an optional `LinkageOptions` (`Eyu.Core.Linkage`) that runs a

@@ -8,7 +8,13 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.19.0
+
+A minor, additive. A proposal can say that one type is a kind of another (`is-a`), asked for or set off
+by a declared super type; not asked for, a call sends the request it always sent, so the prompt's
+fingerprint stays (`98229faf`). On the first ten test samples of the LLMs4OL 2026 Reuse task the type
+relations a text supports came back at precision 0.92, recall 0.56 (`docs/status.md`). Built against
+HoneAI.Abstractions 0.4.0, which only adds to the contract.
 
 ### Added
 

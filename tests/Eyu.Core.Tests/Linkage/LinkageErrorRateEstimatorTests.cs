@@ -10,8 +10,8 @@ public class LinkageErrorRateEstimatorTests
     // is the one they set up and not TooFewFields.
     private static FieldLinkageParameters Parameters(EstimationStatus status, double prior = 0.5, bool swapped = false, int fields = 3) =>
         new(
-            Enumerable.Range(0, fields).ToDictionary(i => $"field{i}", _ => 0.9),
-            Enumerable.Range(0, fields).ToDictionary(i => $"field{i}", _ => 0.1),
+            Enumerable.Range(0, fields).ToDictionary(i => $"field{i}", _ => (IReadOnlyList<double>)[0.1, 0.9]),
+            Enumerable.Range(0, fields).ToDictionary(i => $"field{i}", _ => (IReadOnlyList<double>)[0.9, 0.1]),
             prior,
             status)
         { LabelsSwapped = swapped };

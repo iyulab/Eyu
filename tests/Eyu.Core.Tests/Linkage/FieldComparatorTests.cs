@@ -124,7 +124,7 @@ public class FieldComparatorTests
         // The same name, precomposed (NFC) and decomposed (NFD): identical on screen, different code units.
         var a = Record("rec-1", ("name", "김민지"), ("phone", "010-1234"));
         var b = Record("rec-2", ("name", "김민지".Normalize(NormalizationForm.FormD)), ("phone", "０１０-１２３４"));
-        var options = LinkageOptions.Default with { Comparison = new FieldComparison(method, FieldComparison.DefaultJaroWinklerThreshold) };
+        var options = LinkageOptions.Default with { Comparison = new FieldComparison(method, [FieldComparison.DefaultJaroWinklerThreshold]) };
 
         var result = FieldComparator.Compare(a, b, options);
 
@@ -177,7 +177,7 @@ public class FieldComparatorTests
     {
         var a = Record("rec-1", ("title", "Adobe Photoshop Elements 9 (Mac)"));
         var b = Record("rec-2", ("title", "photoshop elements 9 mac adobe"));
-        var options = LinkageOptions.Default with { Comparison = new FieldComparison(method, threshold) };
+        var options = LinkageOptions.Default with { Comparison = new FieldComparison(method, [threshold]) };
 
         Assert.Equal(FieldAgreementLevel.Agree, FieldComparator.Compare(a, b, options)["title"]);
         // The whole value read as one string, the reordering is far apart.
@@ -193,7 +193,7 @@ public class FieldComparatorTests
     {
         var a = Record("rec-1", ("title", "Adobe Photoshop Elements 9"));
         var b = Record("rec-2", ("title", "Microsoft Office Home 2010"));
-        var options = LinkageOptions.Default with { Comparison = new FieldComparison(method, 0.8) };
+        var options = LinkageOptions.Default with { Comparison = new FieldComparison(method, [0.8]) };
 
         Assert.Equal(FieldAgreementLevel.Disagree, FieldComparator.Compare(a, b, options)["title"]);
     }

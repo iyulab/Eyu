@@ -66,7 +66,7 @@ public class BlockingRuleTests
         var known = new KnownEntity("key:minjun", "Kim Minjun", "Person", [Person("old-1", "Kim Minjun", "2012-03", "North")]);
         var newcomers = new[] { Person("n1", "Kim Minjun", "2012-03", "North"), Person("n2", "Choi Yuna", "2012-03", "East") };
         var parameters = FieldLinkageParameters.FromNonMatchAgreement(
-            new Dictionary<string, double> { ["name"] = 0.01, ["birth"] = 0.02, ["school"] = 0.25 }, matchAgreement: 0.95, matchPrior: 0.01);
+            BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.01, ["birth"] = 0.02, ["school"] = 0.25 }), matchAgreement: 0.95, matchPrior: 0.01);
 
         var analysis = LinkagePipeline.Analyze(newcomers, [known], parameters, new LinkageOptions(BlockingRules: [["name"]]));
 

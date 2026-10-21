@@ -219,8 +219,10 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
         report.AppendLine(CultureInfo.InvariantCulture, $"Thresholds: match ≥ {options.MatchThreshold}, non-match ≤ {options.NonMatchThreshold} (log-likelihood ratio); EM max {options.MaxIterations} iterations, tolerance {options.ConvergenceTolerance}.");
         if (analysis.Parameters is { } parameters)
         {
-            var fields = parameters.MAgreeProbability.Keys.Order(StringComparer.Ordinal)
-                .Select(f => string.Create(CultureInfo.InvariantCulture, $"{f} m={parameters.MAgreeProbability[f]:0.000} u={parameters.UAgreeProbability[f]:0.000}"));
+            // Each field's level distributions, disagreement first: a two-level field reads m=1−m/m.
+            static string Levels(IReadOnlyList<double> levels) => string.Join("/", levels.Select(p => p.ToString("0.000", CultureInfo.InvariantCulture)));
+            var fields = parameters.MLevelProbabilities.Keys.Order(StringComparer.Ordinal)
+                .Select(f => $"{f} m={Levels(parameters.MLevelProbabilities[f])} u={Levels(parameters.ULevelProbabilities[f])}");
             report.AppendLine(CultureInfo.InvariantCulture, $"Fitted: status {parameters.Status}, match prior {parameters.MatchPrior:0.00000}; {string.Join(" · ", fields)}.");
         }
 

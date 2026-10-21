@@ -21,7 +21,7 @@ public class FellegiSunterEstimatorTests
     public void A_match_prior_on_the_boundary_cannot_be_represented(double prior)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new FieldLinkageParameters(
-            new Dictionary<string, double>(), new Dictionary<string, double>(), prior, EstimationStatus.HeuristicDefault));
+            BinaryLevels.None, BinaryLevels.None, prior, EstimationStatus.HeuristicDefault));
     }
 
     private static IReadOnlyDictionary<string, FieldAgreementLevel> Vector(params (string Field, FieldAgreementLevel Level)[] entries) =>
@@ -38,8 +38,8 @@ public class FellegiSunterEstimatorTests
 
         var parameters = FellegiSunterEstimator.Estimate(vectors);
 
-        Assert.Equal(FellegiSunterEstimator.HeuristicDefaultMAgreeProbability, parameters.MAgreeProbability["name"]);
-        Assert.Equal(FellegiSunterEstimator.HeuristicDefaultUAgreeProbability, parameters.UAgreeProbability["name"]);
+        Assert.Equal(FellegiSunterEstimator.HeuristicDefaultMAgreeProbability, parameters.MLevelProbabilities["name"][^1]);
+        Assert.Equal(FellegiSunterEstimator.HeuristicDefaultUAgreeProbability, parameters.ULevelProbabilities["name"][^1]);
         Assert.Equal(FellegiSunterEstimator.HeuristicDefaultMatchPrior, parameters.MatchPrior);
         Assert.Equal(EstimationStatus.HeuristicDefault, parameters.Status);
     }
@@ -66,7 +66,7 @@ public class FellegiSunterEstimatorTests
 
         var parameters = FellegiSunterEstimator.Estimate(vectors, maxIterations: 200);
 
-        Assert.True(parameters.MAgreeProbability["discriminating"] > parameters.UAgreeProbability["discriminating"]);
+        Assert.True(parameters.MLevelProbabilities["discriminating"][^1] > parameters.ULevelProbabilities["discriminating"][^1]);
         Assert.Equal(EstimationStatus.Converged, parameters.Status);
     }
 
@@ -102,15 +102,15 @@ public class FellegiSunterEstimatorTests
         // less often than the one it calls "non-match". Left alone, every LLR flips sign and Match
         // means NonMatch. The mixture is symmetric, so swapping is the same optimum, correctly named.
         var swapped = new FieldLinkageParameters(
-            new Dictionary<string, double> { ["name"] = 0.2, ["email"] = 0.1 },
-            new Dictionary<string, double> { ["name"] = 0.9, ["email"] = 0.8 },
+            BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.2, ["email"] = 0.1 }),
+            BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.9, ["email"] = 0.8 }),
             0.3,
             EstimationStatus.Converged);
 
         var fixedUp = FellegiSunterEstimator.WithMatchComponentFirst(swapped);
 
-        Assert.Equal(0.9, fixedUp.MAgreeProbability["name"]);
-        Assert.Equal(0.2, fixedUp.UAgreeProbability["name"]);
+        Assert.Equal(0.9, fixedUp.MLevelProbabilities["name"][^1]);
+        Assert.Equal(0.2, fixedUp.ULevelProbabilities["name"][^1]);
         Assert.Equal(0.7, fixedUp.MatchPrior, precision: 12);
         Assert.Equal(EstimationStatus.Converged, fixedUp.Status);
         Assert.True(fixedUp.LabelsSwapped);
@@ -122,8 +122,8 @@ public class FellegiSunterEstimatorTests
     public void A_correctly_labeled_model_is_returned_unchanged()
     {
         var parameters = new FieldLinkageParameters(
-            new Dictionary<string, double> { ["name"] = 0.9 },
-            new Dictionary<string, double> { ["name"] = 0.1 },
+            BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.9 }),
+            BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.1 }),
             0.4,
             EstimationStatus.Converged);
 
@@ -139,15 +139,15 @@ public class FellegiSunterEstimatorTests
         // One strongly discriminating field the right way round, one weak field the wrong way
         // round: the model is correctly labeled and the weak field keeps its (negative) weight.
         var parameters = new FieldLinkageParameters(
-            new Dictionary<string, double> { ["strong"] = 0.95, ["weak"] = 0.4 },
-            new Dictionary<string, double> { ["strong"] = 0.05, ["weak"] = 0.5 },
+            BinaryLevels.Of(new Dictionary<string, double> { ["strong"] = 0.95, ["weak"] = 0.4 }),
+            BinaryLevels.Of(new Dictionary<string, double> { ["strong"] = 0.05, ["weak"] = 0.5 }),
             0.5,
             EstimationStatus.Converged);
 
         var result = FellegiSunterEstimator.WithMatchComponentFirst(parameters);
 
         Assert.Same(parameters, result);
-        Assert.True(result.MAgreeProbability["weak"] < result.UAgreeProbability["weak"]);
+        Assert.True(result.MLevelProbabilities["weak"][^1] < result.ULevelProbabilities["weak"][^1]);
     }
 
     [Fact]
@@ -186,8 +186,8 @@ public class FellegiSunterEstimatorTests
     public void ComputeLogLikelihoodRatio_is_positive_when_every_field_agrees()
     {
         var parameters = new FieldLinkageParameters(
-            MAgreeProbability: new Dictionary<string, double> { ["name"] = 0.9, ["city"] = 0.9 },
-            UAgreeProbability: new Dictionary<string, double> { ["name"] = 0.1, ["city"] = 0.1 },
+            MLevelProbabilities: BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.9, ["city"] = 0.9 }),
+            ULevelProbabilities: BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.1, ["city"] = 0.1 }),
             MatchPrior: 0.5,
             Status: EstimationStatus.Converged);
         var vector = Vector(("name", FieldAgreementLevel.Agree), ("city", FieldAgreementLevel.Agree));
@@ -201,8 +201,8 @@ public class FellegiSunterEstimatorTests
     public void ComputeLogLikelihoodRatio_is_negative_when_every_field_disagrees()
     {
         var parameters = new FieldLinkageParameters(
-            MAgreeProbability: new Dictionary<string, double> { ["name"] = 0.9, ["city"] = 0.9 },
-            UAgreeProbability: new Dictionary<string, double> { ["name"] = 0.1, ["city"] = 0.1 },
+            MLevelProbabilities: BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.9, ["city"] = 0.9 }),
+            ULevelProbabilities: BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.1, ["city"] = 0.1 }),
             MatchPrior: 0.5,
             Status: EstimationStatus.Converged);
         var vector = Vector(("name", FieldAgreementLevel.Disagree), ("city", FieldAgreementLevel.Disagree));
@@ -216,8 +216,8 @@ public class FellegiSunterEstimatorTests
     public void ComputeLogLikelihoodRatio_ignores_a_field_unseen_during_estimation()
     {
         var parameters = new FieldLinkageParameters(
-            MAgreeProbability: new Dictionary<string, double> { ["name"] = 0.9 },
-            UAgreeProbability: new Dictionary<string, double> { ["name"] = 0.1 },
+            MLevelProbabilities: BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.9 }),
+            ULevelProbabilities: BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.1 }),
             MatchPrior: 0.5,
             Status: EstimationStatus.Converged);
         var vector = Vector(("name", FieldAgreementLevel.Agree), ("unseen_field", FieldAgreementLevel.Agree));
@@ -253,8 +253,8 @@ public class FellegiSunterEstimatorTests
 
         Assert.Equal(EstimationStatus.Converged, parameters.Status);
         Assert.InRange(parameters.MatchPrior, 0.004, 0.006);
-        Assert.Equal(FellegiSunterEstimator.AgreementProbabilityFloor, parameters.UAgreeProbability["birth"], 12);
-        Assert.Equal(FellegiSunterEstimator.AgreementProbabilityCeiling, parameters.MAgreeProbability["name"], 12);
+        Assert.Equal(FellegiSunterEstimator.AgreementProbabilityFloor, parameters.ULevelProbabilities["birth"][^1], 12);
+        Assert.Equal(FellegiSunterEstimator.AgreementProbabilityCeiling, parameters.MLevelProbabilities["name"][^1], 12);
     }
 
     // With a handful of pairs the prior's pseudo-count dominates and keeps it well inside (0, 1),
@@ -269,8 +269,8 @@ public class FellegiSunterEstimatorTests
         var parameters = FellegiSunterEstimator.Estimate(vectors);
 
         Assert.InRange(parameters.MatchPrior, 0.01, 0.99);
-        Assert.InRange(parameters.MAgreeProbability["name"], 0.01, 0.99);
-        Assert.InRange(parameters.UAgreeProbability["name"], 0.01, 0.99);
+        Assert.InRange(parameters.MLevelProbabilities["name"][^1], 0.01, 0.99);
+        Assert.InRange(parameters.ULevelProbabilities["name"][^1], 0.01, 0.99);
         Assert.True(double.IsFinite(FellegiSunterEstimator.ComputeLogLikelihoodRatio(vectors[0], parameters)));
     }
 }

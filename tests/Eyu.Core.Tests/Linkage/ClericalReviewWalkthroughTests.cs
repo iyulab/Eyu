@@ -25,7 +25,7 @@ public class ClericalReviewWalkthroughTests
         [["a1", "a2", "a3"], ["b1", "b2"], ["c1", "c2"], ["d1", "d2"], ["e1", "e2"], ["f1"], ["g1"], ["h1"], ["i1"], ["j1"]];
 
     private static FieldLinkageParameters Parameters() =>
-        new(new Dictionary<string, double>(), new Dictionary<string, double>(), 0.5, EstimationStatus.HeuristicDefault);
+        new(BinaryLevels.None, BinaryLevels.None, 0.5, EstimationStatus.HeuristicDefault);
 
     /// <summary>
     /// Nine predicted clusters over sixteen records. j1 is a namesake merged into a on ambiguous

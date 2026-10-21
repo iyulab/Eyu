@@ -16,8 +16,9 @@ namespace Eyu.Core.Linkage;
 /// over the whole value, Hangul spelled out as its jamo, so one changed letter of a syllable is one
 /// letter, not one of three characters; or a <see cref="TokenSimilarity"/> over its words, so words in
 /// another order or an extra word on one side still count — and notation variants that are not
-/// literal duplicates register as <see cref="FieldAgreementLevel.Agree"/>. An exact match scores 1.0
-/// under every method and clears any threshold, so each is a superset of the default's exact-match cases.
+/// literal duplicates register as agreement. A comparison with several thresholds sorts each pair into a
+/// level (<see cref="FieldAgreementLevel"/>) rather than agree/disagree. An exact match scores 1.0 under
+/// every method and clears every threshold, so it always lands on the top level.
 /// </summary>
 public static class FieldComparator
 {
@@ -43,9 +44,7 @@ public static class FieldComparator
             var trimmedA = TextForm.Fold(valueA).Trim();
             var trimmedB = TextForm.Fold(valueB).Trim();
 
-            var agrees = opts.ComparisonFor(fieldName).Agrees(trimmedA, trimmedB);
-
-            result[fieldName] = agrees ? FieldAgreementLevel.Agree : FieldAgreementLevel.Disagree;
+            result[fieldName] = opts.ComparisonFor(fieldName).Level(trimmedA, trimmedB);
         }
 
         return result;

@@ -34,9 +34,9 @@ public class SuppliedParameterLinkageTests
         var u = LinkagePipeline.EstimateNonMatchAgreement(Population);
 
         // Four schools evenly spread: of all 240·239/2 pairs, 4·(60·59/2) agree.
-        Assert.Equal(4.0 * (60 * 59 / 2) / (240 * 239 / 2), u["school"], 6);
+        Assert.Equal(4.0 * (60 * 59 / 2) / (240 * 239 / 2), u["school"][^1], 6);
         // Every name is different: no pair agrees, and the value is held at the evidence floor, not 0.
-        Assert.Equal(FellegiSunterEstimator.AgreementProbabilityFloor, u["name"]);
+        Assert.Equal(FellegiSunterEstimator.AgreementProbabilityFloor, u["name"][^1]);
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public class SuppliedParameterLinkageTests
         var again = LinkagePipeline.EstimateNonMatchAgreement(Population, maxPairs: 2_000, seed: 3);
 
         Assert.Equal(first, again);
-        Assert.InRange(first["school"], 0.18, 0.32);
+        Assert.InRange(first["school"][^1], 0.18, 0.32);
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class SuppliedParameterLinkageTests
     [Fact]
     public void Em_with_fixed_nonmatch_agreement_moves_only_m_and_the_prior()
     {
-        var u = new Dictionary<string, double> { ["a"] = 0.05, ["b"] = 0.2, ["c"] = 0.1 };
+        var u = BinaryLevels.Of(new Dictionary<string, double> { ["a"] = 0.05, ["b"] = 0.2, ["c"] = 0.1 });
         var agreeAll = new Dictionary<string, FieldAgreementLevel> { ["a"] = FieldAgreementLevel.Agree, ["b"] = FieldAgreementLevel.Agree, ["c"] = FieldAgreementLevel.Agree };
         var agreeB = new Dictionary<string, FieldAgreementLevel> { ["a"] = FieldAgreementLevel.Disagree, ["b"] = FieldAgreementLevel.Agree, ["c"] = FieldAgreementLevel.Disagree };
         var agreeNone = new Dictionary<string, FieldAgreementLevel> { ["a"] = FieldAgreementLevel.Disagree, ["b"] = FieldAgreementLevel.Disagree, ["c"] = FieldAgreementLevel.Disagree };
@@ -103,8 +103,8 @@ public class SuppliedParameterLinkageTests
 
         var fitted = FellegiSunterEstimator.Estimate(vectors, fixedNonMatchAgreement: u);
 
-        Assert.Equal(u, fitted.UAgreeProbability);
-        Assert.All(fitted.MAgreeProbability, kv => Assert.True(kv.Value > u[kv.Key], $"{kv.Key}: m {kv.Value} should exceed u {u[kv.Key]}"));
+        Assert.Equal(u, fitted.ULevelProbabilities);
+        Assert.All(fitted.MLevelProbabilities, kv => Assert.True(kv.Value[^1] > u[kv.Key][^1], $"{kv.Key}: m {kv.Value[^1]} should exceed u {u[kv.Key][^1]}"));
         Assert.InRange(fitted.MatchPrior, 0.05, 0.2);
     }
 
@@ -114,6 +114,6 @@ public class SuppliedParameterLinkageTests
     [InlineData(1.5)]
     public void Match_agreement_must_be_a_probability_strictly_inside_zero_and_one(double matchAgreement)
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => FieldLinkageParameters.FromNonMatchAgreement(new Dictionary<string, double> { ["a"] = 0.1 }, matchAgreement, 0.01));
+        Assert.Throws<ArgumentOutOfRangeException>(() => FieldLinkageParameters.FromNonMatchAgreement(BinaryLevels.Of(new Dictionary<string, double> { ["a"] = 0.1 }), matchAgreement, 0.01));
     }
 }

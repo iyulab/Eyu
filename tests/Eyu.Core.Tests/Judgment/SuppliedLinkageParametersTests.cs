@@ -3,6 +3,7 @@ using Eyu.Core.Judgment;
 using Eyu.Core.Linkage;
 using Eyu.Core.Ports;
 using Eyu.Core.Records;
+using Eyu.Core.Tests.Linkage;
 using Xunit;
 
 namespace Eyu.Core.Tests.Judgment;
@@ -24,7 +25,7 @@ public sealed class SuppliedLinkageParametersTests
 
     // How often two different people agree on each field — a school is shared by many, a birth date by few.
     private static readonly FieldLinkageParameters Population = FieldLinkageParameters.FromNonMatchAgreement(
-        new Dictionary<string, double> { ["name"] = 0.001, ["birth"] = 0.0005, ["school"] = 0.2 },
+        BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.001, ["birth"] = 0.0005, ["school"] = 0.2 }),
         matchAgreement: 0.95,
         matchPrior: 0.01);
 

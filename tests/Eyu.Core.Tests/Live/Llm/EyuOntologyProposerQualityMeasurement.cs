@@ -1339,7 +1339,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         int MaxIterations,
         double ConvergenceTolerance,
         string Comparison,
-        double ComparisonThreshold);
+        IReadOnlyList<double> ComparisonThresholds);
 
     private sealed record LinkageSnapshot(
         int Pairs,
@@ -1436,7 +1436,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
                 linkageOptions.MaxIterations,
                 linkageOptions.ConvergenceTolerance,
                 (linkageOptions.Comparison ?? FieldComparison.Exact).Method.ToString(),
-                (linkageOptions.Comparison ?? FieldComparison.Exact).AgreementThreshold),
+                (linkageOptions.Comparison ?? FieldComparison.Exact).AgreementThresholds),
             cases);
 
         return JsonSerializer.Serialize(entry, StructuredLogJsonOptions);

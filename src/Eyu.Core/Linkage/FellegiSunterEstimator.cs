@@ -22,14 +22,24 @@ public static class FellegiSunterEstimator
     /// reports it as <see cref="LinkageErrorRateCaveat.TooFewFields"/>.
     /// </summary>
     public const int MinimumFieldsForIdentification = 3;
+    /// <summary>
+    /// The default <c>m</c> without a fit: a match reaches a field's top level this often, the rest spread
+    /// evenly below it.
+    /// </summary>
     public const double HeuristicDefaultMAgreeProbability = 0.9;
+
+    /// <summary>
+    /// The default <c>u</c> without a fit: a non-match reaches some agreeing level this often, spread evenly
+    /// over the agreeing levels, and disagrees otherwise.
+    /// </summary>
     public const double HeuristicDefaultUAgreeProbability = 0.1;
     public const double HeuristicDefaultMatchPrior = 0.5;
     public const int DefaultMaxIterations = 100;
     public const double DefaultConvergenceTolerance = 1e-4;
 
     /// <summary>
-    /// Bounds on every field's re-estimated <c>m</c> and <c>u</c>. They are an <em>evidence cap</em>
+    /// Bounds on every field's re-estimated <c>m</c> and <c>u</c> — each level's probability, which is then
+    /// renormalized so a field's levels still sum to 1. They are an <em>evidence cap</em>
     /// more than a numerical guard: no single field's agreement can weigh more than
     /// <c>log(0.99 / 0.01) ≈ 4.6</c> nats, just past the default match threshold of 4, so one
     /// coincidental agreement on a near-unique value (a shared date of birth, a shared postcode
@@ -55,11 +65,14 @@ public static class FellegiSunterEstimator
     /// </summary>
     public const double PriorPseudoCount = 0.5;
 
-    /// <param name="comparisonVectors">One agreement vector per compared pair.</param>
+    /// <param name="comparisonVectors">
+    /// One agreement vector per compared pair. A field's levels are fitted on the scale its levels carry
+    /// (<see cref="FieldAgreementLevel.Count"/>), which must be the same in every vector.
+    /// </param>
     /// <param name="maxIterations">The most EM rounds.</param>
     /// <param name="convergenceTolerance">The largest parameter move still read as converged.</param>
     /// <param name="fixedNonMatchAgreement">
-    /// The <c>u</c> of each field, measured elsewhere — typically
+    /// The <c>u</c> of each field — its level distribution among non-matches, on the field's scale — measured elsewhere, typically
     /// <see cref="LinkagePipeline.EstimateNonMatchAgreement"/> over random pairs of the population, which
     /// are nearly all non-matches, so <c>u</c> needs no EM. When given, those fields' <c>u</c> is held where
     /// it is and EM fits only <c>m</c> and the match prior; a field it does not name is fitted as usual.
@@ -75,27 +88,45 @@ public static class FellegiSunterEstimator
         IReadOnlyList<IReadOnlyDictionary<string, FieldAgreementLevel>> comparisonVectors,
         int maxIterations = DefaultMaxIterations,
         double convergenceTolerance = DefaultConvergenceTolerance,
-        IReadOnlyDictionary<string, double>? fixedNonMatchAgreement = null)
+        IReadOnlyDictionary<string, IReadOnlyList<double>>? fixedNonMatchAgreement = null)
     {
         ArgumentNullException.ThrowIfNull(comparisonVectors);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxIterations, 1);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(convergenceTolerance);
 
-        var fieldNames = comparisonVectors.SelectMany(v => v.Keys).Distinct(StringComparer.Ordinal).ToList();
+        var levels = LevelCounts(comparisonVectors);
+        var fieldNames = levels.Keys.ToList();
 
         bool IsFixed(string field) => fixedNonMatchAgreement is not null && fixedNonMatchAgreement.ContainsKey(field);
-        double InitialU(string field) => IsFixed(field) ? fixedNonMatchAgreement![field] : HeuristicDefaultUAgreeProbability;
+        double[] InitialU(string field)
+        {
+            if (!IsFixed(field))
+            {
+                return [.. FieldLinkageParameters.AgreeingSpread(levels[field], HeuristicDefaultUAgreeProbability)];
+            }
+
+            var supplied = fixedNonMatchAgreement![field];
+            if (supplied.Count != levels[field])
+            {
+                throw new ArgumentException(
+                    $"The fixed u of '{field}' has {supplied.Count} levels; its comparison vectors have {levels[field]}.", nameof(fixedNonMatchAgreement));
+            }
+
+            return [.. supplied];
+        }
+
+        double[] InitialM(string field) => [.. FieldLinkageParameters.TopWeighted(levels[field], HeuristicDefaultMAgreeProbability)];
 
         if (comparisonVectors.Count < MinimumPairsForEmEstimation || fieldNames.Count == 0)
         {
             return new FieldLinkageParameters(
-                fieldNames.ToDictionary(f => f, _ => HeuristicDefaultMAgreeProbability, StringComparer.Ordinal),
-                fieldNames.ToDictionary(f => f, InitialU, StringComparer.Ordinal),
+                fieldNames.ToDictionary(f => f, f => (IReadOnlyList<double>)InitialM(f), StringComparer.Ordinal),
+                fieldNames.ToDictionary(f => f, f => (IReadOnlyList<double>)InitialU(f), StringComparer.Ordinal),
                 HeuristicDefaultMatchPrior,
                 EstimationStatus.HeuristicDefault);
         }
 
-        var m = fieldNames.ToDictionary(f => f, _ => HeuristicDefaultMAgreeProbability, StringComparer.Ordinal);
+        var m = fieldNames.ToDictionary(f => f, InitialM, StringComparer.Ordinal);
         var u = fieldNames.ToDictionary(f => f, InitialU, StringComparer.Ordinal);
         var matchPrior = HeuristicDefaultMatchPrior;
         var converged = false;
@@ -110,22 +141,23 @@ public static class FellegiSunterEstimator
 
                 foreach (var (field, level) in comparisonVectors[i])
                 {
-                    var agreesUnderMatch = m[field];
-                    var agreesUnderNonMatch = u[field];
-                    matchLikelihood *= level == FieldAgreementLevel.Agree ? agreesUnderMatch : 1.0 - agreesUnderMatch;
-                    nonMatchLikelihood *= level == FieldAgreementLevel.Agree ? agreesUnderNonMatch : 1.0 - agreesUnderNonMatch;
+                    matchLikelihood *= m[field][level.Rank];
+                    nonMatchLikelihood *= u[field][level.Rank];
                 }
 
                 var total = matchLikelihood + nonMatchLikelihood;
                 responsibilities[i] = total <= 0.0 ? 0.0 : matchLikelihood / total;
             }
 
-            var newM = new Dictionary<string, double>(StringComparer.Ordinal);
-            var newU = new Dictionary<string, double>(StringComparer.Ordinal);
+            var newM = new Dictionary<string, double[]>(StringComparer.Ordinal);
+            var newU = new Dictionary<string, double[]>(StringComparer.Ordinal);
+            var delta = 0.0;
 
             foreach (var field in fieldNames)
             {
-                double matchWeightSum = 0, matchAgreeSum = 0, nonMatchWeightSum = 0, nonMatchAgreeSum = 0;
+                var matchByLevel = new double[levels[field]];
+                var nonMatchByLevel = new double[levels[field]];
+                double matchWeightSum = 0, nonMatchWeightSum = 0;
 
                 for (var i = 0; i < comparisonVectors.Count; i++)
                 {
@@ -137,23 +169,20 @@ public static class FellegiSunterEstimator
                     var r = responsibilities[i];
                     matchWeightSum += r;
                     nonMatchWeightSum += 1.0 - r;
-                    if (level == FieldAgreementLevel.Agree)
-                    {
-                        matchAgreeSum += r;
-                        nonMatchAgreeSum += 1.0 - r;
-                    }
+                    matchByLevel[level.Rank] += r;
+                    nonMatchByLevel[level.Rank] += 1.0 - r;
                 }
 
-                newM[field] = matchWeightSum <= 0.0
-                    ? m[field]
-                    : Math.Clamp(matchAgreeSum / matchWeightSum, AgreementProbabilityFloor, AgreementProbabilityCeiling);
-                newU[field] = nonMatchWeightSum <= 0.0 || IsFixed(field)
-                    ? u[field]
-                    : Math.Clamp(nonMatchAgreeSum / nonMatchWeightSum, AgreementProbabilityFloor, AgreementProbabilityCeiling);
+                newM[field] = matchWeightSum <= 0.0 ? m[field] : Bounded(matchByLevel, matchWeightSum);
+                newU[field] = nonMatchWeightSum <= 0.0 || IsFixed(field) ? u[field] : Bounded(nonMatchByLevel, nonMatchWeightSum);
+
+                for (var k = 0; k < levels[field]; k++)
+                {
+                    delta = Math.Max(delta, Math.Max(Math.Abs(newM[field][k] - m[field][k]), Math.Abs(newU[field][k] - u[field][k])));
+                }
             }
 
             var newMatchPrior = (responsibilities.Sum() + PriorPseudoCount) / (responsibilities.Length + (2 * PriorPseudoCount));
-            var delta = fieldNames.Max(f => Math.Max(Math.Abs(newM[f] - m[f]), Math.Abs(newU[f] - u[f])));
 
             m = newM;
             u = newU;
@@ -166,8 +195,70 @@ public static class FellegiSunterEstimator
             }
         }
 
-        var fitted = new FieldLinkageParameters(m, u, matchPrior, converged ? EstimationStatus.Converged : EstimationStatus.NotConverged);
+        var fitted = new FieldLinkageParameters(
+            m.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<double>)kv.Value, StringComparer.Ordinal),
+            u.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<double>)kv.Value, StringComparer.Ordinal),
+            matchPrior,
+            converged ? EstimationStatus.Converged : EstimationStatus.NotConverged);
         return fixedNonMatchAgreement is null ? WithMatchComponentFirst(fitted) : fitted;
+    }
+
+    /// <summary>
+    /// Each field's level count, read off the vectors themselves; a field whose levels disagree on the
+    /// scale was compared two different ways, and no single distribution describes it.
+    /// </summary>
+    private static Dictionary<string, int> LevelCounts(IReadOnlyList<IReadOnlyDictionary<string, FieldAgreementLevel>> comparisonVectors)
+    {
+        var levels = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var vector in comparisonVectors)
+        {
+            foreach (var (field, level) in vector)
+            {
+                if (levels.TryGetValue(field, out var count) && count != level.Count)
+                {
+                    throw new ArgumentException(
+                        $"Field '{field}' is compared on {count} levels in one vector and {level.Count} in another; compare every pair the same way.",
+                        nameof(comparisonVectors));
+                }
+
+                levels[field] = level.Count;
+            }
+        }
+
+        return levels;
+    }
+
+    /// <summary>
+    /// <paramref name="weights"/> as a distribution, each level held within
+    /// [<see cref="AgreementProbabilityFloor"/>, <see cref="AgreementProbabilityCeiling"/>]. The agreeing
+    /// levels are bounded and disagreement takes what is left, so a two-level field is exactly the classic
+    /// clamp of <c>m</c> with <c>1 − m</c> beside it; only when what is left falls outside the bounds too is
+    /// it bounded as well and the whole renormalized.
+    /// </summary>
+    internal static double[] Bounded(double[] weights, double total)
+    {
+        var bounded = new double[weights.Length];
+        var agreeing = 0.0;
+        for (var k = 1; k < weights.Length; k++)
+        {
+            bounded[k] = Math.Clamp(weights[k] / total, AgreementProbabilityFloor, AgreementProbabilityCeiling);
+            agreeing += bounded[k];
+        }
+
+        bounded[0] = 1.0 - agreeing;
+        if (bounded[0] is >= AgreementProbabilityFloor and <= AgreementProbabilityCeiling)
+        {
+            return bounded;
+        }
+
+        bounded[0] = Math.Clamp(bounded[0], AgreementProbabilityFloor, AgreementProbabilityCeiling);
+        var sum = bounded.Sum();
+        for (var k = 0; k < bounded.Length; k++)
+        {
+            bounded[k] /= sum;
+        }
+
+        return bounded;
     }
 
     /// <summary>
@@ -180,15 +271,15 @@ public static class FellegiSunterEstimator
     /// log-likelihood ratio; when the estimate violates that, the components are swapped back.
     /// The decision is made on the whole model, not per field: a single field whose agreement
     /// happens to favor non-match is a weak or inverted field, not a relabeled model, and is left
-    /// to carry its negative weight.
+    /// to carry its negative weight. «All agree» is every field on its top level.
     /// </summary>
     public static FieldLinkageParameters WithMatchComponentFirst(FieldLinkageParameters parameters)
     {
         ArgumentNullException.ThrowIfNull(parameters);
 
-        var allAgreeLogLikelihoodRatio = parameters.MAgreeProbability.Keys
-            .Where(parameters.UAgreeProbability.ContainsKey)
-            .Sum(field => Math.Log(parameters.MAgreeProbability[field] / parameters.UAgreeProbability[field]));
+        var allAgreeLogLikelihoodRatio = parameters.MLevelProbabilities.Keys
+            .Where(parameters.ULevelProbabilities.ContainsKey)
+            .Sum(field => Math.Log(parameters.MLevelProbabilities[field][^1] / parameters.ULevelProbabilities[field][^1]));
 
         if (allAgreeLogLikelihoodRatio >= 0.0)
         {
@@ -196,13 +287,18 @@ public static class FellegiSunterEstimator
         }
 
         return new FieldLinkageParameters(
-            parameters.UAgreeProbability,
-            parameters.MAgreeProbability,
+            parameters.ULevelProbabilities,
+            parameters.MLevelProbabilities,
             1.0 - parameters.MatchPrior,
             parameters.Status)
         { LabelsSwapped = true };
     }
 
+    /// <summary>
+    /// The pair's evidence for a match: the sum over its fields of <c>log(m[level] / u[level])</c>. A field
+    /// the parameters do not name carries no evidence; a field named on another scale than the vector's
+    /// was fitted under another comparison and is refused rather than read at the wrong level.
+    /// </summary>
     public static double ComputeLogLikelihoodRatio(
         IReadOnlyDictionary<string, FieldAgreementLevel> comparisonVector,
         FieldLinkageParameters parameters)
@@ -213,15 +309,20 @@ public static class FellegiSunterEstimator
         var logLikelihoodRatio = 0.0;
         foreach (var (field, level) in comparisonVector)
         {
-            if (!parameters.MAgreeProbability.TryGetValue(field, out var m) ||
-                !parameters.UAgreeProbability.TryGetValue(field, out var u))
+            if (!parameters.MLevelProbabilities.TryGetValue(field, out var m) ||
+                !parameters.ULevelProbabilities.TryGetValue(field, out var u))
             {
                 continue;
             }
 
-            logLikelihoodRatio += level == FieldAgreementLevel.Agree
-                ? Math.Log(m / u)
-                : Math.Log((1.0 - m) / (1.0 - u));
+            if (m.Count != level.Count || u.Count != level.Count)
+            {
+                throw new ArgumentException(
+                    $"Field '{field}' was compared on {level.Count} levels but its parameters have {m.Count} (m) and {u.Count} (u); score with parameters fitted under the same comparison.",
+                    nameof(comparisonVector));
+            }
+
+            logLikelihoodRatio += Math.Log(m[level.Rank] / u[level.Rank]);
         }
 
         return logLikelihoodRatio;

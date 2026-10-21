@@ -86,8 +86,8 @@ public class KnownEntityLinkageTests
 
         Assert.Equal(before.PairLinkages, withNone.PairLinkages);
         Assert.Equal(before.Parameters!.MatchPrior, withNone.Parameters!.MatchPrior);
-        Assert.Equal(before.Parameters.MAgreeProbability, withNone.Parameters.MAgreeProbability);
-        Assert.Equal(before.Parameters.UAgreeProbability, withNone.Parameters.UAgreeProbability);
+        Assert.Equal(before.Parameters.MLevelProbabilities, withNone.Parameters.MLevelProbabilities);
+        Assert.Equal(before.Parameters.ULevelProbabilities, withNone.Parameters.ULevelProbabilities);
         Assert.Empty(withNone.KnownCandidates);
     }
 

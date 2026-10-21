@@ -9,8 +9,8 @@ public class ClericalReviewSamplerTests
 
     private static FieldLinkageParameters Parameters(double matchPrior = 0.5) =>
         new(
-            new Dictionary<string, double>(),
-            new Dictionary<string, double>(),
+            BinaryLevels.None,
+            BinaryLevels.None,
             matchPrior,
             EstimationStatus.HeuristicDefault);
 

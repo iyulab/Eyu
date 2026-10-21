@@ -338,7 +338,9 @@ accepts an optional [`LinkageOptions`](src/Eyu.Core/Linkage/LinkageOptions.cs) r
 covering the record-linkage pre-filter's classification thresholds (compared against the
 log-likelihood ratio, not the posterior — [docs/linkage-benchmark.md](docs/linkage-benchmark.md#which-scale-the-thresholds-are-on)), its EM iteration
 limits, and how field values are compared — exactly, by Jaro-Winkler, or as words (token Jaccard,
-Monge-Elkan), for every field or per field (`FieldComparison`). Every default
+Monge-Elkan), for every field or per field (`FieldComparison`) — and on one line or in levels:
+`FieldComparison.JaroWinkler(1.0, 0.92, 0.88)` sorts a pair into an exact match, a near miss, a looser
+one or a disagreement, and the estimator fits each level its own weight. Every default
 reproduces the behavior of passing nothing, so a caller reaches for it only once a live
 run shows the defaults classifying that caller's data badly — what each value does, and
 what is still unmeasured about them, is in [Status](docs/status.md).

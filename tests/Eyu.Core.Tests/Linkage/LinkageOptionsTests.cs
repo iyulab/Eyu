@@ -46,7 +46,7 @@ public class LinkageOptionsTests
     [Fact]
     public void An_undefined_comparison_is_refused()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => new LinkageOptions(Comparison: new FieldComparison((FieldComparisonMethod)99, 0.9)).Validate());
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LinkageOptions(Comparison: new FieldComparison((FieldComparisonMethod)99, [0.9])).Validate());
     }
 
     [Theory]

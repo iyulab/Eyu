@@ -7,7 +7,7 @@ namespace Eyu.Core.Tests.Linkage;
 public class LinkageConfidenceAdjusterTests
 {
     private static readonly FieldLinkageParameters NeutralParameters = new(
-        new Dictionary<string, double>(), new Dictionary<string, double>(), 0.5, EstimationStatus.HeuristicDefault);
+        BinaryLevels.None, BinaryLevels.None, 0.5, EstimationStatus.HeuristicDefault);
 
     private static LinkageAnalysis Analysis(params PairLinkage[] pairLinkages) =>
         new(new ClusteringResult([], []), pairLinkages, NeutralParameters);
@@ -107,7 +107,7 @@ public class LinkageConfidenceAdjusterTests
     public void A_non_neutral_MatchPrior_shifts_a_confirmed_Matchs_confidence_below_the_prior_naive_value()
     {
         var lowPriorParameters = new FieldLinkageParameters(
-            new Dictionary<string, double>(), new Dictionary<string, double>(), 0.1, EstimationStatus.Converged);
+            BinaryLevels.None, BinaryLevels.None, 0.1, EstimationStatus.Converged);
         var analysis = new LinkageAnalysis(
             new ClusteringResult([new RecordCluster(["rec-1", "rec-2"])], []),
             [new PairLinkage("rec-1", "rec-2", LinkageClassification.Match, 5.0)],
@@ -128,7 +128,7 @@ public class LinkageConfidenceAdjusterTests
     public void A_non_neutral_MatchPrior_shifts_the_Bayesian_combine_branchs_posterior()
     {
         var lowPriorParameters = new FieldLinkageParameters(
-            new Dictionary<string, double>(), new Dictionary<string, double>(), 0.1, EstimationStatus.Converged);
+            BinaryLevels.None, BinaryLevels.None, 0.1, EstimationStatus.Converged);
         var analysis = new LinkageAnalysis(
             new ClusteringResult([], []),
             [new PairLinkage("rec-1", "rec-2", LinkageClassification.GrayZone, 0.0)],

@@ -81,8 +81,8 @@ public static class LinkagePipeline
     }
 
     /// <summary>
-    /// Each field's <c>u</c> — how often two records that are <em>not</em> the same entity still agree on
-    /// it — measured over pairs of <paramref name="population"/>: every pair when there are at most
+    /// Each field's <c>u</c> — how often two records that are <em>not</em> the same entity still reach each
+    /// agreement level on it, one probability per level of the field's comparison — measured over pairs of <paramref name="population"/>: every pair when there are at most
     /// <paramref name="maxPairs"/>, otherwise that many pairs drawn at random (deterministic for one
     /// <paramref name="seed"/>). Random pairs of a population are almost all non-matches, so this needs no
     /// EM and is not distorted by how few duplicates there are; it is also what tells a weak field (a
@@ -91,7 +91,7 @@ public static class LinkagePipeline
     /// every fitted value (<see cref="FellegiSunterEstimator.AgreementProbabilityFloor"/>). A field that is
     /// never present on both sides of a pair is absent from the result.
     /// </summary>
-    public static IReadOnlyDictionary<string, double> EstimateNonMatchAgreement(
+    public static IReadOnlyDictionary<string, IReadOnlyList<double>> EstimateNonMatchAgreement(
         IReadOnlyList<RawRecord> population, LinkageOptions? options = null, int maxPairs = DefaultNonMatchSamplePairs, int seed = 0)
     {
         ArgumentNullException.ThrowIfNull(population);
@@ -99,17 +99,17 @@ public static class LinkagePipeline
         var opts = options ?? LinkageOptions.Default;
         opts.Validate();
 
-        var agreed = new Dictionary<string, long>(StringComparer.Ordinal);
-        var compared = new Dictionary<string, long>(StringComparer.Ordinal);
+        var byLevel = new Dictionary<string, double[]>(StringComparer.Ordinal);
         void Count(RawRecord a, RawRecord b)
         {
             foreach (var (field, level) in FieldComparator.Compare(a, b, opts))
             {
-                compared[field] = compared.GetValueOrDefault(field) + 1;
-                if (level == FieldAgreementLevel.Agree)
+                if (!byLevel.TryGetValue(field, out var counts))
                 {
-                    agreed[field] = agreed.GetValueOrDefault(field) + 1;
+                    byLevel[field] = counts = new double[level.Count];
                 }
+
+                counts[level.Rank]++;
             }
         }
 
@@ -136,9 +136,9 @@ public static class LinkagePipeline
             }
         }
 
-        return compared.ToDictionary(
+        return byLevel.ToDictionary(
             kv => kv.Key,
-            kv => Math.Clamp((double)agreed.GetValueOrDefault(kv.Key) / kv.Value, FellegiSunterEstimator.AgreementProbabilityFloor, FellegiSunterEstimator.AgreementProbabilityCeiling),
+            kv => (IReadOnlyList<double>)FellegiSunterEstimator.Bounded(kv.Value, kv.Value.Sum()),
             StringComparer.Ordinal);
     }
 

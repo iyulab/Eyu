@@ -10,6 +10,32 @@ every published version has a section here.
 
 ## Unreleased
 
+A minor, with breaking changes. A field comparison can sort a pair into levels of agreement rather
+than agree/disagree, and the estimator fits each level its own match and non-match probability (the
+Fellegi–Sunter general form; Splink's comparison levels). Behaviour without options, and with one
+threshold, is unchanged to the last digit.
+
+### Added
+
+- `FieldComparison` takes several thresholds, highest first: `FieldComparison.JaroWinkler(1.0, 0.92, 0.88)`
+  sorts a pair into four levels — equal, at least 0.92, at least 0.88, below. A threshold of 1.0 is the
+  exact level. `FieldComparison.LevelCount` says how many levels a comparison has.
+- `FieldAgreementLevel.IsAgreement` and `IsTop`.
+
+### Changed (breaking)
+
+| Before | Now |
+|---|---|
+| `enum FieldAgreementLevel { Disagree, Agree }` | `record struct FieldAgreementLevel(int Rank, int Count)` — `Rank` 0 is disagreement, higher is closer; `Count` is the comparison's number of levels. `FieldAgreementLevel.Disagree` and `.Agree` are still there, as the two levels of a one-threshold comparison |
+| `new FieldComparison(method, 0.9)` · `.AgreementThreshold` | `new FieldComparison(method, [0.9])` · `.AgreementThresholds` — the factories (`JaroWinkler()`, `TokenJaccard(0.5)`, `MongeElkan()`) are called as before |
+| `FieldLinkageParameters.MAgreeProbability` · `UAgreeProbability` (field → `m`, `u`) | `MLevelProbabilities` · `ULevelProbabilities` (field → one probability per level, disagreement first). A two-level field holds `[1 − m, m]` and `[1 − u, u]` |
+| `LinkagePipeline.EstimateNonMatchAgreement` returns field → `u` | returns field → level distribution (`[1 − u, u]` for two levels) |
+| `FellegiSunterEstimator.Estimate(…, fixedNonMatchAgreement)` takes field → `u` | takes field → level distribution — pass what `EstimateNonMatchAgreement` returns, unchanged |
+| `FieldLinkageParameters.FromNonMatchAgreement(u, matchAgreement, prior)` takes field → `u` | takes field → level distribution; `matchAgreement` goes on the top level and the rest is spread evenly below it (`[1 − m, m]` for two levels) |
+
+`FellegiSunterEstimator.Estimate` refuses vectors that compare one field on two scales, and
+`ComputeLogLikelihoodRatio` refuses parameters fitted on another scale than the vector's.
+
 ### Fixed
 
 - `HttpModelClient` with `stream: true` no longer waits forever on a connection that stays open but

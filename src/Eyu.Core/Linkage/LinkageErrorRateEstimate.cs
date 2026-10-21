@@ -185,7 +185,7 @@ public static class LinkageErrorRateEstimator
             caveats |= LinkageErrorRateCaveat.PoorSeparation;
         }
 
-        if (parameters.MAgreeProbability.Count < FellegiSunterEstimator.MinimumFieldsForIdentification)
+        if (parameters.MLevelProbabilities.Count < FellegiSunterEstimator.MinimumFieldsForIdentification)
         {
             caveats |= LinkageErrorRateCaveat.TooFewFields;
         }

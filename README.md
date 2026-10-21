@@ -10,8 +10,9 @@
 model; entity-resolution accuracy measured on labeled public benchmarks — B-cubed F1 0.99–1.00 on Febrl
 synthetic person records, and pair-level F1 0.93–1.00 from the pre-filter alone on clean structured
 entity-matching sets, where product, dirty and long-text sets leave most pairs to the model (details in
-[Status](docs/status.md)); used by one external package consumer on a
-Korean-language document corpus. All five ports exist (`Eyu.Core`), with a Formbase source adapter
+[Status](docs/status.md)); ontology extraction measured on two public tasks — triple F1 0.35 and 0.22 on
+two Text2KGBench ontologies, and `is-a` precision 0.92, recall 0.56 on a ten-sample pilot of the
+LLMs4OL 2026 Reuse task; used by one external package consumer on a Korean-language document corpus. All five ports exist (`Eyu.Core`), with a Formbase source adapter
 (`Eyu.Formbase`) and an RDF/OWL writer (`Eyu.Rdf`), all three on NuGet. What
 each measurement establishes — and what it does not, starting with the absence of a human-reviewed
 accuracy figure on real domain data — is in [docs/status.md](docs/status.md).

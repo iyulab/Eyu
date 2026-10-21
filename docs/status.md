@@ -9,7 +9,8 @@ Contract implemented; grounding integrity and response-parsing reliability valid
 model; entity-resolution accuracy measured on labeled public benchmarks (B-cubed F1 0.99–1.00 on
 Febrl synthetic person records; pair-level F1 0.93–1.00 from the pre-filter alone on clean structured
 entity-matching sets, with most pairs left to the model on product, dirty and long-text sets) and not
-yet reviewed by people on domain data; exercised by one external package
+yet reviewed by people on domain data; ontology extraction measured on two public tasks (Text2KGBench
+triples, LLMs4OL type relations — below); exercised by one external package
 consumer on a Korean-language document corpus, whose first measurement is what the entity `Name`,
 per-element `Rejections` and stamped `VocabularyOrigin` answer.
 

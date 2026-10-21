@@ -27,7 +27,8 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// Wikidata-TekGen ontologies (default <c>1_movie,3_sport</c>), <c>EYU_TEXT2KGBENCH_BATCH</c> the sentences
 /// per call (default 10), <c>EYU_TEXT2KGBENCH_LIMIT</c> the most sentences per ontology (default all — a
 /// smaller number is a smoke run whose scores are not the benchmark's). A call that fails leaves its sentences with no triples — scored as missed — and
-/// is counted in the report.
+/// is counted in the report. <c>EYU_TEXT2KGBENCH_BATCHES</c> — the first sentence id of each batch to run, comma-separated — runs only those
+/// batches (the ones a round's failed calls name), batched as the full round batches them, and writes only their sentences, for merging back.
 /// </para>
 /// </summary>
 public class Text2KgBenchMeasurement(ITestOutputHelper output)
@@ -91,11 +92,20 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
             var missing = selected.Where(id => !sentences.ContainsKey(id)).ToList();
             Assert.True(missing.Count == 0, $"{ontology}: verified ids not in the test split: {string.Join(", ", missing.Take(5))}");
 
+            var only = Environment.GetEnvironmentVariable("EYU_TEXT2KGBENCH_BATCHES") is { Length: > 0 } firsts
+                ? firsts.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal)
+                : null;
+            var batches = selected.Chunk(batchSize).Where(b => only is null || only.Contains(b[0])).ToList();
+            if (only is not null)
+            {
+                selected = [.. batches.SelectMany(b => b)];
+            }
+
             var clock = Stopwatch.StartNew();
             var proposals = new List<OntologyProposal>();
             var calls = 0;
             var failures = new List<string>();
-            foreach (var batch in selected.Chunk(batchSize))
+            foreach (var batch in batches)
             {
                 calls++;
                 var records = batch.Select(id => Text2KgBenchCorpus.Sentence(id, sentences[id])).ToList();

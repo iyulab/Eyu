@@ -8,13 +8,13 @@
       L1a↔L2 coupling smoke test (Eyu.Formbase only). Consumed as a published package, never a
       ProjectReference — Eyu has no access to formbase's source tree.
     -->
-    <PackageVersion Include="Formbase.Core" Version="0.30.0" />
+    <PackageVersion Include="Formbase.Core" Version="0.30.1" />
     <!--
       Provenance carrier for routed proposals (ITracedPrediction<T> / PredictionProvenance).
       Contract-only package with zero dependencies; HoneAI.Core and HoneAI.Agents are deliberately
       not referenced — the review gate itself is the consumer's to wire (README, "Confidence routes").
     -->
-    <PackageVersion Include="HoneAI.Abstractions" Version="0.4.0" />
+    <PackageVersion Include="HoneAI.Abstractions" Version="0.6.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -25,10 +25,10 @@
       resolves a release below the fix for GHSA-pgww-w46g-26qg.
     -->
     <PackageVersion Include="dotNetRdf.Core" Version="3.5.2" />
-    <PackageVersion Include="AngleSharp" Version="1.8.3" />
+    <PackageVersion Include="AngleSharp" Version="1.8.5" />
     <!-- Test -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
-    <PackageVersion Include="xunit.v3" Version="4.0.1" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="xunit.v3" Version="4.0.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
   </ItemGroup>
 </Project>

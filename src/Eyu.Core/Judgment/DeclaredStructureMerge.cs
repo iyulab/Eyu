@@ -18,7 +18,12 @@ namespace Eyu.Core.Judgment;
 /// declaration, and inference does not win. It is reported rather than silently dropped so a caller
 /// measuring the model sees it. Several subjects may declare the same relation name (a component and
 /// a department can both be <c>PartOf</c> something), and a relation fits if it matches any one of
-/// those declarations.</item>
+/// those declarations. An end whose type the caller declared a kind of a declared end
+/// (<see cref="DeclaredStructure.SuperTypes"/>, followed through every declared step) fits that end:
+/// a relation declared from <c>Person</c> holds from an <c>Athlete</c> declared a kind of
+/// <c>Person</c>, as a domain does in RDFS. Only declared kinds count — a kind the model proposes
+/// (<see cref="OntologyProposal.TypeRelations"/>) is inference, and inference does not widen what a
+/// declaration admits.</item>
 /// </list>
 /// Nothing beyond the declarations is filtered: a type or relation no declaration names is returned
 /// as inferred, because a declaration is a floor, not a ceiling. Nor is anything renamed — a model
@@ -128,6 +133,7 @@ internal static class DeclaredStructureMerge
             .SelectMany(d => d.Relations.Select(r => (Name: Normalize(r.Name), Ends: (From: Normalize(d.Subject.Value), To: Normalize(r.Target.Value)))))
             .ToLookup(r => r.Name, r => r.Ends, StringComparer.Ordinal);
         var declaredNameByEcho = EchoedLabels(declared, declaredEndsByName);
+        var kinds = DeclaredKinds(declared);
 
         var mergedRejections = new List<ProposalRejection>(rejections);
         var mergedRelations = new List<RelationProposal>(relations.Count);
@@ -151,7 +157,7 @@ internal static class DeclaredStructureMerge
             // surviving entity before anything reaches this merge, so there is no unresolvable case
             // to be lenient about here.
             var ends = (From: entityTypeById[relation.FromEntityId], To: entityTypeById[relation.ToEntityId]);
-            if (!declaredEndsByName[name].Contains(ends))
+            if (!declaredEndsByName[name].Any(d => KindOf(kinds, ends.From, d.From) && KindOf(kinds, ends.To, d.To)))
             {
                 mergedRejections.Add(new ProposalRejection(
                     ProposalElement.Relation,
@@ -223,6 +229,41 @@ internal static class DeclaredStructureMerge
 
         return map;
     }
+
+    /// <summary>
+    /// For each declared subject that names a super type, every type it is declared a kind of — its super
+    /// types, theirs, and so on (normalized). A declared cycle ends where it comes back round.
+    /// </summary>
+    private static Dictionary<string, HashSet<string>> DeclaredKinds(IReadOnlyList<DeclaredStructure> declared)
+    {
+        var direct = declared
+            .Where(d => d.SuperTypes.Count > 0)
+            .ToDictionary(d => Normalize(d.Subject.Value), d => d.SuperTypes.Select(Normalize).ToList(), StringComparer.Ordinal);
+        var kinds = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var type in direct.Keys)
+        {
+            var reached = new HashSet<string>(StringComparer.Ordinal);
+            var pending = new Stack<string>(direct[type]);
+            while (pending.TryPop(out var next))
+            {
+                if (reached.Add(next) && direct.TryGetValue(next, out var further))
+                {
+                    foreach (var superType in further)
+                    {
+                        pending.Push(superType);
+                    }
+                }
+            }
+
+            kinds[type] = reached;
+        }
+
+        return kinds;
+    }
+
+    /// <summary>Whether a (normalized) type is the declared end, or declared a kind of it.</summary>
+    private static bool KindOf(Dictionary<string, HashSet<string>> kinds, string type, string declaredEnd)
+        => type == declaredEnd || (kinds.TryGetValue(type, out var superTypes) && superTypes.Contains(declaredEnd));
 
     /// <summary>Every declared <c>subject -> target</c> for a relation name, as the caller wrote them.</summary>
     private static string DescribeDeclaredEnds(IReadOnlyList<DeclaredStructure> declared, string normalizedName)

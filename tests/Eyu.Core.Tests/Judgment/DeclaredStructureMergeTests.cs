@@ -331,6 +331,60 @@ public class DeclaredStructureMergeTests
         Assert.Contains("Component -> Assembly, Department -> Organization", rejection.Detail);
     }
 
+    // Measured on Text2KGBench: a model typed the ends of declared relations as kinds of the declared
+    // ends (an athlete where a person is declared) and every such relation came back rejected. When the
+    // caller has declared the kind, the relation is the declared one.
+    [Fact]
+    public async Task An_end_declared_a_kind_of_a_declared_end_fits_it_through_every_declared_step()
+    {
+        var person = new DeclaredStructure(SubjectRef.Create("Person"), [], [new DeclaredRelation("member_of", SubjectRef.Create("Club"))]);
+        var sportsperson = new DeclaredStructure(SubjectRef.Create("Sportsperson"), [], []) { SuperTypes = ["Person"] };
+        var athlete = new DeclaredStructure(SubjectRef.Create("Athlete"), [], []) { SuperTypes = ["Sportsperson"] };
+        var footballClub = new DeclaredStructure(SubjectRef.Create("Football club"), [], []) { SuperTypes = ["Club"] };
+        const string answer = """
+            {
+              "entities": [
+                {"id": "e1", "name": "Kim", "type": "Athlete", "claim": "d1", "sources": ["d1"], "confidence": 0.9},
+                {"id": "e2", "name": "FC Seoul", "type": "football_club", "claim": "d1", "sources": ["d1"], "confidence": 0.9}
+              ],
+              "relations": [
+                {"name": "member_of", "from": "e1", "to": "e2", "claim": "Kim plays for FC Seoul", "sources": ["d1"], "confidence": 0.8}
+              ]
+            }
+            """;
+
+        var proposal = await Propose(answer, person, sportsperson, athlete, footballClub);
+
+        Assert.Equal(ProposalBasis.Declared, Assert.Single(proposal.Relations).Basis);
+        Assert.Empty(proposal.Rejections);
+    }
+
+    [Fact]
+    public async Task A_kind_the_model_proposes_does_not_widen_what_a_declaration_admits()
+    {
+        var person = new DeclaredStructure(SubjectRef.Create("Person"), [], [new DeclaredRelation("member_of", SubjectRef.Create("Club"))]);
+        var club = new DeclaredStructure(SubjectRef.Create("Club"), [], []) { SuperTypes = ["Organization"] };
+        const string answer = """
+            {
+              "entities": [
+                {"id": "e1", "name": "Kim", "type": "Athlete", "claim": "d1", "sources": ["d1"], "confidence": 0.9},
+                {"id": "e2", "name": "FC Seoul", "type": "Club", "claim": "d1", "sources": ["d1"], "confidence": 0.9}
+              ],
+              "relations": [
+                {"name": "member_of", "from": "e1", "to": "e2", "claim": "Kim plays for FC Seoul", "sources": ["d1"], "confidence": 0.8}
+              ],
+              "typeRelations": [
+                {"sub": "Athlete", "super": "Person", "claim": "an athlete is a person", "sources": ["d1"], "confidence": 0.9}
+              ]
+            }
+            """;
+
+        var proposal = await Propose(answer, person, club);
+
+        Assert.Empty(proposal.Relations);
+        Assert.Equal(RejectionReason.ContradictsDeclaration, Assert.Single(proposal.Rejections, r => r.Element == ProposalElement.Relation).Reason);
+    }
+
     [Fact]
     public async Task The_same_subject_declared_twice_is_refused_before_the_model_is_called()
     {

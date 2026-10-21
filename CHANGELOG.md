@@ -8,6 +8,16 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Changed
+
+- A relation proposed under a declared name now fits a declaration whose ends are declared super types
+  of its ends: when `Athlete` is declared a kind of `Person` (`DeclaredStructure.SuperTypes`, followed
+  through every declared step), a relation declared from `Person` holds from an athlete and is stamped
+  `Declared`. Before, it was rejected as `ContradictsDeclaration`. Only declared kinds count — a type
+  relation the model proposes does not widen what a declaration admits. The prompt is unchanged.
+
 ## 0.19.0
 
 A minor, additive. A proposal can say that one type is a kind of another (`is-a`), asked for or set off

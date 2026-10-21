@@ -94,7 +94,11 @@ words instead, for values whose words differ in order or number: on the same ben
 separated best on seven of twelve sets (product titles, values moved between columns) and whole-value
 comparison stayed ahead on clean bibliographic ones, so no method replaces the default
 ([linkage-benchmark.md](linkage-benchmark.md)); `LinkageOptions.FieldComparisons` sets a method per
-field, for tables that hold both kinds of value.
+field, for tables that hold both kinds of value. A comparison with several thresholds
+(`FieldComparison.JaroWinkler(1.0, 0.92, 0.88)`) sorts pairs into levels, each fitted its own weight: for
+Jaro-Winkler that raised alone F1 on nine of the twelve entity-matching sets (mean 0.427 → 0.474) and
+shrank the gray zone; for token Jaccard it improved separation but not the result at the default
+thresholds (mean 0.523 → 0.510), so levels stay a per-comparison choice and the default stays exact.
 
 A field the caller declared as a reference (an inspection log's machine tag) is not compared at all for
 records whose subject is known (`RawRecord.Subject`): it names another entity, so agreeing on it is not

@@ -61,6 +61,7 @@ public class DeepMatcherLinkageMeasurement(ITestOutputHelper output)
         // tables pooled (nearly all non-matches — each table is free of duplicates) and held while EM fits
         // m and the prior — the fit the library documents for candidates that gather duplicates.
         var similarity = LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler() };
+        var levels = LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler(1.0, 0.92, 0.88) };
         var configurations = new (string Name, LinkageOptions Options, bool FixU)[]
         {
             ("exact", LinkageOptions.Default, false),
@@ -72,6 +73,11 @@ public class DeepMatcherLinkageMeasurement(ITestOutputHelper output)
             // since each word is scored by Jaro-Winkler. Settings reported side by side, not tuned on these sets.
             ("token Jaccard ≥ 0.50", LinkageOptions.Default with { Comparison = FieldComparison.TokenJaccard(0.5) }, false),
             ("Monge-Elkan ≥ 0.90", LinkageOptions.Default with { Comparison = FieldComparison.MongeElkan() }, false),
+
+            // Levels: equal, ≥ 0.92, ≥ 0.88, below — each fitted its own weight.
+            ("Jaro-Winkler levels 1.0 / 0.92 / 0.88", levels, false),
+            ("Jaro-Winkler levels 1.0 / 0.92 / 0.88, u from random pairs", levels, true),
+            ("token Jaccard levels 1.0 / 0.75 / 0.50", LinkageOptions.Default with { Comparison = FieldComparison.TokenJaccard(1.0, 0.75, 0.5) }, false),
         };
 
         var report = new StringBuilder()

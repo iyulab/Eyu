@@ -62,6 +62,8 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
 
     private const string Reviewer = "benchmark-labels";
 
+    private static readonly FieldComparison JaroWinklerLevels = FieldComparison.JaroWinkler(1.0, 0.92, 0.88);
+
     /// <summary>The protocol's pilot size (section 2: "30–50 reviewed records per stratum").</summary>
     private const int PilotPerStratum = ClericalReviewSampler.PilotRecordsPerStratum;
 
@@ -90,6 +92,10 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
             ("Jaro-Winkler ≥ 0.90", LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler() }, []),
             ("exact, without date of birth and identity number", LinkageOptions.Default, identifiers),
             ("Jaro-Winkler ≥ 0.90, without date of birth and identity number", LinkageOptions.Default with { Comparison = FieldComparison.JaroWinkler() }, identifiers),
+
+            // Levels: equal, ≥ 0.92, ≥ 0.88, below — the top of a common name comparison, each level fitted.
+            ("Jaro-Winkler levels 1.0 / 0.92 / 0.88", LinkageOptions.Default with { Comparison = JaroWinklerLevels }, []),
+            ("Jaro-Winkler levels 1.0 / 0.92 / 0.88, without date of birth and identity number", LinkageOptions.Default with { Comparison = JaroWinklerLevels }, identifiers),
         };
 
         foreach (var dataset in Datasets)

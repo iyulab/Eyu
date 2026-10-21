@@ -238,6 +238,43 @@ comparison stays exact.
 - **Monge-Elkan sits between the two** and costs more — every word against every word, so Company's long
   text was not run under it.
 
+### Comparing values in levels
+
+A comparison with several thresholds sorts each pair into a level rather than agree/disagree, and EM fits
+every level its own `m` and `u` — a near miss weighs between a match and a disagreement. The same twelve
+sets, Jaro-Winkler on one line (0.90) against the top of a common name comparison in levels — equal,
+≥ 0.92, ≥ 0.88, below (`FieldComparison.JaroWinkler(1.0, 0.92, 0.88)`) — and token Jaccard on one line
+(0.50) against equal, ≥ 0.75, ≥ 0.50, below. Nothing was tuned on these labels.
+
+| set | Jaro-Winkler ≥ 0.90: alone F1 · gray · oracle | levels 1.0 / 0.92 / 0.88: alone F1 · gray · oracle | token Jaccard ≥ 0.50 → levels 1.0 / 0.75 / 0.50: alone F1 · oracle |
+|---|---|---|---|
+| Structured / Beer | 0.444 · 0.96 · 0.828 | 0.571 · 0.76 · 0.839 | 0.815 → 0.750 · 0.933 → 0.933 |
+| Structured / iTunes-Amazon | 0.906 · 0.59 · 0.947 | 0.920 · 0.10 · 1.000 | 0.875 → 0.941 · 0.945 → 1.000 |
+| Structured / Fodors-Zagats | 1.000 · 0.02 · 1.000 | 1.000 · 0.01 · 1.000 | 0.952 → 1.000 · 1.000 → 1.000 |
+| Structured / DBLP-ACM | 0.954 · 0.15 · 0.966 | 0.948 · 0.16 · 0.960 | 0.922 → 0.937 · 0.936 → 0.965 |
+| Structured / DBLP-Scholar | 0.725 · 0.60 · 0.826 | 0.719 · 0.20 · 0.822 | 0.785 → 0.718 · 0.823 → 0.844 |
+| Structured / Amazon-Google | 0.087 · 0.95 · 0.340 | 0.100 · 0.93 · 0.370 | 0.136 → 0.124 · 0.494 → 0.497 |
+| Structured / Walmart-Amazon | 0.248 · 0.98 · 0.452 | 0.332 · 0.86 · 0.562 | 0.401 → 0.447 · 0.588 → 0.665 |
+| Dirty / iTunes-Amazon | 0.121 · 0.94 · 0.444 | 0.258 · 0.70 · 0.491 | 0.200 → 0.258 · 0.581 → 0.500 |
+| Dirty / DBLP-ACM | 0.268 · 0.87 · 0.750 | 0.384 · 0.77 · 0.844 | 0.707 → 0.467 · 0.775 → 0.779 |
+| Dirty / DBLP-Scholar | 0.316 · 0.95 · 0.659 | 0.352 · 0.88 · 0.733 | 0.344 → 0.312 · 0.693 → 0.694 |
+| Dirty / Walmart-Amazon | 0.050 · 0.99 · 0.328 | 0.070 · 0.88 · 0.324 | 0.117 → 0.152 · 0.466 → 0.472 |
+| Textual / Abt-Buy | 0.010 · 1.00 · 0.248 | 0.029 · 0.85 · 0.300 | 0.019 → 0.019 · 0.438 → 0.442 |
+| **mean of twelve** | 0.427 · — · 0.649 | 0.474 · — · 0.687 | 0.523 → 0.510 · 0.723 → 0.733 |
+
+- **Levels help Jaro-Winkler.** Alone F1 rises on nine of the twelve sets and falls slightly on two
+  (DBLP-ACM 0.954 → 0.948, DBLP-Scholar 0.725 → 0.719); the separation (oracle) rises on eight. The model's
+  share shrinks with it: a near miss no longer sits at the same weight as a disagreement, so fewer pairs
+  land between the thresholds (iTunes-Amazon 0.59 → 0.10 gray, DBLP-Scholar 0.60 → 0.20).
+- **For token Jaccard the order improves but the default thresholds do not fit it.** Separation rises on
+  ten sets (Walmart-Amazon 0.588 → 0.665), but alone F1 is mixed — up on six, down on five, with Dirty
+  DBLP-ACM falling 0.707 → 0.467 — so the mean drops (0.523 → 0.510). Levels move the weights, and the fixed
+  match and non-match thresholds then cut in a different place.
+- **Where whole values already separate, levels add nothing.** On Febrl's two sets every Jaro-Winkler
+  configuration, with or without levels, reaches a census F1 of 1.000 or 0.9994 (two of 1,394 duplicate
+  pairs missed) — the same with levels as without, and no room to show a difference.
+- The default comparison stays exact; levels are a choice per comparison, like the method.
+
 Reproducing:
 
 ```

@@ -25,7 +25,7 @@ namespace Eyu.Core.Tests.Quality;
 /// ontology's relations alone filters on the basis, and the second output is that consumer's.
 /// </para>
 /// </summary>
-internal static class Text2KgBenchCorpus
+internal static partial class Text2KgBenchCorpus
 {
     /// <summary>The target a relation with a blank range is declared towards.</summary>
     public const string ValueTarget = "value";
@@ -113,6 +113,30 @@ internal static class Text2KgBenchCorpus
 
         return triples;
     }
+
+    /// <summary>One element a proposal left out, with the ends of a rejected relation where its account names them.</summary>
+    public sealed record Rejection(string Element, string? Name, string Reason, string Detail, string? From, string? FromType, string? To, string? ToType);
+
+    /// <summary>
+    /// What a proposal left out. A rejected relation's ends survive as entities, so its account's
+    /// <c>(from -> to)</c> ids resolve to the names and types the model gave them — the fact that tells a
+    /// relation typed against the declaration from one the declaration does not cover. An account that
+    /// names no ends keeps them null.
+    /// </summary>
+    public static IEnumerable<Rejection> Rejections(OntologyProposal proposal)
+    {
+        var entities = proposal.Entities.GroupBy(e => e.EntityId, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        foreach (var rejection in proposal.Rejections)
+        {
+            var ends = rejection.Element == ProposalElement.Relation ? EndsPattern().Match(rejection.Detail) : null;
+            var from = ends is { Success: true } ? entities.GetValueOrDefault(ends.Groups[1].Value) : null;
+            var to = ends is { Success: true } ? entities.GetValueOrDefault(ends.Groups[2].Value) : null;
+            yield return new Rejection(rejection.Element.ToString(), rejection.Id, rejection.Reason.ToString(), rejection.Detail, from?.Name, from?.EntityType, to?.Name, to?.EntityType);
+        }
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\((\S+) -> (\S+)\)")]
+    private static partial System.Text.RegularExpressions.Regex EndsPattern();
 
     /// <summary>A relation label as the benchmark's system outputs write it: spaces as underscores.</summary>
     public static string SystemLabel(string relationName) => relationName.Replace(' ', '_');

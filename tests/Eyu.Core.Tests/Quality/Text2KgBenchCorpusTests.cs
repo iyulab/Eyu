@@ -86,4 +86,23 @@ public class Text2KgBenchCorpusTests
 
         Assert.Equal("cast_member", Assert.Single(triples["s1"])[1]);
     }
+
+    [Fact]
+    public void A_rejected_relation_carries_the_names_and_types_of_its_ends()
+    {
+        var proposal = new OntologyProposal(
+            Proposal.Entities,
+            [],
+            [
+                new ProposalRejection(ProposalElement.Relation, "director", RejectionReason.ContradictsDeclaration,
+                    "relation \"director\" (e2 -> e1) uses the declared name for ends no declaration of it describes (film -> human)"),
+                new ProposalRejection(ProposalElement.Entity, "e9", RejectionReason.MissingField, "entity e9 cites no source"),
+            ]);
+
+        var rejections = Text2KgBenchCorpus.Rejections(proposal).ToList();
+
+        Assert.Equal(("Noriyuki Abe", "human", "Bleach: Hell Verse", "film"), (rejections[0].From, rejections[0].FromType, rejections[0].To, rejections[0].ToType));
+        Assert.Equal(("ContradictsDeclaration", "director"), (rejections[0].Reason, rejections[0].Name));
+        Assert.Null(rejections[1].From);
+    }
 }

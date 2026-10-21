@@ -29,6 +29,9 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// smaller number is a smoke run whose scores are not the benchmark's). A call that fails leaves its sentences with no triples — scored as missed — and
 /// is counted in the report. <c>EYU_TEXT2KGBENCH_BATCHES</c> — the first sentence id of each batch to run, comma-separated — runs only those
 /// batches (the ones a round's failed calls name), batched as the full round batches them, and writes only their sentences, for merging back.
+/// A call that throws is tried once more (<see cref="LiveCallRetry"/>); the report counts the calls that needed it. What the proposer
+/// left out of each answer goes to <c>ont_&lt;ontology&gt;_rejections.jsonl</c> beside the outputs (the scorer does not read it), with the
+/// ends' names and types where the answer named them — a relation the declaration rejects is a triple the scorer never sees.
 /// </para>
 /// </summary>
 public class Text2KgBenchMeasurement(ITestOutputHelper output)
@@ -73,8 +76,8 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
             .AppendLine(string.Create(CultureInfo.InvariantCulture, $"Sentences per call: {batchSize}. Records are document fragments (`RecordsDenoteEntities = false`). ")
                 + "Scores come from the benchmark's scorer over the files written here, not from this table.")
             .AppendLine()
-            .AppendLine("| ontology | concepts | relations declared (undeclarable) | sentences | calls (failed) | relations proposed (declared basis) | sentences with a triple: all · declared | time |")
-            .AppendLine("|---|---|---|---|---|---|---|---|");
+            .AppendLine("| ontology | concepts | relations declared (undeclarable) | sentences | calls (failed · retried) | relations proposed (declared basis) | rejections | sentences with a triple: all · declared | time |")
+            .AppendLine("|---|---|---|---|---|---|---|---|---|");
 
         foreach (var ontology in ontologies)
         {
@@ -105,13 +108,19 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
             var proposals = new List<OntologyProposal>();
             var calls = 0;
             var failures = new List<string>();
+            var retried = new List<string>();
             foreach (var batch in batches)
             {
                 calls++;
                 var records = batch.Select(id => Text2KgBenchCorpus.Sentence(id, sentences[id])).ToList();
                 try
                 {
-                    proposals.Add(await proposer.ProposeAsync(declarations, records, cancellation));
+                    var (proposal, firstFailure) = await LiveCallRetry.RunAsync(() => proposer.ProposeAsync(declarations, records, cancellation), cancellation);
+                    proposals.Add(proposal);
+                    if (firstFailure is not null)
+                    {
+                        retried.Add($"{batch[0]}: {firstFailure.GetType().Name}: {Excerpt(firstFailure.Message)}");
+                    }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException || !cancellation.IsCancellationRequested)
                 {
@@ -133,14 +142,30 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
                     cancellation);
             }
 
+            var rejections = proposals.SelectMany(Text2KgBenchCorpus.Rejections).ToList();
+            await File.WriteAllTextAsync(
+                Path.Combine(outDirectory, $"ont_{ontology}_rejections.jsonl"),
+                string.Concat(rejections.Select(r => JsonSerializer.Serialize(r) + "\n")),
+                cancellation);
+
             var relations = proposals.Sum(p => p.Relations.Count);
             var declaredRelations = proposals.Sum(p => p.Relations.Count(r => r.Basis == ProposalBasis.Declared));
             report.AppendLine(CultureInfo.InvariantCulture,
                 $"| {ontology} | {declarations.Count} | {declarations.Sum(d => d.Relations.Count)} ({undeclarable.Count}) | {selected.Length} | " +
-                $"{calls} ({failures.Count}) | {relations} ({declaredRelations}) | {counts[0]} · {counts[1]} | {clock.Elapsed.TotalMinutes:0.0} min |");
+                $"{calls} ({failures.Count} · {retried.Count}) | {relations} ({declaredRelations}) | {rejections.Count} | {counts[0]} · {counts[1]} | {clock.Elapsed.TotalMinutes:0.0} min |");
             foreach (var failure in failures)
             {
-                report.AppendLine(CultureInfo.InvariantCulture, $"- {ontology} failed call: {failure}");
+                report.AppendLine(CultureInfo.InvariantCulture, $"- {ontology} failed call (after a retry): {failure}");
+            }
+
+            foreach (var retry in retried)
+            {
+                report.AppendLine(CultureInfo.InvariantCulture, $"- {ontology} call that succeeded on its retry — first attempt: {retry}");
+            }
+
+            foreach (var group in rejections.GroupBy(r => (r.Reason, r.Name)).OrderByDescending(g => g.Count()).Take(10))
+            {
+                report.AppendLine(CultureInfo.InvariantCulture, $"- {ontology} rejected {group.Key.Reason} `{group.Key.Name}`: {group.Count()}");
             }
         }
 

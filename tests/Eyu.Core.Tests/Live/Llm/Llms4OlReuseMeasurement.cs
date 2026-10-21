@@ -59,6 +59,7 @@ public class Llms4OlReuseMeasurement(ITestOutputHelper output)
 
         var lines = Enum.GetValues<Llms4OlReuseCorpus.Variant>().ToDictionary(v => v, _ => new StringBuilder());
         var failures = new List<string>();
+        var retried = new List<string>();
         var (entities, typeRelations, declaredTypeRelations, rejections) = (0, 0, 0, 0);
         var clock = Stopwatch.StartNew();
         foreach (var sample in samples)
@@ -67,7 +68,14 @@ public class Llms4OlReuseMeasurement(ITestOutputHelper output)
             try
             {
                 var declarations = Llms4OlReuseCorpus.Declarations(sample);
-                proposal = await proposer.ProposeAsync(declarations, [Llms4OlReuseCorpus.Record(sample)], Llms4OlReuseCorpus.Prior(sample, declarations), cancellation);
+                (proposal, var firstFailure) = await LiveCallRetry.RunAsync(
+                    () => proposer.ProposeAsync(declarations, [Llms4OlReuseCorpus.Record(sample)], Llms4OlReuseCorpus.Prior(sample, declarations), cancellation),
+                    cancellation);
+                if (firstFailure is not null)
+                {
+                    retried.Add($"{sample.Id}: {firstFailure.GetType().Name}: {Text2KgBenchMeasurement.Excerpt(firstFailure.Message)}");
+                }
+
                 entities += proposal.Entities.Count;
                 typeRelations += proposal.TypeRelations.Count;
                 declaredTypeRelations += proposal.TypeRelations.Count(t => t.Basis == ProposalBasis.Declared);
@@ -98,12 +106,17 @@ public class Llms4OlReuseMeasurement(ITestOutputHelper output)
             .AppendLine(CultureInfo.InvariantCulture, $"Split `{split}`, first {samples.Count} samples. Prompt fingerprints: {SinglePassOntologyProposer.PromptFingerprint} · type relations {SinglePassOntologyProposer.TypeRelationsPromptFingerprint} · known types {SinglePassOntologyProposer.KnownTypesPromptFingerprint}. ")
             .AppendLine("Scores come from the task's scorer over the files written here, not from this table.")
             .AppendLine()
-            .AppendLine("| samples | calls failed | entities | type relations (declared) | rejections | gold triples | time |")
+            .AppendLine("| samples | calls failed · retried | entities | type relations (declared) | rejections | gold triples | time |")
             .AppendLine("|---|---|---|---|---|---|---|")
-            .AppendLine(CultureInfo.InvariantCulture, $"| {samples.Count} | {failures.Count} | {entities} | {typeRelations} ({declaredTypeRelations}) | {rejections} | {samples.Sum(x => x.Extended.Count)} | {clock.Elapsed.TotalMinutes:0.0} min |");
+            .AppendLine(CultureInfo.InvariantCulture, $"| {samples.Count} | {failures.Count} · {retried.Count} | {entities} | {typeRelations} ({declaredTypeRelations}) | {rejections} | {samples.Sum(x => x.Extended.Count)} | {clock.Elapsed.TotalMinutes:0.0} min |");
         foreach (var failure in failures)
         {
-            report.AppendLine(CultureInfo.InvariantCulture, $"- failed call: {failure}");
+            report.AppendLine(CultureInfo.InvariantCulture, $"- failed call (after a retry): {failure}");
+        }
+
+        foreach (var retry in retried)
+        {
+            report.AppendLine(CultureInfo.InvariantCulture, $"- call that succeeded on its retry — first attempt: {retry}");
         }
 
         output.WriteLine(report.ToString());

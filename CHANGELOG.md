@@ -8,12 +8,15 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.18.0
 
 A minor, with breaking changes. A field comparison can sort a pair into levels of agreement rather
 than agree/disagree, and the estimator fits each level its own match and non-match probability (the
-Fellegi–Sunter general form; Splink's comparison levels). Behaviour without options, and with one
-threshold, is unchanged to the last digit.
+Fellegi–Sunter general form; Splink's comparison levels) — on twelve public entity-matching sets,
+Jaro-Winkler in levels raised the pre-filter's F1 from 0.427 to 0.474 on average. Behaviour without
+options, and with one threshold, is unchanged to the last digit. A streamed completion no longer waits
+forever on a connection that stops sending. Built against HoneAI.Abstractions 0.3.0, whose provenance
+stamp changed shape. The prompt's fixed text is unchanged, so its fingerprint stays (`98229faf`).
 
 ### Added
 

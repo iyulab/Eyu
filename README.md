@@ -20,12 +20,12 @@ accuracy figure on real domain data — is in [docs/status.md](docs/status.md).
 
 ## Install
 
-Current release: **0.17.0**. All three packages ship from this repository and move together:
+Current release: **0.18.0**. All three packages ship from this repository and move together:
 
 ```bash
-dotnet add package Eyu.Core --version 0.17.0
-dotnet add package Eyu.Formbase --version 0.17.0
-dotnet add package Eyu.Rdf --version 0.17.0
+dotnet add package Eyu.Core --version 0.18.0
+dotnet add package Eyu.Formbase --version 0.18.0
+dotnet add package Eyu.Rdf --version 0.18.0
 ```
 
 `Eyu.Core` alone is enough to implement the five ports against your own source; `Eyu.Formbase` is

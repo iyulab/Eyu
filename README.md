@@ -263,8 +263,9 @@ Routing is also a value, not a port. A caller builds a
 `RoutingThresholds` (auto-apply / review lower bounds, one pair per
 `VocabularyOrigin`), then calls `proposal.Route(policy)` for the tier or
 `proposal.Trace(policy)` for the proposal wrapped in a HoneAI
-`PredictionProvenance` (`SourceLayer = Frontier`, the confidence, the claim as
-rationale, `RequiresReview` for every tier a machine may not act on, and the
+`PredictionProvenance` (`Kind = Llm`, the confidence, the claim as rationale, a
+one-step `Path` that is `Settled` for auto-apply and `Escalated` for every tier a
+machine may not settle, and the
 route / origin / basis / cited record ids as annotations). Those annotation keys
 are constants on
 [`ProvenanceAnnotations`](src/Eyu.Core/Routing/ProvenanceAnnotations.cs), and the

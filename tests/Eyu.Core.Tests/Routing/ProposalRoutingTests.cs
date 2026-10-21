@@ -58,26 +58,28 @@ public class ProposalRoutingTests
     }
 
     [Fact]
-    public void Tracing_stamps_the_frontier_layer_and_passes_the_confidence_through_unchanged()
+    public void Tracing_stamps_an_llm_judge_and_passes_the_confidence_through_unchanged()
     {
         var proposal = Entity(0.85);
 
         var traced = proposal.Trace(Policy);
 
         Assert.Same(proposal, traced.Value);
-        Assert.Equal(ReasoningLayer.Frontier, traced.Provenance.SourceLayer);
+        Assert.Equal(JudgeKind.Llm, traced.Provenance.Kind);
+        Assert.Equal(ProposalRouting.ProposerTierId, traced.Provenance.TierId);
         Assert.Equal(0.85, traced.Provenance.Confidence);
-        Assert.Null(traced.Provenance.Agreement);
         Assert.Null(traced.Provenance.Role);
     }
 
     [Theory]
-    [InlineData(0.9, false)]
-    [InlineData(0.6, true)]
-    [InlineData(0.1, true)]
-    public void RequiresReview_is_set_for_every_tier_a_machine_may_not_act_on(double confidence, bool requiresReview)
+    [InlineData(0.9, StepOutcome.Settled, null)]
+    [InlineData(0.6, StepOutcome.Escalated, "Review")]
+    [InlineData(0.1, StepOutcome.Escalated, "DraftOnly")]
+    public void The_path_escalates_every_tier_a_machine_may_not_settle(double confidence, StepOutcome outcome, string? detail)
     {
-        Assert.Equal(requiresReview, Entity(confidence).Trace(Policy).Provenance.RequiresReview);
+        var step = Assert.Single(Entity(confidence).Trace(Policy).Provenance.Path!);
+
+        Assert.Equal(new TierStep(ProposalRouting.ProposerTierId, JudgeKind.Llm, outcome, detail), step);
     }
 
     [Fact]
@@ -126,7 +128,7 @@ public class ProposalRoutingTests
         Assert.Equal(
             [ProposalRoute.AutoApply, ProposalRoute.Review, ProposalRoute.DraftOnly],
             traced.Entities.Select(t => Enum.Parse<ProposalRoute>(t.Provenance.Annotations![ProvenanceAnnotations.Route])));
-        Assert.Equal([false, true], traced.Relations.Select(t => t.Provenance.RequiresReview));
+        Assert.Equal([StepOutcome.Settled, StepOutcome.Escalated], traced.Relations.Select(t => t.Provenance.Path!.Single().Outcome));
     }
 
     [Fact]

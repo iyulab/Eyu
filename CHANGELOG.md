@@ -36,6 +36,15 @@ threshold, is unchanged to the last digit.
 `FellegiSunterEstimator.Estimate` refuses vectors that compare one field on two scales, and
 `ComputeLogLikelihoodRatio` refuses parameters fitted on another scale than the vector's.
 
+### Changed — HoneAI.Abstractions 0.3.0
+
+- Built against `HoneAI.Abstractions` 0.3.0, whose `PredictionProvenance` changed shape. A traced
+  proposal's stamp is now `Kind = JudgeKind.Llm` (was `SourceLayer = Frontier`) with
+  `TierId = ProposalRouting.ProposerTierId`, and its `Path` holds one step: `Settled` when the policy
+  routes the proposal to auto-apply, `Escalated` (detail: the route) otherwise. Where you read
+  `RequiresReview`, read whether that step escalated; `Agreement` is gone (one judge answers). The
+  route, origin, basis and sources annotations are unchanged.
+
 ### Fixed
 
 - `HttpModelClient` with `stream: true` no longer waits forever on a connection that stays open but

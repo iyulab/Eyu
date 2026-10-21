@@ -58,23 +58,34 @@ public static partial class ProposalRouting
     }
 
     /// <summary>
-    /// The stamp itself. <see cref="PredictionProvenance.SourceLayer"/> is always
-    /// <see cref="ReasoningLayer.Frontier"/>: every proposal is a model's judgment, whatever
-    /// pre-filtering shaped its confidence. <see cref="PredictionProvenance.RequiresReview"/> is true
-    /// for both non-auto tiers — a draft-only proposal is not escalated the way a review is, but it
-    /// is still nothing a machine may act on, which is the question the flag answers; the tier
-    /// itself is in <see cref="ProvenanceAnnotations.Route"/>. <see cref="PredictionProvenance.Agreement"/>
-    /// stays null because a single layer answered, and <see cref="PredictionProvenance.Rationale"/>
-    /// is the claim text — the grounded sources travel as an annotation, not as prose.
+    /// The tier id Eyu stamps (<see cref="PredictionProvenance.TierId"/> and the one step of
+    /// <see cref="PredictionProvenance.Path"/>): the proposer is the one judge that answered.
+    /// </summary>
+    public const string ProposerTierId = "eyu.proposer";
+
+    /// <summary>
+    /// The stamp itself. <see cref="PredictionProvenance.Kind"/> is always <see cref="JudgeKind.Llm"/>:
+    /// every proposal is a model's judgment, whatever pre-filtering shaped its confidence.
+    /// <see cref="PredictionProvenance.Path"/> holds the one step the proposer took — settled when the
+    /// caller's policy routes the proposal to auto-apply, escalated otherwise (the route as its detail):
+    /// a draft-only proposal is not reviewed the way a review is, but it is still nothing a machine may
+    /// settle, which is what the step says. The tier itself is in <see cref="ProvenanceAnnotations.Route"/>.
+    /// <see cref="PredictionProvenance.Rationale"/> is the claim text — the grounded sources travel as an
+    /// annotation, not as prose.
     /// </summary>
     private static PredictionProvenance Stamp(ProposalRoute route, double confidence, GroundedClaim claim, VocabularyOrigin origin, ProposalBasis basis) =>
         new()
         {
-            SourceLayer = ReasoningLayer.Frontier,
+            Kind = JudgeKind.Llm,
+            TierId = ProposerTierId,
             Confidence = confidence,
             Rationale = claim.Claim,
-            Agreement = null,
-            RequiresReview = route != ProposalRoute.AutoApply,
+            Path =
+            [
+                route == ProposalRoute.AutoApply
+                    ? new TierStep(ProposerTierId, JudgeKind.Llm, StepOutcome.Settled)
+                    : new TierStep(ProposerTierId, JudgeKind.Llm, StepOutcome.Escalated, route.ToString()),
+            ],
             Annotations = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 [ProvenanceAnnotations.Route] = route.ToString(),

@@ -18,7 +18,7 @@ every published version has a section here.
 
 ### Changed
 
-- Built against Formbase.Core 0.33.0 (from 0.31.0); no change to what Eyu proposes.
+- Built against Formbase.Core 0.34.0 (from 0.31.0); no change to what Eyu proposes.
 
 ## 0.21.0
 

@@ -380,6 +380,13 @@ compared when it agrees exactly on every field of some rule, and rules are alter
 can catch what another misses (a misspelt name, but the same birth date and school). A pair no rule
 reaches is not judged different, only not compared.
 
+Where the caller knows which field keys a subject's records — a table's key, a register's number —
+it declares it (`new DeclaredStructure(…) { KeyField = "wo_no" }`). Two records of that subject with
+different keys are then different things: the pre-filter neither compares nor fits on the pair, and
+the model is told so. A small batch needs this most — with no true duplicate to learn a match from, a
+fit can read values two rows happen to share (a quantity, a note) as identity. Records with the same
+key are still compared, so a duplicate entry is still found.
+
 Gray-zone pairs grow with the square of the batch, so they — not the records — are what fills a
 prompt first: measured, 47 records produced 542 pairs, more lines than the records themselves, and
 104 records produced 2,187 pairs and a prompt past a 131,072-token context.

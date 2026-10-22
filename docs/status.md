@@ -163,4 +163,7 @@ records whose subject is known (`RawRecord.Subject`): it names another entity, s
 evidence that two records are one. A field that names an owner — a `Child` relation's field, or a
 `Parent` relation's when a child is declared on its own (rows of a form's repeated section) — also bounds
 which pairs exist: records of two owners are never compared, since two rows of different sheets are two
-rows whatever their cells say.
+rows whatever their cells say. A declared key (`DeclaredStructure.KeyField` — a table's key, a register's
+number) does the same for the subject's own rows: two records of it with different keys are never compared
+or fitted on. Without it, a nine-record batch with no true duplicate had the fit read a quantity and a note
+two work orders happened to share as identity, and pre-linked them as one entity.

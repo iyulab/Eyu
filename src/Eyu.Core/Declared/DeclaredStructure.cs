@@ -26,4 +26,14 @@ public sealed record DeclaredStructure(
     /// stamped declared.
     /// </summary>
     public IReadOnlyList<string> SuperTypes { get; init; } = [];
+
+    /// <summary>
+    /// The field whose value identifies a record of <see cref="Subject"/> — a table's key, a register's
+    /// number — when the caller knows one. Two records of the subject with different values in it are
+    /// different things, however much else they share: the pre-filter never compares them
+    /// (<see cref="Linkage.LinkageEvidence.DistinctByKey"/>) and the model is told so. Two records with the
+    /// same value are still compared, so a duplicate entry is still found, and records of other subjects
+    /// are compared as before. Null — the default — declares no key.
+    /// </summary>
+    public string? KeyField { get; init; }
 }

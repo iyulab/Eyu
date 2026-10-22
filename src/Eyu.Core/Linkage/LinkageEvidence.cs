@@ -154,6 +154,61 @@ public static class LinkageEvidence
         return record => sampled.TryGetValue(record.Id, out var scope) ? scope : Read(record);
     }
 
+    /// <summary>
+    /// Which pairs are known to be different things, read from the declarations: two records of one
+    /// subject whose declared <see cref="DeclaredStructure.KeyField"/> holds different values. A table's
+    /// rows with different keys are different rows by construction — a pair of them is a
+    /// <em>cannot-link</em>, not a pair to weigh — and weighing them anyway lets a fit on a small batch,
+    /// which holds no true duplicate to learn from, read shared incidental values (a quantity, a note) as
+    /// identity. <see cref="LinkagePipeline"/> neither compares nor fits on such a pair. Two records with
+    /// the same key are still compared, records of different subjects are compared as before, and a
+    /// record without a subject, of a subject that declares no key, or without a value in it is known
+    /// distinct from nothing. Keys compare as blocking keys do (case, surrounding whitespace and Unicode
+    /// form aside).
+    /// <para>
+    /// The key is read from <paramref name="records"/> as sampled and found again by id, as
+    /// <see cref="OwnershipScope"/> reads its parent key — the pipeline is handed their identity view,
+    /// which may no longer carry it. Any other record (a known entity's) is read from its own fields.
+    /// </para>
+    /// <para>
+    /// The pairs are left out, not split apart: a record that matches two keyed records of one subject
+    /// through a record of another can still draw them into one cluster.
+    /// </para>
+    /// </summary>
+    public static Func<RawRecord, RawRecord, bool> DistinctByKey(IReadOnlyList<RawRecord> records, IReadOnlyList<DeclaredStructure> declaredStructures)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+        ArgumentNullException.ThrowIfNull(declaredStructures);
+
+        var keyFields = declaredStructures
+            .Where(d => !string.IsNullOrWhiteSpace(d.KeyField))
+            .ToDictionary(d => d.Subject, d => d.KeyField!.Trim());
+        if (keyFields.Count == 0)
+        {
+            return (_, _) => false;
+        }
+
+        (SubjectRef Subject, string Key)? Read(RawRecord record) =>
+            record.Subject is { } subject
+            && keyFields.TryGetValue(subject, out var field)
+            && record.Fields.TryGetValue(field, out var value)
+            && !string.IsNullOrWhiteSpace(value)
+                ? (subject, TextForm.Fold(value).Trim().ToUpperInvariant())
+                : null;
+
+        var sampled = new Dictionary<string, (SubjectRef Subject, string Key)?>(StringComparer.Ordinal);
+        foreach (var record in records)
+        {
+            sampled.TryAdd(record.Id, Read(record));
+        }
+
+        (SubjectRef Subject, string Key)? KeyOf(RawRecord record) => sampled.TryGetValue(record.Id, out var key) ? key : Read(record);
+
+        return (a, b) => KeyOf(a) is { } left && KeyOf(b) is { } right
+            && left.Subject == right.Subject
+            && !string.Equals(left.Key, right.Key, StringComparison.Ordinal);
+    }
+
     /// <summary>The fields each subject's records hold another entity's key in, as declared.</summary>
     public static IReadOnlyDictionary<SubjectRef, IReadOnlySet<string>> ReferenceFieldsBySubject(IReadOnlyList<DeclaredStructure> declaredStructures)
     {

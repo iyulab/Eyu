@@ -8,6 +8,19 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Added
+
+- **`DeclaredStructure.KeyField` — a subject's key, as a cannot-link.** Two records of the subject with
+  different values in the declared key are different things: the pre-filter neither compares nor fits on
+  the pair, and the model is told so beside the declared type. Records with the same key are still
+  compared, and records of other subjects as before. Without it a small batch with no true duplicate let
+  the fit read values two rows happened to share as identity — measured, two work orders with different
+  numbers pre-linked as one entity. The cannot-link is `LinkageEvidence.DistinctByKey`, and
+  `LinkagePipeline.Analyze` takes it as `cannotLink` beside `comparisonScope`. A declaration without a key
+  prompts as before.
+
 ## 0.20.0
 
 A minor. A declared date is a day (`DeclaredValueKind.Date`, which `Eyu.Formbase` reads from Formbase

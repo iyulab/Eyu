@@ -60,6 +60,18 @@ internal static class DeclaredStructureMerge
         }
     }
 
+    /// <summary>Refuses a declared key field that is set but blank — it would name no field.</summary>
+    public static void EnsureValidKeyFields(IReadOnlyList<DeclaredStructure> declared)
+    {
+        foreach (var structure in declared)
+        {
+            if (structure.KeyField is { } key && string.IsNullOrWhiteSpace(key))
+            {
+                throw new ArgumentException($"The key field declared for \"{structure.Subject.Value}\" is blank; declare a field name or no key.", nameof(declared));
+            }
+        }
+    }
+
     /// <summary>
     /// Refuses declared super types no merge could honor — a blank name, or a subject declared a kind of
     /// itself — before the model is called. A super type is a type name; it need not be a declared subject.

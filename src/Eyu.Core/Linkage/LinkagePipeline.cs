@@ -59,9 +59,14 @@ public static class LinkagePipeline
     /// are owned by their sheet, so rows of two sheets are two rows whatever their cells say). A record
     /// whose scope is null is compared as before.
     /// </para>
+    /// <para>
+    /// <paramref name="cannotLink"/>, when given, names the pairs known to be different things — two rows of
+    /// one table with different keys (<see cref="LinkageEvidence.DistinctByKey"/>). Such a pair is neither
+    /// compared nor fitted on, on one side or across to a known entity's records.
+    /// </para>
     /// </summary>
-    public static LinkageAnalysis Analyze(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, LinkageOptions? options = null, Func<RawRecord, string?>? comparisonScope = null)
-        => AnalyzeCore(records, knownEntities, suppliedParameters: null, options, comparisonScope);
+    public static LinkageAnalysis Analyze(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, LinkageOptions? options = null, Func<RawRecord, string?>? comparisonScope = null, Func<RawRecord, RawRecord, bool>? cannotLink = null)
+        => AnalyzeCore(records, knownEntities, suppliedParameters: null, options, comparisonScope, cannotLink);
 
     /// <summary>
     /// The same analysis, scored with <paramref name="parameters"/> instead of parameters fitted on this
@@ -72,12 +77,12 @@ public static class LinkagePipeline
     /// <c>u</c> from <see cref="EstimateNonMatchAgreement"/>, <c>m</c> from a reviewed sample or a
     /// fixed-<c>u</c> fit (<see cref="FellegiSunterEstimator.Estimate"/>) — keep the result, and score each
     /// call with it. A field the parameters do not name carries no evidence. Pairs are limited by
-    /// <paramref name="comparisonScope"/> as in the fitting overload.
+    /// <paramref name="comparisonScope"/> and <paramref name="cannotLink"/> as in the fitting overload.
     /// </summary>
-    public static LinkageAnalysis Analyze(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, FieldLinkageParameters parameters, LinkageOptions? options = null, Func<RawRecord, string?>? comparisonScope = null)
+    public static LinkageAnalysis Analyze(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, FieldLinkageParameters parameters, LinkageOptions? options = null, Func<RawRecord, string?>? comparisonScope = null, Func<RawRecord, RawRecord, bool>? cannotLink = null)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        return AnalyzeCore(records, knownEntities, suppliedParameters: parameters, options, comparisonScope);
+        return AnalyzeCore(records, knownEntities, suppliedParameters: parameters, options, comparisonScope, cannotLink);
     }
 
     /// <summary>
@@ -145,7 +150,7 @@ public static class LinkagePipeline
     /// <summary>The default pair budget of <see cref="EstimateNonMatchAgreement"/>.</summary>
     public const int DefaultNonMatchSamplePairs = 100_000;
 
-    private static LinkageAnalysis AnalyzeCore(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, FieldLinkageParameters? suppliedParameters, LinkageOptions? options, Func<RawRecord, string?>? comparisonScope)
+    private static LinkageAnalysis AnalyzeCore(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, FieldLinkageParameters? suppliedParameters, LinkageOptions? options, Func<RawRecord, string?>? comparisonScope, Func<RawRecord, RawRecord, bool>? cannotLink)
     {
         ArgumentNullException.ThrowIfNull(records);
         ArgumentNullException.ThrowIfNull(knownEntities);
@@ -165,7 +170,7 @@ public static class LinkagePipeline
         if (records.Count >= 2 && opts.RecordsDenoteEntities)
         {
             foreach (var (i, j) in CandidatePairs(records, records, opts.BlockingRules, sameSide: true)
-                .Where(p => InOneScope(records[p.I], records[p.J], comparisonScope)))
+                .Where(p => MayBeSame(records[p.I], records[p.J], comparisonScope, cannotLink)))
             {
                 ownPairs.Add((records[i], records[j]));
             }
@@ -173,7 +178,7 @@ public static class LinkagePipeline
 
         var knownSide = knownRecords.Select(k => k.Record).ToList();
         var crossPairs = CandidatePairs(records, knownSide, opts.BlockingRules, sameSide: false)
-            .Where(p => InOneScope(records[p.I], knownSide[p.J], comparisonScope))
+            .Where(p => MayBeSame(records[p.I], knownSide[p.J], comparisonScope, cannotLink))
             .Select(p => (Record: records[p.I], knownRecords[p.J].Key, Known: knownRecords[p.J].Record))
             .ToList();
 
@@ -210,9 +215,17 @@ public static class LinkagePipeline
         return new LinkageAnalysis(clustering, pairLinkages, parameters, errorRates) { KnownCandidates = knownCandidates };
     }
 
-    /// <summary>Whether two records may be the same thing as far as their scopes go: unless both are set and differ.</summary>
-    private static bool InOneScope(RawRecord a, RawRecord b, Func<RawRecord, string?>? scope)
+    /// <summary>
+    /// Whether two records may be the same thing: their scopes, when both are set, agree, and the pair is
+    /// not one known to be two things.
+    /// </summary>
+    private static bool MayBeSame(RawRecord a, RawRecord b, Func<RawRecord, string?>? scope, Func<RawRecord, RawRecord, bool>? cannotLink)
     {
+        if (cannotLink is not null && cannotLink(a, b))
+        {
+            return false;
+        }
+
         if (scope is null)
         {
             return true;

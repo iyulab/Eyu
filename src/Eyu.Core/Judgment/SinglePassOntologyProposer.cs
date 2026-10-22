@@ -48,7 +48,7 @@ namespace Eyu.Core.Judgment;
 /// By default each call fits the pre-filter's parameters on its own record pairs. A caller comparing
 /// new records against entities it already knows, a few records at a time, fits once on the population
 /// instead and passes the result as <c>linkageParameters</c>: every call is then scored with those
-/// parameters and runs no estimate (<see cref="LinkagePipeline.Analyze(IReadOnlyList{RawRecord}, IReadOnlyList{KnownEntity}, FieldLinkageParameters, LinkageOptions, Func{RawRecord, string})"/>)
+/// parameters and runs no estimate (<see cref="LinkagePipeline.Analyze(IReadOnlyList{RawRecord}, IReadOnlyList{KnownEntity}, FieldLinkageParameters, LinkageOptions, Func{RawRecord, string}, Func{RawRecord, RawRecord, bool})"/>)
 /// — a call of one record against its known entities holds about one true match, too little for an
 /// estimate to tell what a match looks like, and the same record would otherwise be judged against a
 /// different scale on every call.
@@ -311,15 +311,17 @@ public sealed partial class SinglePassOntologyProposer(
         ArgumentNullException.ThrowIfNull(prior);
         DeclaredStructureMerge.EnsureDistinctSubjects(declaredStructures);
         DeclaredStructureMerge.EnsureValidSuperTypes(declaredStructures);
+        DeclaredStructureMerge.EnsureValidKeyFields(declaredStructures);
         prior.Validate(records);
         var typeRelations = proposeTypeRelations || declaredStructures.Any(d => d.SuperTypes.Count > 0);
         var knownEntities = prior.KnownEntities;
         var mentionedEntities = prior.MentionedEntities;
         var identity = LinkageEvidence.IdentityView(records, declaredStructures);
         var scope = LinkageEvidence.OwnershipScope(records, declaredStructures);
+        var distinct = LinkageEvidence.DistinctByKey(records, declaredStructures);
         var linkageAnalysis = linkageParameters is null
-            ? LinkagePipeline.Analyze(identity, knownEntities, options, scope)
-            : LinkagePipeline.Analyze(identity, knownEntities, linkageParameters, options, scope);
+            ? LinkagePipeline.Analyze(identity, knownEntities, options, scope, distinct)
+            : LinkagePipeline.Analyze(identity, knownEntities, linkageParameters, options, scope, distinct);
         var promptedPairs = SelectPromptedPairs(linkageAnalysis.Clustering.GrayZonePairs, options.MaxGrayZonePairsInPrompt);
         var prompt = BuildPrompt(declaredStructures, records, prior, linkageAnalysis, promptedPairs, typeRelations);
         var schema = ResponseSchemaFor(knownEntities.Count > 0, mentionedEntities.Count > 0, typeRelations);
@@ -531,9 +533,12 @@ public sealed partial class SinglePassOntologyProposer(
     private static string DescribeType(DeclaredStructure declared)
     {
         var name = string.IsNullOrWhiteSpace(declared.BusinessName) ? declared.Subject.Value : $"{declared.Subject} \"{declared.BusinessName.Trim()}\"";
-        return declared.Fields.Count == 0
+        var type = declared.Fields.Count == 0
             ? $"Declared type: {name}"
             : $"Declared type: {name} (fields: {string.Join(", ", declared.Fields.Select(DescribeField))})";
+        return string.IsNullOrWhiteSpace(declared.KeyField)
+            ? type
+            : $"{type}; key field {declared.KeyField.Trim()}: two {declared.Subject} records with different values in it are different entities";
     }
 
     /// <summary>

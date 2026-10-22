@@ -8,7 +8,12 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.21.0
+
+A minor. A subject's declared key makes rows of that subject with different keys a cannot-link
+(`DeclaredStructure.KeyField`, `LinkageEvidence.DistinctByKey`): a small batch with no true duplicate no
+longer pre-links two records that merely share values. The prompt tells the model the key beside the
+declared type. Built against HoneAI.Abstractions 0.9.0 and Formbase.Core 0.31.0, as 0.20.0.
 
 ### Added
 

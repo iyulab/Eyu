@@ -8,7 +8,13 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.20.0
+
+A minor. A declared date is a day (`DeclaredValueKind.Date`, which `Eyu.Formbase` reads from Formbase
+0.31's `ColumnType.Date`); a type name the answer misspelled is written as the name in use when the cited
+records settle it (`RespelledTypeNames`); and a relation declared between super types holds between their
+kinds. One fix: a relation that became reflexive after a respelling is rejected instead of failing the
+call. The prompt is unchanged. Built against HoneAI.Abstractions 0.9.0 and Formbase.Core 0.31.0.
 
 ### Added
 
@@ -25,7 +31,7 @@ every published version has a section here.
 
 ### Changed
 
-- Built against HoneAI.Abstractions 0.8.0 (from 0.4.0) and Formbase.Core 0.30.1 (from 0.30.0); no change to what Eyu proposes.
+- Built against HoneAI.Abstractions 0.9.0 (from 0.4.0) and Formbase.Core 0.31.0 (from 0.30.0); no change to what Eyu proposes.
 - A relation proposed under a declared name now fits a declaration whose ends are declared super types
   of its ends: when `Athlete` is declared a kind of `Person` (`DeclaredStructure.SuperTypes`, followed
   through every declared step), a relation declared from `Person` holds from an athlete and is stamped

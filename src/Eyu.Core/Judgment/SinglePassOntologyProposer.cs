@@ -573,6 +573,7 @@ public sealed partial class SinglePassOntologyProposer(
         DeclaredValueKind.Timestamp => "timestamp",
         DeclaredValueKind.Identifier => "identifier",
         DeclaredValueKind.Structured => "structured",
+        DeclaredValueKind.Date => "date",
         _ => kind.ToString().ToLowerInvariant(),
     };
 

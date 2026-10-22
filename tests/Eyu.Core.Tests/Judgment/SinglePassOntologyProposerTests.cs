@@ -424,6 +424,7 @@ public class SinglePassOntologyProposerTests
                 new DeclaredField("qty", Kind: DeclaredValueKind.WholeNumber),
                 new DeclaredField("total", SemanticHint: "monetary amount, minor units", Kind: DeclaredValueKind.FractionalNumber),
                 new DeclaredField("note"),
+                new DeclaredField("due_on", Kind: DeclaredValueKind.Date),
             ],
             Relations:
             [
@@ -439,6 +440,7 @@ public class SinglePassOntologyProposerTests
         Assert.Contains("qty (integer)", model.LastPrompt);
         Assert.Contains("total (decimal; monetary amount, minor units)", model.LastPrompt);
         Assert.Contains(", note", model.LastPrompt);
+        Assert.Contains("due_on (date)", model.LastPrompt);
         Assert.Contains("Declared type: work_order (fields: wo_no (text, required), qty (integer)", model.LastPrompt);
         Assert.Contains("Declared relation \"asset\": work_order -> asset (reference via asset_tag)", model.LastPrompt);
         Assert.Contains("Declared relation \"owner\": work_order -> person", model.LastPrompt);

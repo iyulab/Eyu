@@ -28,4 +28,7 @@ public enum DeclaredValueKind
 
     /// <summary>A nested structure the caller stores whole (a document, a JSON value).</summary>
     Structured,
+
+    /// <summary>A calendar date — a day, not a point in time (a due date, a date of birth).</summary>
+    Date,
 }

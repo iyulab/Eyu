@@ -97,6 +97,24 @@ public sealed class Llms4OlReuseCorpusTests
     }
 
     [Fact]
+    public void A_term_names_an_entity_written_with_other_separators_and_keeps_its_own_spelling()
+    {
+        var sample = Llms4OlReuseCorpus.Parse(Json.Replace("\"terms\": [\"turkey processed carcass\"]", "\"terms\": [\"turkey processed carcass\", \"mm topic 8360\", \"a adm1h\"]", StringComparison.Ordinal)).Single();
+        var proposal = new OntologyProposal(
+            [
+                EntityProposal.Create("e1", "MM_Topic_8360", "piece of turkey", Cite(), VocabularyOrigin.Acquired, 0.8),
+                EntityProposal.Create("e2", "A.ADM1H", "piece of turkey", Cite(), VocabularyOrigin.Acquired, 0.8),
+                EntityProposal.Create("e3", "mm topic 83600", "piece of turkey", Cite(), VocabularyOrigin.Acquired, 0.8),
+            ],
+            [],
+            []);
+
+        var extension = Llms4OlReuseCorpus.Extension(sample, proposal, Llms4OlReuseCorpus.Variant.All);
+
+        Assert.Equal([["mm topic 8360", "instance-of", "piece of turkey"], ["a adm1h", "instance-of", "piece of turkey"]], extension);
+    }
+
+    [Fact]
     public void A_line_carries_the_prediction_beside_the_gold()
     {
         var line = Llms4OlReuseCorpus.ToJsonLine(Sample, [["a", "is-a", "b"]]);

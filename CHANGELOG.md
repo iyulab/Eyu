@@ -25,7 +25,7 @@ every published version has a section here.
 
 ### Changed
 
-- Built against HoneAI.Abstractions 0.7.0 (from 0.4.0) and Formbase.Core 0.30.1 (from 0.30.0); no change to what Eyu proposes.
+- Built against HoneAI.Abstractions 0.8.0 (from 0.4.0) and Formbase.Core 0.30.1 (from 0.30.0); no change to what Eyu proposes.
 - A relation proposed under a declared name now fits a declaration whose ends are declared super types
   of its ends: when `Athlete` is declared a kind of `Person` (`DeclaredStructure.SuperTypes`, followed
   through every declared step), a relation declared from `Person` holds from an athlete and is stamped

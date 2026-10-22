@@ -738,6 +738,15 @@ public sealed partial class SinglePassOntologyProposer(
 
             var sub = InUseSpelling(t.Sub!.Trim(), spellings, given, t.Sources!, recordsById, respellings);
             var super = InUseSpelling(t.Super!.Trim(), spellings, given, t.Sources!, recordsById, respellings);
+
+            // Written as names in use, two ends answered apart can name one type — a misspelled end
+            // respelled onto the other: reflexive, rejected as an answered one is.
+            if (TypeNames.SameType(sub, super))
+            {
+                rejections.Add(new ProposalRejection(ProposalElement.TypeRelation, BlankToNull(t.Sub), RejectionReason.ReflexiveTypeRelation, $"type relation {Describe(t.Sub)} is-a {Describe(t.Super)}: both ends are the type in use '{sub}' — a type is not a kind of itself"));
+                continue;
+            }
+
             if (seen.Add((TypeNames.Key(sub), TypeNames.Key(super))))
             {
                 proposals.Add(TypeRelationProposal.Create(sub, super, ToClaim(t.Claim!, t.Sources!), t.Confidence!.Value));

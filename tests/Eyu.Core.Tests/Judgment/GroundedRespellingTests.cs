@@ -55,6 +55,20 @@ public sealed class GroundedRespellingTests
         Assert.Equal("saithe food produt", Assert.Single(proposal.RespelledTypeNames).Answered);
     }
 
+    /// <summary>
+    /// An end respelled onto the other end's name makes the relation reflexive — rejected as one, like a
+    /// relation answered reflexive. It used to throw from the relation's constructor and fail the whole call.
+    /// </summary>
+    [Fact]
+    public async Task An_end_respelled_onto_the_other_ends_name_is_a_reflexive_relation_not_a_failed_call()
+    {
+        var proposal = await Propose(Answer("fish fod product"), InUse);
+
+        Assert.Empty(proposal.TypeRelations);
+        Assert.Contains(proposal.Rejections, r => r is { Element: ProposalElement.TypeRelation, Reason: RejectionReason.ReflexiveTypeRelation, Id: "fish fod product" });
+        Assert.Single(proposal.Entities);
+    }
+
     [Fact]
     public async Task A_near_name_the_cited_records_do_not_carry_is_left_as_answered()
     {

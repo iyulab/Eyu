@@ -29,6 +29,13 @@ every published version has a section here.
   `Declared`. Before, it was rejected as `ContradictsDeclaration`. Only declared kinds count — a type
   relation the model proposes does not widen what a declaration admits. The prompt is unchanged.
 
+### Fixed
+
+- **A type relation whose ends name one type once written as names in use is rejected, not thrown.** When
+  a misspelled end was respelled onto the other end's name, the relation became reflexive after the
+  reflexive check had passed, and its constructor threw — failing the whole call and every proposal in it.
+  It is now rejected as `ReflexiveTypeRelation`, like a relation answered reflexive.
+
 ## 0.19.0
 
 A minor, additive. A proposal can say that one type is a kind of another (`is-a`), asked for or set off

@@ -14,7 +14,8 @@ namespace Eyu.Formbase;
 /// document's top-level JSON object properties become the record's opaque string fields; a
 /// nested object or array is not recursively flattened, it survives as its own raw JSON text —
 /// deeper structure is Eyu's judgment to interpret, not this adapter's to pre-decide. A
-/// non-object document body (e.g. a bare JSON array) yields a record with no fields.
+/// non-object document body (e.g. a bare JSON array) yields a record with no fields. The array a
+/// declared repeated section is held in is left out: its items are that section's records.
 /// The sample is of records, not of appends: documents are folded the way Formbase's projection
 /// folds them (<see cref="RecordFold.Latest"/>) — a corrected record appears once, as its latest
 /// document, and a retired one not at all — so every document of the form type is read before the
@@ -46,9 +47,16 @@ public sealed class FormbaseRecordSample(IRawStore rawStore, IFieldHintSource hi
         var standing = RecordFold.Latest(documents);
         if (section is null)
         {
+            // The array a declared section is held in is that section's records, not a field of this one —
+            // the projection does not carry it on this form type's table either.
+            var declaration = await hintSource.GetHintsAsync(type, cancellationToken).ConfigureAwait(false);
+            var sectionFields = (declaration?.Relations ?? []).Select(r => r.SectionField).OfType<string>().ToHashSet(StringComparer.Ordinal);
             return standing
                 .Take(maxCount)
-                .Select(document => new RawRecord(document.Id.ToString(), Flatten(document.Body!.Root), subject))
+                .Select(document => new RawRecord(
+                    document.Id.ToString(),
+                    Flatten(document.Body!.Root).Where(f => !sectionFields.Contains(f.Key)).ToDictionary(),
+                    subject))
                 .ToList();
         }
 

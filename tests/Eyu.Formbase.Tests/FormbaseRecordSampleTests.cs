@@ -199,6 +199,18 @@ public class FormbaseRecordSampleTests
         Assert.Equal("a2", record.Fields["item"]);
     }
 
+    /// <summary>The sheet's own record does not carry its checklist: those items are the section's records.</summary>
+    [Fact]
+    public async Task SampleAsync_of_a_parent_leaves_out_the_array_its_section_is_held_in()
+    {
+        var rawStore = new InMemoryRawStore();
+        await rawStore.AppendAsync(Log, DocumentId.New(), DocumentBody.Parse("""{"log_no":"L-7","shift":"night","items":[{"item":"a"}]}"""), cancellationToken: TestContext.Current.CancellationToken);
+
+        var record = Assert.Single(await new FormbaseRecordSample(rawStore, WithChecklist()).SampleAsync(SubjectRef.Create(Log.Value), maxCount: 10, TestContext.Current.CancellationToken));
+
+        Assert.Equal(["log_no", "shift"], record.Fields.Keys);
+    }
+
     [Fact]
     public async Task SampleAsync_of_a_repeated_section_takes_at_most_max_count_rows()
     {

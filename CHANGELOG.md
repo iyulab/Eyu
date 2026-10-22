@@ -10,6 +10,12 @@ every published version has a section here.
 
 ## Unreleased
 
+### Fixed
+
+- `Eyu.Formbase`: a form type that holds a repeated section is sampled without the array the section is
+  held in. The array's items are the section's own records, and the parent's projected table does not
+  carry it, so a type proposed over the parent could name a field no projected row has.
+
 ### Changed
 
 - Built against Formbase.Core 0.32.0 (from 0.31.0); no change to what Eyu proposes.

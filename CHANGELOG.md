@@ -14,7 +14,7 @@ every published version has a section here.
 
 - **`DeclaredValueKind.Date` — a calendar date, a day rather than a point in time.** A declared field of
   this kind is shown to the model as `date`, beside `timestamp`, so a due date or a date of birth is not
-  described as an instant.
+  described as an instant. `Eyu.Formbase` maps Formbase's `ColumnType.Date` to it (Formbase.Core 0.31.0).
 - A type name the answer misspelled is written as the name in use when the records it cites settle it:
   `saihe food product` answered beside a known type `saithe food product`, citing a record that says
   "saithe", is proposed as `saithe food product` and listed in the new `OntologyProposal.RespelledTypeNames`

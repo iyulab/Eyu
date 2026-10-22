@@ -108,6 +108,7 @@ public sealed class FormbaseStructureSource(IFieldHintSource hintSource) : IStru
         ColumnType.Timestamp => DeclaredValueKind.Timestamp,
         ColumnType.Uuid => DeclaredValueKind.Identifier,
         ColumnType.Jsonb => DeclaredValueKind.Structured,
+        ColumnType.Date => DeclaredValueKind.Date,
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Formbase declared a column type this adapter does not know how to carry."),
     };
 

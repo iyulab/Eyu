@@ -79,6 +79,7 @@ public class FormbaseStructureSourceTests
                 new FieldHint("reported_at", ColumnType.Timestamp),
                 new FieldHint("asset_id", ColumnType.Uuid),
                 new FieldHint("payload", ColumnType.Jsonb),
+                new FieldHint("due_on", ColumnType.Date),
             ]));
         var source = new FormbaseStructureSource(hintSource);
 
@@ -87,7 +88,7 @@ public class FormbaseStructureSourceTests
         Assert.Equal(
             [
                 DeclaredValueKind.Text, DeclaredValueKind.WholeNumber, DeclaredValueKind.FractionalNumber, DeclaredValueKind.Boolean,
-                DeclaredValueKind.Timestamp, DeclaredValueKind.Identifier, DeclaredValueKind.Structured,
+                DeclaredValueKind.Timestamp, DeclaredValueKind.Identifier, DeclaredValueKind.Structured, DeclaredValueKind.Date,
             ],
             structure!.Fields.Select(f => f.Kind!.Value));
         Assert.Equal(

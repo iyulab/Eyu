@@ -144,6 +144,48 @@ minutes, half of it re-fitting the model at neighbouring thresholds (each report
 The scale comparison above is a separate test in the same class and takes under two minutes on its
 own (`--filter-method "*Compare_threshold_scales*"`).
 
+## One new record against a known population
+
+The use above links a batch. Asking whether *one* new record is someone already known scores it against
+the known people with parameters measured once on them (`EstimateNonMatchAgreement`, `FromNonMatchAgreement`
+with m = 0.92), as in the README. From `dataset3`'s 2,000 originals, `N` drawn at random are the known
+people; up to 300 of their duplicates come back, and 300 originals left out arrive as strangers. Rows vary
+the fields (all of them, or only the names, suburb and state), the surnames (Febrl's own, or redrawn per
+person from the published shares of Korean surnames — 2015 census: Kim 21.5%, Lee 14.7%, Park 8.4%, the top
+ten 63.9%), and whether value frequencies are used on the name and suburb fields. Exact comparison, no
+blocking.
+
+| fields | surnames | value frequencies | N known | returning: Match / Gray / not listed | wrong Gray per returning record: mean · p95 · max | wrong Match (total) | strangers with a Match (of which every Match shares the full name) | stranger Gray: mean · p95 · max |
+|---|---|---|---|---|---|---|---|---|
+| all | Febrl | no | 500 | 299 / 1 / 0 of 300 | 0.0 · 0 · 0 | 0 | 0 of 300 (0 same full name) | 0.0 · 0 · 0 |
+| all | Febrl | no | 1500 | 297 / 2 / 1 of 300 | 0.0 · 0 · 0 | 0 | 0 of 300 (0 same full name) | 0.0 · 0 · 1 |
+| all | Febrl | yes | 500 | 299 / 1 / 0 of 300 | 0.0 · 0 · 0 | 0 | 0 of 300 (0 same full name) | 0.0 · 0 · 0 |
+| all | Febrl | yes | 1500 | 297 / 2 / 1 of 300 | 0.0 · 0 · 0 | 0 | 0 of 300 (0 same full name) | 0.0 · 0 · 1 |
+| all | Korean shares | no | 500 | 298 / 2 / 0 of 300 | 0.0 · 0 · 1 | 0 | 0 of 300 (0 same full name) | 0.0 · 0 · 4 |
+| all | Korean shares | no | 1500 | 296 / 3 / 1 of 300 | 0.0 · 0 · 3 | 0 | 0 of 300 (0 same full name) | 0.0 · 0 · 1 |
+| all | Korean shares | yes | 500 | 299 / 1 / 0 of 300 | 0.0 · 0 · 1 | 0 | 0 of 300 (0 same full name) | 0.0 · 0 · 4 |
+| all | Korean shares | yes | 1500 | 297 / 2 / 1 of 300 | 0.0 · 0 · 3 | 0 | 0 of 300 (0 same full name) | 0.0 · 0 · 1 |
+| names and town | Febrl | no | 500 | 224 / 69 / 7 of 300 | 15.7 · 138 · 163 | 1 | 2 of 300 (1 same full name) | 14.2 · 67 · 168 |
+| names and town | Febrl | no | 1500 | 227 / 65 / 8 of 300 | 40.8 · 147 · 491 | 11 | 7 of 300 (3 same full name) | 38.3 · 61 · 501 |
+| names and town | Febrl | yes | 500 | 224 / 69 / 7 of 300 | 15.7 · 138 · 163 | 1 | 1 of 300 (0 same full name) | 14.2 · 67 · 168 |
+| names and town | Febrl | yes | 1500 | 226 / 66 / 8 of 300 | 40.8 · 147 · 491 | 7 | 5 of 300 (2 same full name) | 38.3 · 61 · 501 |
+| names and town | Korean shares | no | 500 | 259 / 40 / 1 of 300 | 39.8 · 198 · 229 | 30 | 34 of 300 (25 same full name) | 53.3 · 158 · 311 |
+| names and town | Korean shares | no | 1500 | 275 / 25 / 0 of 300 | 104.7 · 269 · 910 | 79 | 90 of 300 (61 same full name) | 142.0 · 277 · 906 |
+| names and town | Korean shares | yes | 500 | 258 / 41 / 1 of 300 | 38.5 · 198 · 215 | 32 | 32 of 300 (22 same full name) | 45.3 · 83 · 215 |
+| names and town | Korean shares | yes | 1500 | 275 / 25 / 0 of 300 | 101.2 · 268 · 650 | 74 | 85 of 300 (56 same full name) | 125.8 · 258 · 664 |
+
+- With an identifying field (date of birth, an identity number) the question is easy at every size.
+- With names and a town only, the gray candidates a returning record brings grow with the known population,
+  and with surnames as concentrated as in Korea strangers start to classify as `Match` — 30% of them at
+  1,500 known people. Two in three of those share the known person's full name: those fields cannot tell
+  them apart, and no weighting will.
+- Value frequencies lower that only a little (90 → 85 strangers at 1,500; at 500 the wrong matches among
+  returning records went from 30 to 32): most of what is left agrees on the full name, which they cannot
+  discount. They are the standard correction for unevenly common values, kept as an
+  opt-in; the lever that changes this table is a discriminating field.
+
+Reproduce: `--filter-method "*Measure_scoring_new_records_against_a_known_population"` (about ten seconds).
+
 ## Entity-matching benchmarks — pair-level, test split
 
 The thirteen benchmarks of the DeepMatcher study (Mudgal et al., *Deep Learning for Entity Matching: A

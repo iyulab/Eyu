@@ -125,6 +125,13 @@ model adjudicates, and the ratio separates matches weakly where whole field valu
 single threshold 0.19–0.34 on Amazon-Google and Abt-Buy, and 0.40 on Company — no better than calling
 every pair a match) — a comparator ceiling, not a threshold one.
 
+Scoring one new record against a known population (fit once on the population, score each record) has
+been measured on the same Febrl records ([linkage-benchmark.md](linkage-benchmark.md#one-new-record-against-a-known-population)):
+easy with an identifying field; with names and a town only, gray candidates grow with the population, and with
+surnames as concentrated as in Korea 30% of strangers classify as `Match` at 1,500 known people — two in three
+of them sharing the full name. Value frequencies (`FieldLinkageParameters.ValueFrequencies`) reduce that only
+slightly. Not measured: a real register's name distribution, and what a reviewer makes of the gray candidates.
+
 Where there is no ground truth, the pre-filter reports an *unlabeled estimate* of its own error rates
 (`LinkageAnalysis.ErrorRates`: the false-match and false-non-match rates the fitted EM mixture expects of
 its own calls, with the preconditions of that estimate flagged when they did not hold). An estimate is not

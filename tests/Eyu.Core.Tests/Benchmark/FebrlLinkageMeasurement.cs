@@ -205,6 +205,125 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
         }
     }
 
+    /// <summary>
+    /// One new record at a time against a known population — the «is this someone we already know» use,
+    /// scored with parameters measured once on the population (<see cref="LinkagePipeline.EstimateNonMatchAgreement"/>,
+    /// <see cref="FieldLinkageParameters.FromNonMatchAgreement"/>, m = 0.92). From <c>dataset3</c>'s originals,
+    /// <c>N</c> drawn at random are the known people; up to 300 duplicates of theirs are the same people coming
+    /// back and 300 originals left out are strangers. Rows vary the fields (all of them, or only the names and
+    /// where the person lives), the surnames (Febrl's own, or redrawn per person from the published shares of
+    /// Korean surnames — 2015 census: Kim 21.5%, Lee 14.7%, Park 8.4%, Choi 4.7%, Jung 4.3%, the next five
+    /// splitting the rest of the top ten's 63.9%, the remaining 36.1% spread over a hundred), and whether
+    /// value frequencies are used (<see cref="FieldLinkageParameters.ValueFrequencies"/> on the name and town
+    /// fields). Exact comparison, no blocking.
+    /// </summary>
+    [Fact]
+    public async Task Measure_scoring_new_records_against_a_known_population()
+    {
+        var dataset = Datasets.Single(d => d.File == "dataset3.csv");
+        var (all, _) = Parse(await LoadDatasetAsync(dataset), entityModulus: 1);
+        var originals = all.Where(r => r.Id.EndsWith("-org", StringComparison.Ordinal)).OrderBy(r => r.Id, StringComparer.Ordinal).ToList();
+        var returning = all.Where(r => !r.Id.EndsWith("-org", StringComparison.Ordinal)).OrderBy(r => r.Id, StringComparer.Ordinal).ToList();
+        var random = new Random(20261023);
+        var drawn = originals.OrderBy(_ => random.Next()).ToList();
+        string[] thin = ["given_name", "surname", "suburb", "state"];
+
+        var report = new StringBuilder();
+        report.AppendLine("# One new record against a known population (Febrl dataset3)");
+        report.AppendLine();
+        report.AppendLine("| fields | surnames | value frequencies | N known | returning: Match / Gray / not listed | wrong Gray per returning record: mean · p95 · max | wrong Match (total) | strangers with a Match (of which every Match shares the full name) | stranger Gray: mean · p95 · max |");
+        report.AppendLine("|---|---|---|---|---|---|---|---|---|");
+        foreach (var fields in new[] { "all", "names and town" })
+        foreach (var korean in new[] { false, true })
+        foreach (var frequencies in new[] { false, true })
+        foreach (var n in new[] { 500, 1500 })
+        {
+            RawRecord Shape(RawRecord r) => new(r.Id, r.Fields
+                .Where(f => fields == "all" || thin.Contains(f.Key))
+                .ToDictionary(f => f.Key, f => f.Key == "surname" && korean ? KoreanSurname(Entity(r.Id)) : f.Value, StringComparer.Ordinal));
+
+            var known = drawn.Take(n).Select(Shape).ToList();
+            var knownIds = known.Select(r => Entity(r.Id)).ToHashSet(StringComparer.Ordinal);
+            var parameters = FieldLinkageParameters.FromNonMatchAgreement(LinkagePipeline.EstimateNonMatchAgreement(known), 0.92, 0.001);
+            if (frequencies)
+            {
+                parameters = parameters with { ValueFrequencies = LinkagePipeline.MeasureValueFrequencies(known, ["given_name", "surname", "suburb"]) };
+            }
+
+            var entities = known.Select(r => new KnownEntity(Entity(r.Id), r.Id, "Person", [r])).ToList();
+            IReadOnlyList<KnownEntityCandidate> Score(RawRecord r) => LinkagePipeline.Analyze([r], entities, parameters).KnownCandidates;
+
+            int match = 0, gray = 0, unlisted = 0, wrongMatch = 0;
+            var wrongGray = new List<int>();
+            foreach (var record in returning.Where(r => knownIds.Contains(Entity(r.Id))).Take(300).Select(Shape))
+            {
+                var candidates = Score(record);
+                var truth = candidates.FirstOrDefault(c => c.KnownEntityKey == Entity(record.Id));
+                if (truth is null) unlisted++;
+                else if (truth.Classification == LinkageClassification.Match) match++;
+                else gray++;
+                wrongGray.Add(candidates.Count(c => c.KnownEntityKey != Entity(record.Id) && c.Classification == LinkageClassification.GrayZone));
+                wrongMatch += candidates.Count(c => c.KnownEntityKey != Entity(record.Id) && c.Classification == LinkageClassification.Match);
+            }
+
+            var strangerGray = new List<int>();
+            int strangersMatched = 0, sameFullName = 0;
+            var byKey = known.ToDictionary(r => Entity(r.Id), StringComparer.Ordinal);
+            var strangers = drawn.Skip(n).Take(300).Select(Shape).Select(r => r with { Id = r.Id + "-new" }).ToList();
+            foreach (var stranger in strangers)
+            {
+                var candidates = Score(stranger);
+                strangerGray.Add(candidates.Count(c => c.Classification == LinkageClassification.GrayZone));
+                var matched = candidates.Where(c => c.Classification == LinkageClassification.Match).ToList();
+                if (matched.Count == 0) continue;
+                strangersMatched++;
+                if (matched.All(c => SameName(byKey[c.KnownEntityKey], stranger, "given_name") && SameName(byKey[c.KnownEntityKey], stranger, "surname"))) sameFullName++;
+            }
+
+            static string Spread(List<int> xs)
+            {
+                var sorted = xs.Order().ToList();
+                return string.Create(CultureInfo.InvariantCulture, $"{xs.Average():0.0} · {sorted[(int)(0.95 * (sorted.Count - 1))]} · {sorted[^1]}");
+            }
+
+            report.AppendLine(CultureInfo.InvariantCulture,
+                $"| {fields} | {(korean ? "Korean shares" : "Febrl")} | {(frequencies ? "yes" : "no")} | {n} | {match} / {gray} / {unlisted} of {wrongGray.Count} | {Spread(wrongGray)} | {wrongMatch} | {strangersMatched} of {strangers.Count} ({sameFullName} same full name) | {Spread(strangerGray)} |");
+        }
+
+        output.WriteLine(report.ToString());
+        var reportPath = Environment.GetEnvironmentVariable("EYU_BENCHMARK_REPORT");
+        if (!string.IsNullOrWhiteSpace(reportPath))
+        {
+            await File.WriteAllTextAsync(reportPath, report.ToString(), TestContext.Current.CancellationToken);
+        }
+    }
+
+    private static string Entity(string recordId) => recordId[..recordId.IndexOf('-', 4)];
+
+    private static bool SameName(RawRecord a, RawRecord b, string field) =>
+        string.Equals(a.Fields.GetValueOrDefault(field)?.Trim(), b.Fields.GetValueOrDefault(field)?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A surname for the person, drawn from the published shares of Korean surnames — the same draw every run.</summary>
+    private static string KoreanSurname(string entity)
+    {
+        (string Name, double Share)[] shares =
+        [
+            ("kim", 21.5), ("lee", 14.7), ("park", 8.4), ("choi", 4.7), ("jung", 4.3),
+            ("kang", 2.3), ("jo", 2.1), ("yoon", 2.1), ("jang", 2.0), ("lim", 1.8),
+            .. Enumerable.Range(0, 100).Select(i => ($"other{i:00}", 0.361)),
+        ];
+        var point = (uint)entity.Aggregate(17, (h, c) => (h * 31) + c) % 1_000_000 / 1_000_000.0 * shares.Sum(s => s.Share);
+        foreach (var (name, share) in shares)
+        {
+            if ((point -= share) < 0)
+            {
+                return name;
+            }
+        }
+
+        return shares[^1].Name;
+    }
+
     private static void AppendConfiguration(
         StringBuilder report,
         string name,

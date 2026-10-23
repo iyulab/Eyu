@@ -424,9 +424,12 @@ holds counts as much as agreeing on one nobody else has. `LinkagePipeline.Measur
 (`parameters with { ValueFrequencies = … }`) and an exact agreement on a listed value is scored against that
 value's share instead. Name the fields whose values repeat unevenly — names, towns — not numbers or dates.
 Measured on Febrl's dataset3 with only names and a town to go on, 1,500 people known and 300 strangers
-scored, it cut the strangers wrongly classified `Match` from 11 to 6 — and from 80 to 71 with surnames
-redrawn as concentrated as in Korea. What is left is a stranger with the same full name in the same
-region, which those fields cannot tell apart — add a field that can (a birth date, a phone number). A
+scored, it moved the strangers wrongly classified `Match` from 7 to 5 — and from 90 to 85 with surnames
+redrawn as concentrated as in Korea, where without it they reach 30% at that size
+([linkage-benchmark.md](docs/linkage-benchmark.md#one-new-record-against-a-known-population)). The effect is
+small and not uniform. Of what is left with Korean surnames, two in three are strangers with the same full
+name as the known person, which names and a town cannot tell apart — add a field that can (a birth date, a
+phone number). A
 proposal puts its gray candidates against known entities to the model under the same
 `MaxGrayZonePairsInPrompt` budget as its own pairs, strongest first.
 

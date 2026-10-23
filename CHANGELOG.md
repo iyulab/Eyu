@@ -8,7 +8,11 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.23.0
+
+A minor: `RetryingModelClient`, an opt-in wrapper that retries a model call that fails transiently — a
+streamed answer cut in the middle included, which a retry policy on the `HttpClient` pipeline cannot reach.
+No breaking change.
 
 ### Added
 

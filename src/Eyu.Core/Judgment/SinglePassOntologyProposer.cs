@@ -322,8 +322,9 @@ public sealed partial class SinglePassOntologyProposer(
         var linkageAnalysis = linkageParameters is null
             ? LinkagePipeline.Analyze(identity, knownEntities, options, scope, distinct)
             : LinkagePipeline.Analyze(identity, knownEntities, linkageParameters, options, scope, distinct);
-        var promptedPairs = SelectPromptedPairs(linkageAnalysis.Clustering.GrayZonePairs, options.MaxGrayZonePairsInPrompt);
-        var prompt = BuildPrompt(declaredStructures, records, prior, linkageAnalysis, promptedPairs, typeRelations);
+        var grayKnown = linkageAnalysis.KnownCandidates.Where(c => c.Classification == LinkageClassification.GrayZone).ToList();
+        var (promptedPairs, promptedKnown) = SelectPrompted(linkageAnalysis.Clustering.GrayZonePairs, grayKnown, options.MaxGrayZonePairsInPrompt);
+        var prompt = BuildPrompt(declaredStructures, records, prior, linkageAnalysis, promptedPairs, promptedKnown, typeRelations);
         var schema = ResponseSchemaFor(knownEntities.Count > 0, mentionedEntities.Count > 0, typeRelations);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt, schema), cancellationToken).ConfigureAwait(false);
         var parsed = ParseResponse(response.Text, declaredStructures, records, prior, linkageAnalysis, options.RecordsDenoteEntities, typeRelations);
@@ -333,7 +334,7 @@ public sealed partial class SinglePassOntologyProposer(
             Linkage = new LinkageReport(
                 linkageAnalysis,
                 FindSplitClusters(linkageAnalysis.Clustering, proposal.Entities),
-                linkageAnalysis.Clustering.GrayZonePairs.Count - promptedPairs.Count),
+                linkageAnalysis.Clustering.GrayZonePairs.Count + grayKnown.Count - promptedPairs.Count - promptedKnown.Count),
             MergeCandidates = parsed.MergeCandidates,
             DemotedDenotations = parsed.DemotedDenotations,
             TypeRelations = parsed.TypeRelations,
@@ -342,25 +343,31 @@ public sealed partial class SinglePassOntologyProposer(
     }
 
     /// <summary>
-    /// The gray-zone pairs the prompt carries: all of them up to <paramref name="cap"/>; past it, the
-    /// <paramref name="cap"/> with the strongest prior toward the same entity, kept in their original
-    /// order — so a batch under the cap sends exactly the prompt it always sent.
+    /// The gray-zone pairs the prompt carries — pairs of the call's own records and records set against a
+    /// known entity, one budget for both: all of them up to <paramref name="cap"/>; past it, the
+    /// <paramref name="cap"/> with the strongest prior toward the same entity, each kind kept in its
+    /// original order — so a call under the cap sends exactly the prompt it always sent. A record matched
+    /// against a large known population can be gray against hundreds of known entities that share a common
+    /// name, which would otherwise all go into the prompt.
     /// </summary>
-    private static IReadOnlyList<PairLinkage> SelectPromptedPairs(IReadOnlyList<PairLinkage> pairs, int cap)
+    private static (IReadOnlyList<PairLinkage> Pairs, IReadOnlyList<KnownEntityCandidate> Known) SelectPrompted(
+        IReadOnlyList<PairLinkage> pairs, List<KnownEntityCandidate> known, int cap)
     {
-        if (pairs.Count <= cap)
+        if (pairs.Count + known.Count <= cap)
         {
-            return pairs;
+            return (pairs, known);
         }
 
-        return pairs
-            .Select((pair, index) => (pair, index))
-            .OrderByDescending(p => p.pair.LogLikelihoodRatio)
-            .ThenBy(p => p.index)
+        var kept = pairs.Select((pair, index) => (Llr: pair.LogLikelihoodRatio, Own: true, Index: index))
+            .Concat(known.Select((candidate, index) => (Llr: candidate.LogLikelihoodRatio, Own: false, Index: index)))
+            .OrderByDescending(p => p.Llr)
+            .ThenBy(p => p.Own ? 0 : 1)
+            .ThenBy(p => p.Index)
             .Take(cap)
-            .OrderBy(p => p.index)
-            .Select(p => p.pair)
             .ToList();
+        return (
+            [.. kept.Where(p => p.Own).Select(p => p.Index).Order().Select(i => pairs[i])],
+            [.. kept.Where(p => !p.Own).Select(p => p.Index).Order().Select(i => known[i])]);
     }
 
     /// <summary>Confirmed groups whose records the answer attributes to two or more different entities.</summary>
@@ -379,7 +386,7 @@ public sealed partial class SinglePassOntologyProposer(
         return split;
     }
 
-    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, PriorKnowledge prior, LinkageAnalysis linkageAnalysis, IReadOnlyList<PairLinkage> promptedPairs, bool typeRelations)
+    private static string BuildPrompt(IReadOnlyList<DeclaredStructure> declaredStructures, IReadOnlyList<RawRecord> records, PriorKnowledge prior, LinkageAnalysis linkageAnalysis, IReadOnlyList<PairLinkage> promptedPairs, IReadOnlyList<KnownEntityCandidate> promptedKnown, bool typeRelations)
     {
         var (knownEntities, mentionedEntities, knownTypes) = prior;
         var text = new StringBuilder();
@@ -500,12 +507,11 @@ public sealed partial class SinglePassOntologyProposer(
             }
         }
 
-        var maybeKnown = linkageAnalysis.KnownCandidates.Where(c => c.Classification == LinkageClassification.GrayZone).ToList();
-        if (maybeKnown.Count > 0)
+        if (promptedKnown.Count > 0)
         {
             text.AppendLine();
             text.AppendLine("Records that may denote a known entity, needing your judgment (prior evidence toward the same entity, in log-odds -- positive favors the same entity):");
-            foreach (var candidate in maybeKnown)
+            foreach (var candidate in promptedKnown)
             {
                 text.AppendLine(CultureInfo.InvariantCulture, $"- {candidate.RecordId} vs {candidate.KnownEntityKey}: prior log-odds {candidate.LogLikelihoodRatio:F2}");
             }

@@ -52,9 +52,11 @@ namespace Eyu.Core.Linkage;
 /// grounding still cites record ids as before. Defaults to <see langword="true"/>.
 /// </param>
 /// <param name="MaxGrayZonePairsInPrompt">
-/// The most gray-zone pairs a proposer puts to the model in one prompt. Pairs grow with the square of
-/// the batch — measured, 104 records produced 2,187 pairs and a prompt larger than a 131,072-token
-/// context, while the records themselves took a fraction of it. Past the cap the pairs with the
+/// The most gray-zone pairs a proposer puts to the model in one prompt — pairs of the call's own records
+/// and records set against a known entity, under one budget. Pairs grow with the square of the batch —
+/// measured, 104 records produced 2,187 pairs and a prompt larger than a 131,072-token context, while the
+/// records themselves took a fraction of it — and with the known population: a record with a common name
+/// and few other fields is gray against every known entity sharing it. Past the cap the pairs with the
 /// strongest prior evidence toward the same entity are kept (in their usual order) and the rest are
 /// left out; the proposal reports how many (<see cref="Eyu.Core.Proposals.LinkageReport.GrayZonePairsOmitted"/>).
 /// A pair left out is not judged "different" — the model still sees both records and may still merge

@@ -20,7 +20,8 @@ namespace Eyu.Core.Proposals;
 /// </param>
 /// <param name="GrayZonePairsOmitted">
 /// How many gray-zone pairs <see cref="LinkageOptions.MaxGrayZonePairsInPrompt"/> left out of the
-/// prompt. Zero when every pair was put to the model.
+/// prompt — of the call's own records and against known entities together. Zero when every pair was put
+/// to the model.
 /// </param>
 public sealed record LinkageReport(
     LinkageAnalysis Analysis,

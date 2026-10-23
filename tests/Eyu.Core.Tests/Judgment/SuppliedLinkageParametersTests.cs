@@ -80,4 +80,32 @@ public sealed class SuppliedLinkageParametersTests
 
         Assert.NotEqual(EstimationStatus.Supplied, proposal.Linkage!.Analysis.Parameters!.Status);
     }
+    /// <summary>
+    /// A record with a common name set against a large known population is gray against every namesake.
+    /// Those pairs share the prompt's gray-zone budget with the call's own pairs: past the cap the
+    /// strongest are put to the model and the rest are counted as omitted.
+    /// </summary>
+    [Fact]
+    public async Task Gray_candidates_against_known_entities_share_the_prompts_gray_zone_budget()
+    {
+        // A name shared by one person in twenty: agreeing on it alone does not decide.
+        var commonName = FieldLinkageParameters.FromNonMatchAgreement(
+            BinaryLevels.Of(new Dictionary<string, double> { ["name"] = 0.05, ["birth"] = 0.0005, ["school"] = 0.2 }),
+            matchAgreement: 0.95,
+            matchPrior: 0.01);
+        KnownEntity Namesake(int i, string school) => new($"key:{i}", "김민지", "Person",
+            [new RawRecord($"p-{i}", new Dictionary<string, string?> { ["name"] = "김민지", ["birth"] = $"1980-01-{i + 10}", ["school"] = school })]);
+        KnownEntity[] known = [Namesake(1, "새솔고"), Namesake(2, "한빛고"), Namesake(3, "새솔고"), Namesake(4, "한빛고"), Namesake(5, "새솔고"), Namesake(6, "한빛고")];
+        var model = new StubModelClient(Response);
+        var proposer = new SinglePassOntologyProposer(model, new LinkageOptions(MaxGrayZonePairsInPrompt: 3), linkageParameters: commonName);
+
+        var proposal = await proposer.ProposeAsync([], [Newcomer("n-1", "김민지", "1995-05-05")], PriorKnowledge.Of(known), TestContext.Current.CancellationToken);
+
+        var grayKnown = proposal.Linkage!.Analysis.KnownCandidates.Where(c => c.Classification == LinkageClassification.GrayZone).ToList();
+        Assert.Equal(6, grayKnown.Count);
+        var prompted = model.LastPrompt!.Split('\n').Where(l => l.StartsWith("- n-1 vs key:", StringComparison.Ordinal)).ToList();
+        // The three who also share the school are the strongest; in their usual order.
+        Assert.Equal(["- n-1 vs key:2", "- n-1 vs key:4", "- n-1 vs key:6"], prompted.Select(l => l[..l.IndexOf(": prior", StringComparison.Ordinal)]));
+        Assert.Equal(3, proposal.Linkage.GrayZonePairsOmitted);
+    }
 }

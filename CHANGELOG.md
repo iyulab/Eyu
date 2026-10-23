@@ -8,7 +8,12 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.22.0
+
+A minor. Scoring one new record against a known population gets a compiled README example and value
+frequencies (`LinkagePipeline.MeasureValueFrequencies`, `FieldLinkageParameters.ValueFrequencies`), measured on
+Febrl in `docs/linkage-benchmark.md`; a proposal no longer puts every gray-zone candidate against known entities
+into the prompt uncapped. Built against Formbase.Core 0.34.0 (from 0.31.0) and HoneAI.Abstractions 0.10.0 (from 0.9.0).
 
 ### Added
 
@@ -33,7 +38,8 @@ every published version has a section here.
 
 ### Changed
 
-- Built against Formbase.Core 0.34.0 (from 0.31.0); no change to what Eyu proposes.
+- Built against Formbase.Core 0.34.0 (from 0.31.0) and HoneAI.Abstractions 0.10.0 (from 0.9.0); no change to what
+  Eyu proposes.
 
 ## 0.21.0
 

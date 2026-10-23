@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Eyu.Core.Inference;
 using Eyu.Core.Judgment;
 using Eyu.Core.Linkage;
 using Eyu.Core.Proposals;
@@ -29,7 +30,7 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// smaller number is a smoke run whose scores are not the benchmark's). A call that fails leaves its sentences with no triples — scored as missed — and
 /// is counted in the report. <c>EYU_TEXT2KGBENCH_BATCHES</c> — the first sentence id of each batch to run, comma-separated — runs only those
 /// batches (the ones a round's failed calls name), batched as the full round batches them, and writes only their sentences, for merging back.
-/// A call that throws is tried once more (<see cref="LiveCallRetry"/>); the report counts the calls that needed it. What the proposer
+/// A call that fails transiently is tried once more (<see cref="RetryingModelClient"/>); the report counts the calls that needed it. What the proposer
 /// left out of each answer goes to <c>ont_&lt;ontology&gt;_rejections.jsonl</c> beside the outputs (the scorer does not read it), with the
 /// ends' names and types where the answer named them — a relation the declaration rejects is a triple the scorer never sees.
 /// </para>
@@ -63,7 +64,11 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
 
         var (httpClient, modelClient) = EyuLlmLiveClient.Create();
         using var _ = httpClient;
-        var proposer = new SinglePassOntologyProposer(modelClient, LinkageOptions.Default with { RecordsDenoteEntities = false });
+        var retried = new List<string>();
+        string? current = null;
+        var proposer = new SinglePassOntologyProposer(
+            new RetryingModelClient(modelClient, retries: 1, onRetry: r => retried.Add($"{current}: {r.Failure.GetType().Name}: {Excerpt(r.Failure.Message)}")),
+            LinkageOptions.Default with { RecordsDenoteEntities = false });
 
         foreach (var variant in Variants)
         {
@@ -108,19 +113,15 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
             var proposals = new List<OntologyProposal>();
             var calls = 0;
             var failures = new List<string>();
-            var retried = new List<string>();
+            retried.Clear();
             foreach (var batch in batches)
             {
                 calls++;
                 var records = batch.Select(id => Text2KgBenchCorpus.Sentence(id, sentences[id])).ToList();
                 try
                 {
-                    var (proposal, firstFailure) = await LiveCallRetry.RunAsync(() => proposer.ProposeAsync(declarations, records, cancellation), cancellation);
-                    proposals.Add(proposal);
-                    if (firstFailure is not null)
-                    {
-                        retried.Add($"{batch[0]}: {firstFailure.GetType().Name}: {Excerpt(firstFailure.Message)}");
-                    }
+                    current = batch[0];
+                    proposals.Add(await proposer.ProposeAsync(declarations, records, cancellation));
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException || !cancellation.IsCancellationRequested)
                 {

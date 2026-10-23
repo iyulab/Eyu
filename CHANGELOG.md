@@ -8,6 +8,16 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Added
+
+- `RetryingModelClient`: an opt-in `IModelClient` wrapper that tries a call again when it fails
+  transiently — a dropped connection or stream, an error reported inside a streamed answer, a timeout, or
+  408 / 429 / 5xx (`RetryingModelClient.IsTransient`, replaceable). The number of retries and an optional
+  doubling delay are the caller's; each retry is reported to `onRetry` with the request, the failed attempt
+  and its exception, so results can say they include retried calls. `HttpModelClient` still never retries.
+
 ## 0.22.0
 
 A minor. Scoring one new record against a known population gets a compiled README example and value

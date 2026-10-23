@@ -314,7 +314,20 @@ streamed answer ends. The client does not retry; whether and how often to is the
 A retry policy on the `HttpClient`'s handler pipeline covers what fails before the response
 arrives, but a streamed call has its response once the headers are in, so a cut in the middle of
 the answer surfaces from `CompleteAsync` after the pipeline is done — retry around the call to
-cover that too.
+cover that too. `RetryingModelClient` is that wrapper, opt-in:
+
+```csharp
+var retried = 0;
+IModelClient model = new RetryingModelClient(
+    new HttpModelClient(http, "gpt-4o-mini", stream: true),
+    retries: 1,
+    onRetry: retry => retried++);   // say the results include retried calls
+```
+
+It retries a dropped connection or stream, an error reported inside the stream, a timeout, and
+408 / 429 / 5xx — not a refusal, an empty answer or an answer that does not parse
+(`RetryingModelClient.IsTransient`; pass `isTransient` to choose otherwise). How many retries, and
+an optional `delay` doubled before each one, are the caller's.
 
 The proposer describes the JSON it expects in the prompt, but a sentence in a prompt does not
 stop every model from wrapping its answer in a markdown code fence — some self-hosted

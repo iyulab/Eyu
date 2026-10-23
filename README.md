@@ -418,6 +418,18 @@ rare name from a common one, so measure `u` over the whole register. `KnownCandi
 the comparisons with known entities; pairs among the call's own records, if it is given several, are in
 `PairLinkages` and the clusters, as in a batch.
 
+One `u` per field weighs every agreement on it alike, so agreeing on a surname a fifth of the population
+holds counts as much as agreeing on one nobody else has. `LinkagePipeline.MeasureValueFrequencies(population,
+["surname", "given_name"])` measures how common each value is; set it on the parameters
+(`parameters with { ValueFrequencies = … }`) and an exact agreement on a listed value is scored against that
+value's share instead. Name the fields whose values repeat unevenly — names, towns — not numbers or dates.
+Measured on Febrl's dataset3 with only names and a town to go on, 1,500 people known and 300 strangers
+scored, it cut the strangers wrongly classified `Match` from 11 to 6 — and from 80 to 71 with surnames
+redrawn as concentrated as in Korea. What is left is a stranger with the same full name in the same
+region, which those fields cannot tell apart — add a field that can (a birth date, a phone number). A
+proposal puts its gray candidates against known entities to the model under the same
+`MaxGrayZonePairsInPrompt` budget as its own pairs, strongest first.
+
 Without blocking every pair is compared — the square of a batch, or the whole known population for
 each record. `LinkageOptions.BlockingRules` narrows that: each rule is a set of fields, a pair is
 compared when it agrees exactly on every field of some rule, and rules are alternatives, so one rule

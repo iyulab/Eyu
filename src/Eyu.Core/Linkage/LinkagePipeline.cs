@@ -150,6 +150,78 @@ public static class LinkagePipeline
     /// <summary>The default pair budget of <see cref="EstimateNonMatchAgreement"/>.</summary>
     public const int DefaultNonMatchSamplePairs = 100_000;
 
+    /// <summary>
+    /// How common each value of <paramref name="fields"/> is in <paramref name="population"/>: for each field,
+    /// the share of the records holding it (non-blank) that hold each value, values taken in the form
+    /// <see cref="FieldComparator"/> compares — folded (<see cref="TextForm.Fold"/>), trimmed and
+    /// case-insensitive. Set the result as <see cref="FieldLinkageParameters.ValueFrequencies"/> so that
+    /// agreeing on a common value counts for less than agreeing on a rare one. Name the fields whose values
+    /// repeat with uneven frequency — a surname, a given name, a town; for a number or a date of birth the
+    /// field's <c>u</c> already says what one agreement is worth. A field no record holds is absent from the
+    /// result.
+    /// </summary>
+    public static IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>> MeasureValueFrequencies(
+        IReadOnlyList<RawRecord> population, IReadOnlyCollection<string> fields)
+    {
+        ArgumentNullException.ThrowIfNull(population);
+        ArgumentNullException.ThrowIfNull(fields);
+
+        var result = new Dictionary<string, IReadOnlyDictionary<string, double>>(StringComparer.Ordinal);
+        foreach (var field in fields.Distinct(StringComparer.Ordinal))
+        {
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var holding = 0;
+            foreach (var record in population)
+            {
+                if (record.Fields.TryGetValue(field, out var value) && !string.IsNullOrWhiteSpace(value))
+                {
+                    var form = ValueForm(value);
+                    counts[form] = counts.GetValueOrDefault(form) + 1;
+                    holding++;
+                }
+            }
+
+            if (holding > 0)
+            {
+                result[field] = counts.ToDictionary(kv => kv.Key, kv => (double)kv.Value / holding, StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        return result;
+    }
+
+    private static string ValueForm(string value) => TextForm.Fold(value).Trim();
+
+    /// <summary>
+    /// The pair's log-likelihood ratio under <paramref name="parameters"/>, with each field the parameters
+    /// hold value frequencies for scored against the agreed value's share instead of the field's <c>u</c>
+    /// (<see cref="FieldLinkageParameters.ValueFrequencies"/>) — only where the pair sits on the field's top
+    /// level and the two values are the same in compared form.
+    /// </summary>
+    private static double Score(RawRecord a, RawRecord b, IReadOnlyDictionary<string, FieldAgreementLevel> vector, FieldLinkageParameters parameters)
+    {
+        var llr = FellegiSunterEstimator.ComputeLogLikelihoodRatio(vector, parameters);
+        if (parameters.ValueFrequencies is not { } frequencies)
+        {
+            return llr;
+        }
+
+        foreach (var (field, shares) in frequencies)
+        {
+            if (vector.TryGetValue(field, out var level) && level.IsTop
+                && parameters.ULevelProbabilities.TryGetValue(field, out var u) && parameters.MLevelProbabilities.ContainsKey(field)
+                && a.Fields.TryGetValue(field, out var valueA) && b.Fields.TryGetValue(field, out var valueB)
+                && valueA is not null && valueB is not null
+                && string.Equals(ValueForm(valueA), ValueForm(valueB), StringComparison.OrdinalIgnoreCase)
+                && shares.TryGetValue(ValueForm(valueA), out var share))
+            {
+                llr += Math.Log(u[^1] / Math.Max(share, FellegiSunterEstimator.AgreementProbabilityFloor));
+            }
+        }
+
+        return llr;
+    }
+
     private static LinkageAnalysis AnalyzeCore(IReadOnlyList<RawRecord> records, IReadOnlyList<KnownEntity> knownEntities, FieldLinkageParameters? suppliedParameters, LinkageOptions? options, Func<RawRecord, string?>? comparisonScope, Func<RawRecord, RawRecord, bool>? cannotLink)
     {
         ArgumentNullException.ThrowIfNull(records);
@@ -196,12 +268,12 @@ public static class LinkagePipeline
         var pairLinkages = new List<PairLinkage>(ownPairs.Count);
         for (var i = 0; i < ownPairs.Count; i++)
         {
-            var llr = FellegiSunterEstimator.ComputeLogLikelihoodRatio(ownVectors[i], parameters);
+            var llr = Score(ownPairs[i].A, ownPairs[i].B, ownVectors[i], parameters);
             pairLinkages.Add(new PairLinkage(ownPairs[i].A.Id, ownPairs[i].B.Id, LinkageClassifier.Classify(llr, opts.MatchThreshold, opts.NonMatchThreshold), llr));
         }
 
         var knownCandidates = crossPairs
-            .Select((p, i) => (p.Record.Id, p.Key, Llr: FellegiSunterEstimator.ComputeLogLikelihoodRatio(crossVectors[i], parameters)))
+            .Select((p, i) => (p.Record.Id, p.Key, Llr: Score(p.Record, p.Known, crossVectors[i], parameters)))
             .GroupBy(c => (c.Id, c.Key))
             .Select(g => g.MaxBy(c => c.Llr))
             .Select(c => new KnownEntityCandidate(c.Id, c.Key, LinkageClassifier.Classify(c.Llr, opts.MatchThreshold, opts.NonMatchThreshold), c.Llr))

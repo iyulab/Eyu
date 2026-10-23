@@ -16,9 +16,17 @@ every published version has a section here.
   measure `u` on the population, `FieldLinkageParameters.FromNonMatchAgreement`, then
   `LinkagePipeline.Analyze(records, knownEntities, parameters)` and `KnownCandidates` — and how to read
   `GrayZone` there. `KnownCandidates` documents that `NonMatch` comparisons are left out.
+- Value frequencies: `LinkagePipeline.MeasureValueFrequencies(population, fields)` measures how common each
+  value of the named fields is, and `FieldLinkageParameters.ValueFrequencies` carries it, so an exact
+  agreement on a common value counts for less than one on a rare value. Parameters without it — and every
+  fitted model — score as before.
 
 ### Fixed
 
+- A proposal scoring records against known entities put every gray-zone candidate against them into the
+  prompt, uncapped: one record with a common name against a large known population could add hundreds of
+  lines. They now share `MaxGrayZonePairsInPrompt` with the call's own gray-zone pairs — strongest first —
+  and `LinkageReport.GrayZonePairsOmitted` counts both.
 - `Eyu.Formbase`: a form type that holds a repeated section is sampled without the array the section is
   held in. The array's items are the section's own records, and the parent's projected table does not
   carry it, so a type proposed over the parent could name a field no projected row has.

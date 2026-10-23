@@ -35,6 +35,18 @@ public sealed record FieldLinkageParameters(
     public bool LabelsSwapped { get; init; }
 
     /// <summary>
+    /// For the fields it names, how common each value is in the population
+    /// (<see cref="LinkagePipeline.MeasureValueFrequencies"/>): the share of the records holding the field
+    /// that hold that value. When a pair agrees exactly on such a field and its value is listed, the pair is
+    /// scored against that value's share instead of the field's <c>u</c> — agreeing on a surname one person
+    /// in five carries counts for less than agreeing on one nobody else has, which one <c>u</c> per field
+    /// cannot tell apart. A value not listed, a near-miss level and a field not named are scored as without
+    /// it. Null — the default, and every fitted model — leaves every score as it was. Keyed by field, then by
+    /// value in the form <see cref="FieldComparator"/> compares (case-insensitive).
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>? ValueFrequencies { get; init; }
+
+    /// <summary>
     /// Parameters for scoring new records against a population without fitting anything on them: each
     /// field's level distribution among non-matches as measured (<see cref="LinkagePipeline.EstimateNonMatchAgreement"/>),
     /// <paramref name="matchAgreement"/> as every field's probability of a true duplicate reaching the top

@@ -31,7 +31,7 @@ dotnet add package Eyu.Rdf --version 0.21.0
 
 `Eyu.Core` alone is enough to implement the five ports against your own source; `Eyu.Formbase` is
 the adapter for one of them and reads `Formbase.Core` as a package, so it pairs with a Formbase
-release — this one is built against `Formbase.* 0.31.0`. `Eyu.Rdf` writes a proposal as OWL in Turtle
+release — this one is built against `Formbase.* 0.34.0`. `Eyu.Rdf` writes a proposal as OWL in Turtle
 (see [Exporting as RDF/OWL](#exporting-as-rdfowl)).
 
 Every package is AOT-compatible (`IsAotCompatible`): a Native AOT or trimmed host publishes and runs
@@ -373,6 +373,50 @@ that compares a few records with known entities on every call takes the same par
 `new SinglePassOntologyProposer(model, linkageParameters: parameters)` — and scores each call's
 pre-filter with them, so every call judges on the population's scale rather than on a fit over its own
 handful of pairs.
+
+Without a model, one new record against the people already known:
+
+<!-- snippet: compile packages="Eyu.Core" -->
+```csharp
+using Eyu.Core.Linkage;
+using Eyu.Core.Records;
+
+// The people already known, each with the record that denotes it. A real population is the whole
+// register -- the more of it the measurement sees, the better it knows how often strangers agree.
+RawRecord[] population =
+[
+    new("c-1", new Dictionary<string, string?> { ["name"] = "Kim Minji", ["phone"] = "010-1234-5678", ["city"] = "Seoul" }),
+    new("c-2", new Dictionary<string, string?> { ["name"] = "Lee Junho", ["phone"] = "010-2222-3333", ["city"] = "Busan" }),
+    new("c-3", new Dictionary<string, string?> { ["name"] = "Park Seoyeon", ["phone"] = "010-4444-5555", ["city"] = "Seoul" }),
+    new("c-4", new Dictionary<string, string?> { ["name"] = "Kim Minji", ["phone"] = "010-9876-5432", ["city"] = "Daegu" }),
+];
+KnownEntity[] known = [.. population.Select(r => new KnownEntity(r.Id, r.Fields["name"]!, "Customer", [r]))];
+
+// Fit once, on the population: how often each field agrees between strangers (u), and how often a
+// true duplicate still agrees (m -- no default; between 0.90 and 0.95 it decides whether two people
+// with one name are told apart). The match prior feeds posteriors only, not the log-likelihood ratio.
+var nonMatch = LinkagePipeline.EstimateNonMatchAgreement(population);
+var parameters = FieldLinkageParameters.FromNonMatchAgreement(nonMatch, matchAgreement: 0.92, matchPrior: 0.001);
+
+// Then score each new record against the known ones, fitting nothing on it.
+RawRecord incoming = new("new-1", new Dictionary<string, string?> { ["name"] = "Kim Minji", ["phone"] = "010-1234-5678", ["city"] = "Seoul" });
+var analysis = LinkagePipeline.Analyze([incoming], known, parameters);
+
+// One candidate per known entity the record was compared with and not ruled out.
+foreach (var candidate in analysis.KnownCandidates.OrderByDescending(c => c.LogLikelihoodRatio))
+{
+    Console.WriteLine($"{candidate.RecordId} ~ {candidate.KnownEntityKey}: {candidate.Classification} (LLR {candidate.LogLikelihoodRatio:0.0})");
+}
+```
+
+This prints `new-1 ~ c-1: Match`, and `GrayZone` for `c-3` and `c-4`, each of which shares one field with the
+new record; `c-2`, which shares none, classifies as `NonMatch` and is left out.
+Read `Match` as the answer and `GrayZone` as a pair for someone to review: with the default thresholds
+(`LinkageOptions`) one agreeing field out of three or four lands there, and the number of such pairs grows
+with the population and with how common a value is — on a few records the measurement cannot yet tell a
+rare name from a common one, so measure `u` over the whole register. `KnownCandidates` holds only
+the comparisons with known entities; pairs among the call's own records, if it is given several, are in
+`PairLinkages` and the clusters, as in a batch.
 
 Without blocking every pair is compared — the square of a batch, or the whole known population for
 each record. `LinkageOptions.BlockingRules` narrows that: each rule is a set of fields, a pair is

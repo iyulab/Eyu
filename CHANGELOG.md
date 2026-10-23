@@ -10,6 +10,13 @@ every published version has a section here.
 
 ## Unreleased
 
+### Added
+
+- README: a compiled example of scoring one new record against known entities without a model —
+  measure `u` on the population, `FieldLinkageParameters.FromNonMatchAgreement`, then
+  `LinkagePipeline.Analyze(records, knownEntities, parameters)` and `KnownCandidates` — and how to read
+  `GrayZone` there. `KnownCandidates` documents that `NonMatch` comparisons are left out.
+
 ### Fixed
 
 - `Eyu.Formbase`: a form type that holds a repeated section is sampled without the array the section is

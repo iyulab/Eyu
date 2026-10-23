@@ -159,4 +159,4 @@ jobs:
       - name: Package consumer check
         uses: iyulab/dotnet-ci-actions/package-consumer-check@8ab06f352d8c3e31d8c7f56dae1ecc6c3a160ef6 # main, 2026-09-25
         with:
-          min-snippets: '1'
+          min-snippets: '2'

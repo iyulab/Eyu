@@ -17,8 +17,10 @@ public sealed record LinkageAnalysis(
     LinkageErrorRateEstimate? ErrorRates = null)
 {
     /// <summary>
-    /// Evidence that a record denotes a known entity from an earlier call, strongest per record and key;
-    /// empty when no known entities were given.
+    /// Evidence that a record denotes a known entity from an earlier call, strongest per record and key,
+    /// ordered by record id then key. A comparison classified <see cref="LinkageClassification.NonMatch"/>
+    /// is left out, so a known entity absent here was compared and ruled out or never compared (blocking).
+    /// Empty when no known entities were given.
     /// </summary>
     public IReadOnlyList<KnownEntityCandidate> KnownCandidates { get; init; } = [];
 }

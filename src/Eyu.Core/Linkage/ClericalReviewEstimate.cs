@@ -140,7 +140,9 @@ public static class ClericalReviewEstimator
     /// When the sample cannot describe the population it claims to: no strata at all, a stratum
     /// with a non-positive population, an unsampled stratum (its mean is undefined, and weighting
     /// the others up in its place would silently estimate a different population), or more
-    /// reviewed records than the stratum holds.
+    /// reviewed records than the stratum holds. Also when a stratum has no name or shares one (as
+    /// <see cref="ClericalReviewSampler.DrawPilot(IReadOnlyList{PopulationStratum}, int, int)"/>
+    /// refuses), or a score is not a proportion in [0, 1].
     /// </exception>
     public static ClericalReviewEstimate Estimate(IReadOnlyList<ReviewStratum> strata, int seed)
     {
@@ -150,8 +152,24 @@ public static class ClericalReviewEstimator
             throw new ArgumentException("A stratified estimate needs at least one stratum.", nameof(strata));
         }
 
+        var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var stratum in strata)
         {
+            if (string.IsNullOrEmpty(stratum.Name) || !names.Add(stratum.Name))
+            {
+                throw new ArgumentException($"Every stratum needs a name of its own; '{stratum.Name}' is empty or given twice.", nameof(strata));
+            }
+
+            foreach (var score in stratum.ReviewedScores)
+            {
+                if (!(score >= 0.0 && score <= 1.0))
+                {
+                    throw new ArgumentException(
+                        $"Stratum '{stratum.Name}' holds a score of {score}; a reviewed score is a proportion in [0, 1].",
+                        nameof(strata));
+                }
+            }
+
             if (stratum.PopulationSize <= 0)
             {
                 throw new ArgumentException(

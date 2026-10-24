@@ -205,6 +205,40 @@ public class ClericalReviewEstimatorTests
         Assert.Throws<ArgumentException>(() => ClericalReviewEstimator.Estimate([], Seed));
     }
 
+    // Scores are per-record B-cubed precision or recall, so they live in [0, 1]; the variance bound
+    // for a stratum that never varied is a proportion's. A score outside that range, or a NaN, is
+    // a broken review rather than a measurement, and is refused by the stratum it came in.
+    [Theory]
+    [InlineData(1.5)]
+    [InlineData(-0.1)]
+    [InlineData(double.NaN)]
+    public void A_score_that_is_not_a_proportion_is_refused_by_name(double score)
+    {
+        var error = Assert.Throws<ArgumentException>(() => ClericalReviewEstimator.Estimate(
+            [
+                new ReviewStratum("fine", 100, [0.5, 0.9]),
+                new ReviewStratum("broken", 100, [0.7, score]),
+            ],
+            Seed));
+
+        Assert.Contains("broken", error.Message, StringComparison.Ordinal);
+    }
+
+    // Refusals name the stratum, and a sample from DrawPilot never repeats a name, so a sample
+    // that does is not one the sampler drew — same rule as DrawPilot's.
+    [Theory]
+    [InlineData("twice", "twice")]
+    [InlineData("", "other")]
+    public void Strata_without_a_name_of_their_own_are_refused(string first, string second)
+    {
+        Assert.Throws<ArgumentException>(() => ClericalReviewEstimator.Estimate(
+            [
+                new ReviewStratum(first, 100, [0.5, 0.9]),
+                new ReviewStratum(second, 100, [0.7, 0.8]),
+            ],
+            Seed));
+    }
+
     // The intervals are left unclamped on purpose: scores live in [0, 1], and a normal interval
     // that runs past 1.0 is the visible sign that the approximation has failed at the boundary.
     // Clamping it to 1.0 would turn that warning into a plausible-looking number.

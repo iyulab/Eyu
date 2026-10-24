@@ -280,7 +280,11 @@ public static class ClericalReviewSampler
     /// same proportions, so the counts sum to <paramref name="totalBudget"/> unless the strata
     /// together hold fewer records than that.
     /// </summary>
-    /// <exception cref="ArgumentException">When no strata are given, or a stratum's population is not positive.</exception>
+    /// <exception cref="ArgumentException">
+    /// When no strata are given, a stratum's population is not positive, or its standard deviation
+    /// is negative, NaN or infinite — no pilot measures that, and reading it at the floor or letting
+    /// it into the weights would plan the round on a number nobody measured.
+    /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">When the budget cannot give every stratum one record.</exception>
     public static IReadOnlyList<int> AllocateNeyman(IReadOnlyList<StratumSpread> strata, int totalBudget)
     {
@@ -296,6 +300,13 @@ public static class ClericalReviewSampler
             {
                 throw new ArgumentException(
                     $"A stratum claims a population of {stratum.PopulationSize}; a stratum holding no records cannot be allocated to.",
+                    nameof(strata));
+            }
+
+            if (!double.IsFinite(stratum.StandardDeviation) || stratum.StandardDeviation < 0)
+            {
+                throw new ArgumentException(
+                    $"A stratum reports a standard deviation of {stratum.StandardDeviation}; a pilot's deviation is finite and not negative.",
                     nameof(strata));
             }
         }

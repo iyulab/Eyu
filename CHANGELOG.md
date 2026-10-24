@@ -8,6 +8,17 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Fixed
+
+- `ClericalReviewSampler.AllocateNeyman` refuses a stratum whose standard deviation is negative, NaN or
+  infinite (`ArgumentException`). A negative one was read at the design floor, and a NaN one spread into
+  every stratum's weight and the allocation built on it.
+- `ClericalReviewEstimator.Estimate` refuses a reviewed score that is not a proportion in [0, 1] (NaN
+  included), naming its stratum, and strata without a name of their own — empty, or the same name twice —
+  as `ClericalReviewSampler.DrawPilot` already does. Such samples were estimated as given.
+
 ## 0.23.0
 
 A minor: `RetryingModelClient`, an opt-in wrapper that retries a model call that fails transiently — a

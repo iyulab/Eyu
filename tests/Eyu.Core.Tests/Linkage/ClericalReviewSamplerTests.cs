@@ -239,6 +239,22 @@ public class ClericalReviewSamplerTests
             2));
     }
 
+    // A standard deviation is never negative, and a NaN or an infinite one is a broken pilot, not
+    // a quiet stratum: reading it at the design floor, or letting a NaN weight spread through the
+    // sharing, would plan the next round on a number nobody measured.
+    [Theory]
+    [InlineData(-0.1)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void A_deviation_that_no_pilot_could_have_measured_is_refused(double deviation)
+    {
+        var error = Assert.Throws<ArgumentException>(() => ClericalReviewSampler.AllocateNeyman(
+            [new StratumSpread(100, 0.5), new StratumSpread(100, deviation)],
+            50));
+
+        Assert.Equal("strata", error.ParamName);
+    }
+
     private static LinkageAnalysis ManySingletons(int count) =>
         Analysis(
             [.. Enumerable.Range(0, count).Select(i => new RecordCluster([$"r{i:D3}"]))],

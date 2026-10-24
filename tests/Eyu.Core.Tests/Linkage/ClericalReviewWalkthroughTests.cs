@@ -14,8 +14,11 @@ public class ClericalReviewWalkthroughTests
 {
     private const string Reviewer = "r1";
 
-    /// <summary>The seed under which the pilot draws a1, a3 and j1 from the contested stratum — the draw the walkthrough had.</summary>
-    private const int Seed = 7;
+    /// <summary>
+    /// The seed under which the pilot draws a1, a3 and j1 from the contested stratum — the draw the walkthrough had.
+    /// The draw is Gil.Review's xoshiro256**; 14 is the smallest seed giving it.
+    /// </summary>
+    private const int Seed = 14;
 
     private static readonly string[] Ids =
         ["a1", "a2", "a3", "j1", "b1", "b2", "c1", "c2", "d1", "d2", "e1", "e2", "f1", "g1", "h1", "i1"];

@@ -28,6 +28,14 @@ public class ClericalReviewSamplerTests
         new(new ClusteringResult(clusters, []), pairs, parameters);
 
     [Fact]
+    public void The_design_floor_is_the_one_the_allocation_plans_against()
+    {
+        // Eyu defines the floor itself so reading it needs no native call; this keeps it equal to
+        // the floor Gil.Review's allocation applies.
+        Assert.Equal(Gil.Review.ReviewSampler.MinimumDesignDeviation, ClericalReviewSampler.MinimumDesignDeviation);
+    }
+
+    [Fact]
     public void A_record_the_model_was_unsure_about_is_contested_whatever_its_cluster_looks_like()
     {
         var analysis = Analysis(

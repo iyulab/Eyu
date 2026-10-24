@@ -29,6 +29,23 @@ var records = new List<RawRecord>
 var linkage = LinkagePipeline.Analyze(records);
 Check(linkage.PairLinkages.Count == 3, $"linkage pairs: {linkage.PairLinkages.Count}");
 
+// Clerical review: the draw, allocation, estimate and agreement run in Gil.Review's native library, so
+// this is where a missing or unloadable native asset in the AOT output would show.
+var pilot = ClericalReviewSampler.DrawPilot(linkage, perStratum: 1, seed: 7);
+Check(pilot.SelectedCount >= 1, $"pilot draw: {pilot.SelectedCount}");
+var allocation = ClericalReviewSampler.AllocateNeyman([new StratumSpread(100, 0.5), new StratumSpread(900, 0.3)], 100);
+Check(allocation is [16, 84], $"neyman allocation: [{string.Join(", ", allocation)}]");
+var reviewEstimate = ClericalReviewEstimator.Estimate([new ReviewStratum("A", 100, [1.0, 0.5]), new ReviewStratum("B", 100, [0.8, 0.6])], seed: 7);
+Check(Math.Abs(reviewEstimate.Estimate - 0.725) < 1e-12 && reviewEstimate.Bootstrap.Low <= reviewEstimate.Bootstrap.High, $"review estimate: {reviewEstimate.Estimate}");
+var agreement = ClericalReviewAgreement.Measure(
+[
+    new ReviewVerdict("r-01", "r-02", ReviewOutcome.Same, "alice"),
+    new ReviewVerdict("r-01", "r-02", ReviewOutcome.Same, "bob"),
+    new ReviewVerdict("r-01", "r-03", ReviewOutcome.Different, "alice"),
+    new ReviewVerdict("r-01", "r-03", ReviewOutcome.Same, "bob"),
+]);
+Check(agreement.ComparedPairs == 2 && Math.Abs(agreement.ObservedAgreement - 0.5) < 1e-12, $"reviewer agreement: {agreement.ObservedAgreement}");
+
 // This host has InvariantGlobalization, where the runtime leaves Hangul unnormalized: Eyu composes
 // decomposed jamo itself, so the same name typed on another system still agrees.
 var decomposed = new RawRecord("r-04", new Dictionary<string, string?> { ["name"] = "김민수", ["city"] = "서울" });

@@ -52,9 +52,9 @@ errors occur:
 
 | configuration | set | precision: normal / bootstrap | recall: normal / bootstrap |
 |---|---|---|---|
-| exact, without identifiers | `dataset1` | **100** / 23 (normal was 81) | **100** / 100 (normal was 57) |
-| exact, without identifiers | `dataset3` subset | **100** / 70 (normal was 85) | **100** / 80 (normal was 77) |
-| Jaro-Winkler, without identifiers | `dataset3` subset | 100 / 100 | **100** / 34 (normal was 4) |
+| exact, without identifiers | `dataset1` | **100** / 25 (normal was 81) | **100** / 100 (normal was 57) |
+| exact, without identifiers | `dataset3` subset | **100** / 72 (normal was 85) | **100** / 92 (normal was 77) |
+| Jaro-Winkler, without identifiers | `dataset3` subset | 100 / 100 | **100** / 28 (normal was 4) |
 
 "Was" is the normal interval before the fix below and before the EM fitted its own match prior, over the same seeds.
 

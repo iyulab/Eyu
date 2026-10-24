@@ -1,3 +1,5 @@
+using GilReview = Gil.Review;
+
 namespace Eyu.Core.Linkage;
 
 /// <summary>
@@ -234,30 +236,19 @@ public static class ClericalReviewSampler
             }
         }
 
-        var caveats = ReviewSampleCaveat.None;
-        var random = new Random(seed);
-        var drawn = new List<SampledStratum>();
-        foreach (var stratum in strata)
-        {
-            var members = stratum.RecordIds.Order(StringComparer.Ordinal).ToList();
+        // Drawn by Gil.Review (xoshiro256** seeded from the int seed sign-extended to ulong,
+        // ids ordered by UTF-8 bytes rather than StringComparer.Ordinal). The validation above stays
+        // Eyu's so the exception types and messages of this API do not change.
+        var drawn = GilReview.ReviewSampler.DrawPilot(
+            [.. strata.Select(stratum => new GilReview.PopulationStratum(stratum.Name, [.. stratum.RecordIds]))],
+            perStratum,
+            unchecked((ulong)seed));
 
-            if (members.Count == 0)
-            {
-                caveats |= ReviewSampleCaveat.StratumEmpty;
-                continue;
-            }
-
-            if (members.Count <= perStratum)
-            {
-                caveats |= ReviewSampleCaveat.StratumTakenWhole;
-                drawn.Add(new SampledStratum(stratum.Name, members.Count, members));
-                continue;
-            }
-
-            drawn.Add(new SampledStratum(stratum.Name, members.Count, SelectWithoutReplacement(members, perStratum, random)));
-        }
-
-        return new ReviewSample(drawn, perStratum, seed, caveats);
+        return new ReviewSample(
+            [.. drawn.Strata.Select(stratum => new SampledStratum(stratum.Name, stratum.Population, stratum.Selected))],
+            perStratum,
+            seed,
+            (ReviewSampleCaveat)(int)drawn.Caveats);
     }
 
     /// <summary>
@@ -269,6 +260,9 @@ public static class ClericalReviewSampler
     /// design proportion is therefore truncated away from the boundary at the planning stage, the
     /// way survey allocation does when a pilot proportion comes back at 0 or 1.
     /// </summary>
+    // Defined here rather than read from Gil.Review (the same √(0.05 · 0.95)): reading it there is a
+    // native call, which would fail this type's initializer — and StratifyRecords with it — on a
+    // runtime the native library does not ship for.
     public static readonly double MinimumDesignDeviation = Math.Sqrt(0.05 * 0.95);
 
     /// <summary>
@@ -313,111 +307,10 @@ public static class ClericalReviewSampler
 
         ArgumentOutOfRangeException.ThrowIfLessThan(totalBudget, strata.Count);
 
-        var weights = new double[strata.Count];
-        for (var i = 0; i < strata.Count; i++)
-        {
-            weights[i] = strata[i].PopulationSize * Math.Max(strata[i].StandardDeviation, MinimumDesignDeviation);
-        }
+        var allocation = GilReview.ReviewSampler.AllocateNeyman(
+            [.. strata.Select(stratum => new GilReview.StratumSpread(stratum.PopulationSize, stratum.StandardDeviation))],
+            totalBudget);
 
-        // Share the budget by weight among the strata still open; any stratum that lands below its
-        // floor of one or above its population is fixed there and leaves the sharing, and the
-        // budget that fixing freed (or consumed) is shared again among the rest. Repeats until a
-        // round fixes nothing -- the shape of capped Neyman allocation, so a stratum's surplus goes
-        // to the others instead of nowhere.
-        var allocation = new int[strata.Count];
-        var fixedAt = new bool[strata.Count];
-        var open = new List<int>(Enumerable.Range(0, strata.Count));
-        while (true)
-        {
-            var remaining = totalBudget;
-            for (var i = 0; i < strata.Count; i++)
-            {
-                if (fixedAt[i])
-                {
-                    remaining -= allocation[i];
-                }
-            }
-
-            if (open.Count == 0)
-            {
-                break;
-            }
-
-            double weightTotal = 0;
-            foreach (var i in open)
-            {
-                weightTotal += weights[i];
-            }
-
-            var remainders = new List<(int Index, double Fraction)>(open.Count);
-            var handedOut = 0;
-            foreach (var i in open)
-            {
-                var ideal = Math.Max(remaining, 0) * weights[i] / weightTotal;
-                allocation[i] = (int)Math.Floor(ideal);
-                handedOut += allocation[i];
-                remainders.Add((i, ideal - allocation[i]));
-            }
-
-            // Largest remainder, so this round's counts sum to what was shared and not to whatever
-            // rounding left.
-            foreach (var (index, _) in remainders.OrderByDescending(r => r.Fraction).ThenBy(r => r.Index))
-            {
-                if (handedOut >= remaining)
-                {
-                    break;
-                }
-
-                allocation[index]++;
-                handedOut++;
-            }
-
-            var fixedThisRound = false;
-            foreach (var i in open.ToArray())
-            {
-                var capacity = strata[i].PopulationSize;
-                if (allocation[i] < 1)
-                {
-                    allocation[i] = 1;
-                }
-                else if (allocation[i] <= capacity)
-                {
-                    continue;
-                }
-                else
-                {
-                    allocation[i] = (int)capacity;
-                }
-
-                fixedAt[i] = true;
-                open.Remove(i);
-                fixedThisRound = true;
-            }
-
-            if (!fixedThisRound)
-            {
-                break;
-            }
-        }
-
-        return allocation;
-    }
-
-    /// <summary>
-    /// Partial Fisher-Yates: shuffle only as far as the number needed, which is a simple random
-    /// sample without replacement and does not touch the rest of the stratum.
-    /// </summary>
-    private static List<string> SelectWithoutReplacement(List<string> ordered, int count, Random random)
-    {
-        var pool = new List<string>(ordered);
-        var selected = new List<string>(count);
-        for (var i = 0; i < count; i++)
-        {
-            var pick = random.Next(i, pool.Count);
-            (pool[i], pool[pick]) = (pool[pick], pool[i]);
-            selected.Add(pool[i]);
-        }
-
-        return selected;
+        return [.. allocation.Select(count => checked((int)count))];
     }
 }

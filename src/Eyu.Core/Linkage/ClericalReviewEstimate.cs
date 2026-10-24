@@ -1,3 +1,5 @@
+using GilReview = Gil.Review;
+
 namespace Eyu.Core.Linkage;
 
 /// <summary>
@@ -127,8 +129,7 @@ public static class ClericalReviewEstimator
     public static double UnobservedVariationBound(int reviewed)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(reviewed, 1);
-        var fraction = 1.0 - Math.Pow(0.025, 1.0 / reviewed);
-        return fraction * (1.0 - fraction);
+        return GilReview.ReviewEstimator.UnobservedVariationBound(reviewed);
     }
 
     /// <summary>
@@ -192,176 +193,37 @@ public static class ClericalReviewEstimator
             }
         }
 
-        long population = 0;
-        foreach (var stratum in strata)
-        {
-            population += stratum.PopulationSize;
-        }
-
-        var caveats = ClericalReviewCaveat.None;
-        double estimate = 0, varianceSum = 0;
-        var sampleSize = 0;
-        foreach (var stratum in strata)
-        {
-            var reviewed = stratum.ReviewedScores.Count;
-            sampleSize += reviewed;
-            var weight = (double)stratum.PopulationSize / population;
-            var mean = Mean(stratum.ReviewedScores);
-            estimate += weight * mean;
-
-            if (reviewed < MinimumReviewedPerStratum)
-            {
-                caveats |= ClericalReviewCaveat.StratumTooSmall;
-            }
-
-            if (reviewed == stratum.PopulationSize)
-            {
-                caveats |= ClericalReviewCaveat.StratumIsCensus;
-            }
-
-            if (IsConstant(stratum.ReviewedScores))
-            {
-                caveats |= ClericalReviewCaveat.NoVariationInStratum;
-            }
-
-            // Finite-population correction: a stratum reviewed in full contributes no sampling
-            // variance, because nothing was left in it that was not looked at. A stratum whose
-            // scores never varied contributes the most variance its sample still allows, not zero.
-            var correction = 1.0 - ((double)reviewed / stratum.PopulationSize);
-            var variance = IsConstant(stratum.ReviewedScores)
-                ? UnobservedVariationBound(reviewed)
-                : SampleVariance(stratum.ReviewedScores, mean);
-            varianceSum += weight * weight * correction * variance / reviewed;
-        }
-
-        var standardError = Math.Sqrt(varianceSum);
-        var normal = new ScoreInterval(
-            estimate - (NormalQuantile95 * standardError),
-            estimate + (NormalQuantile95 * standardError));
-
-        return new ClericalReviewEstimate(
-            estimate,
-            standardError,
-            normal,
-            Bootstrap(strata, population, seed),
-            sampleSize,
-            population,
-            seed,
-            caveats);
-    }
-
-    /// <summary>
-    /// Percentile bootstrap under the sampling design — the rescaling bootstrap of Rao and Wu
-    /// (1988) for stratified sampling without replacement. Each stratum is resampled with
-    /// replacement to <c>m_h = n_h − 1</c> draws and the resampled mean is pulled back toward the
-    /// observed one by <c>λ_h = sqrt(m_h (1 − f_h) / (n_h − 1)) = sqrt(1 − n_h/N_h)</c>, so that
-    /// the draws' variance is <c>(1 − f_h) s²_h / n_h</c> — the same quantity the normal standard
-    /// error uses. A plain resample to <c>n_h</c> ignores the finite-population correction: a
-    /// stratum reviewed in full would then still scatter, and the two intervals would disagree by
-    /// design rather than because the scores are skewed. With the rescaling, a census stratum
-    /// contributes exactly nothing, as it does to the standard error.
-    /// <para>
-    /// Resampling happens <em>within</em> each stratum so the design is preserved — pooling the
-    /// strata first would estimate a simple random sample, which this is not. A stratum reviewed
-    /// once has no draw to make (<c>m_h = 0</c>) and contributes its single score unchanged, which
-    /// is the same understatement <see cref="ClericalReviewCaveat.StratumTooSmall"/> already
-    /// reports for the standard error.
-    /// </para>
-    /// </summary>
-    private static ScoreInterval Bootstrap(IReadOnlyList<ReviewStratum> strata, long population, int seed)
-    {
-        var random = new Random(seed);
-        var means = new double[strata.Count];
-        var rescale = new double[strata.Count];
+        // Estimated by Gil.Review. Every reviewed score becomes one item of weight 1 in its
+        // stratum's index. The checks above are Eyu's own, so this API's exceptions and messages do
+        // not depend on Gil's. The int seed is sign-extended to ulong.
+        var items = new List<GilReview.ScoredItem>();
         for (var s = 0; s < strata.Count; s++)
         {
-            var stratum = strata[s];
-            means[s] = Mean(stratum.ReviewedScores);
-            var reviewed = stratum.ReviewedScores.Count;
-            rescale[s] = reviewed < MinimumReviewedPerStratum
-                ? 0.0
-                : Math.Sqrt(1.0 - ((double)reviewed / stratum.PopulationSize));
-        }
-
-        var draws = new double[BootstrapDraws];
-        for (var draw = 0; draw < BootstrapDraws; draw++)
-        {
-            double resampled = 0;
-            for (var s = 0; s < strata.Count; s++)
+            foreach (var score in strata[s].ReviewedScores)
             {
-                var scores = strata[s].ReviewedScores;
-                var weight = (double)strata[s].PopulationSize / population;
-                var m = scores.Count - 1;
-                if (m < 1 || rescale[s] == 0.0)
-                {
-                    resampled += weight * means[s];
-                    continue;
-                }
-
-                double sum = 0;
-                for (var i = 0; i < m; i++)
-                {
-                    sum += scores[random.Next(scores.Count)];
-                }
-
-                resampled += weight * (means[s] + (rescale[s] * ((sum / m) - means[s])));
-            }
-
-            draws[draw] = resampled;
-        }
-
-        Array.Sort(draws);
-        return new ScoreInterval(Percentile(draws, 0.025), Percentile(draws, 0.975));
-    }
-
-    /// <summary>
-    /// Nearest-rank on the sorted draws — with 2000 of them the choice of interpolation moves an
-    /// end by less than one draw.
-    /// </summary>
-    private static double Percentile(double[] sorted, double quantile) =>
-        sorted[(int)Math.Clamp(Math.Round(quantile * (sorted.Length - 1)), 0, sorted.Length - 1)];
-
-    private static double Mean(IReadOnlyList<double> values)
-    {
-        double sum = 0;
-        foreach (var value in values)
-        {
-            sum += value;
-        }
-
-        return sum / values.Count;
-    }
-
-    /// <summary>
-    /// Sample variance (n-1). Undefined for a single observation, where it is taken as zero and
-    /// reported as <see cref="ClericalReviewCaveat.StratumTooSmall"/>.
-    /// </summary>
-    private static double SampleVariance(IReadOnlyList<double> values, double mean)
-    {
-        if (values.Count < MinimumReviewedPerStratum)
-        {
-            return 0.0;
-        }
-
-        double sum = 0;
-        foreach (var value in values)
-        {
-            sum += (value - mean) * (value - mean);
-        }
-
-        return sum / (values.Count - 1);
-    }
-
-    private static bool IsConstant(IReadOnlyList<double> values)
-    {
-        for (var i = 1; i < values.Count; i++)
-        {
-            if (values[i] != values[0])
-            {
-                return false;
+                items.Add(new GilReview.ScoredItem(s, score, 1.0));
             }
         }
 
-        return true;
+        var estimate = GilReview.ReviewEstimator.Estimate(
+            [.. strata.Select(stratum => new GilReview.Stratum(stratum.Name, stratum.PopulationSize))],
+            items,
+            BootstrapDraws,
+            unchecked((ulong)seed));
+
+        // WeightsDegenerate (1 << 3) cannot arise with unit weights (Kish's effective size is n) and
+        // has no Eyu counterpart; the other three bits share Eyu's values.
+        const GilReview.EstimateCaveats shared =
+            GilReview.EstimateCaveats.StratumTooSmall | GilReview.EstimateCaveats.StratumIsCensus | GilReview.EstimateCaveats.NoVariationInStratum;
+
+        return new ClericalReviewEstimate(
+            estimate.Point,
+            estimate.StandardError,
+            new ScoreInterval(estimate.Normal.Low, estimate.Normal.High),
+            new ScoreInterval(estimate.Bootstrap.Low, estimate.Bootstrap.High),
+            checked((int)estimate.SampleSize),
+            estimate.Population,
+            seed,
+            (ClericalReviewCaveat)(int)(estimate.Caveats & shared));
     }
 }

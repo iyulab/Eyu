@@ -18,6 +18,18 @@ every published version has a section here.
 
 ### Changed
 
+- The clerical-review statistics — `ClericalReviewSampler.DrawPilot` and `AllocateNeyman`,
+  `ClericalReviewEstimator.Estimate` and `UnobservedVariationBound`, `ClericalReviewAgreement.Measure` — are
+  computed by [`Gil.Review`](https://www.nuget.org/packages/Gil.Review) 0.1.0, a Rust implementation behind a
+  C ABI, instead of Eyu's own code. The public API, its argument checks and their exceptions do not change;
+  allocations, estimates, intervals and agreement are the same numbers. Two things do change:
+  - **The same seed draws a different pilot.** The draw is Gil's xoshiro256** rather than `System.Random`, so
+    a sample recorded with an earlier version is not redrawn from its seed by this one (strata, sizes and
+    caveats are unchanged — which records are drawn is not). Bootstrap intervals move with the seed too.
+  - **Eyu.Core now carries a native library**, shipped by `Gil.Review` for `win-x64`, `win-arm64`,
+    `linux-x64`, `linux-arm64`, `osx-x64` and `osx-arm64`. On other runtimes (Alpine/musl, WebAssembly,
+    mobile) these five methods throw `DllNotFoundException` on first call. A build without a runtime
+    identifier carries all six (about 2.3 MB). Native AOT publishing is unaffected.
 - `RetryingModelClient` waits at least a failure's `ModelEndpointException.RetryAfter` before retrying it,
   whatever delay it was given — a gateway that sheds load with 429 or 503 sheds a retry that comes sooner.
 - `HttpModelClient` status failures are `ModelEndpointException` rather than plain `HttpRequestException`.

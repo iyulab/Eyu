@@ -24,8 +24,10 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// <c>EYU_LLMS4OL_SPLIT</c> picks <c>test</c> (default) or <c>train</c>, <c>EYU_LLMS4OL_LIMIT</c> the first so
 /// many samples in file order (default 10 — a pilot, whose scores are not the task's over its whole split);
 /// <c>EYU_LLMS4OL_IDS</c> keeps only the named samples among them (a round's failed calls, run again for merging back).
-/// A model call that fails transiently is tried once more (<see cref="RetryingModelClient"/>) and the report counts the calls that
-/// needed it; a call that fails again leaves its sample with no prediction — scored as missed — and is counted in the report.
+/// A model call that fails transiently is tried up to three more times (<see cref="RetryingModelClient"/>, 30 s doubling, or longer
+/// when the endpoint's <c>Retry-After</c> asks — a shared gateway sheds a wallet's calls past its in-flight limit with 429) and the
+/// report counts the calls that needed it; a call that still fails leaves its sample with no prediction — scored as missed — and is
+/// counted in the report.
 /// </para>
 /// </summary>
 public class Llms4OlReuseMeasurement(ITestOutputHelper output)
@@ -63,7 +65,7 @@ public class Llms4OlReuseMeasurement(ITestOutputHelper output)
         var retried = new List<string>();
         string? current = null;
         var proposer = new SinglePassOntologyProposer(
-            new RetryingModelClient(modelClient, retries: 1, onRetry: r => retried.Add($"{current}: {r.Failure.GetType().Name}: {Text2KgBenchMeasurement.Excerpt(r.Failure.Message)}")),
+            new RetryingModelClient(modelClient, retries: 3, delay: TimeSpan.FromSeconds(30), onRetry: r => retried.Add($"{current}: {r.Failure.GetType().Name}: {Text2KgBenchMeasurement.Excerpt(r.Failure.Message)}")),
             LinkageOptions.Default with { RecordsDenoteEntities = false },
             proposeTypeRelations: true);
         var (entities, typeRelations, declaredTypeRelations, rejections) = (0, 0, 0, 0);

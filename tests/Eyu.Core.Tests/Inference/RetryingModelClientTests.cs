@@ -1,5 +1,6 @@
 using System.Net;
 using Eyu.Core.Inference;
+using Eyu.Core.Inference.Http;
 using Eyu.Core.Ports;
 using Xunit;
 
@@ -52,6 +53,35 @@ public class RetryingModelClientTests
         Assert.Equal("attempt 3", thrown.Message);
         Assert.Equal(3, inner.Calls);
         Assert.Equal([1, 2], retries.Select(r => r.Attempt));
+    }
+
+    // A load-shedding gateway names its wait; retrying sooner is shed again. The retry waits at least
+    // that long, even with no delay of its own configured.
+    [Fact]
+    public async Task A_retry_waits_as_long_as_the_endpoint_asked()
+    {
+        var shed = new ModelEndpointException("too many in flight", HttpStatusCode.TooManyRequests, TimeSpan.FromMilliseconds(300));
+        var inner = new ScriptedModelClient(call => call == 1 ? throw shed : new ModelResponse("second"));
+        var client = new RetryingModelClient(inner, retries: 1);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        var response = await client.CompleteAsync(new ModelRequest("p"), TestContext.Current.CancellationToken);
+
+        Assert.Equal("second", response.Text);
+        Assert.True(clock.Elapsed >= TimeSpan.FromMilliseconds(280), $"retried after {clock.Elapsed.TotalMilliseconds} ms");
+    }
+
+    [Fact]
+    public async Task The_configured_delay_still_applies_when_it_is_the_longer_wait()
+    {
+        var shed = new ModelEndpointException("too many in flight", HttpStatusCode.TooManyRequests, TimeSpan.FromMilliseconds(10));
+        var inner = new ScriptedModelClient(call => call == 1 ? throw shed : new ModelResponse("second"));
+        var client = new RetryingModelClient(inner, retries: 1, delay: TimeSpan.FromMilliseconds(300));
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        await client.CompleteAsync(new ModelRequest("p"), TestContext.Current.CancellationToken);
+
+        Assert.True(clock.Elapsed >= TimeSpan.FromMilliseconds(280), $"retried after {clock.Elapsed.TotalMilliseconds} ms");
     }
 
     [Fact]

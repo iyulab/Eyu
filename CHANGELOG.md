@@ -10,6 +10,20 @@ every published version has a section here.
 
 ## Unreleased
 
+### Added
+
+- `ModelEndpointException`: what `HttpModelClient` throws for a response outside the success range — still an
+  `HttpRequestException` with its `StatusCode`, now also carrying `RetryAfter`, the wait the response's
+  `Retry-After` header asked for (seconds or a date), or null.
+
+### Changed
+
+- `RetryingModelClient` waits at least a failure's `ModelEndpointException.RetryAfter` before retrying it,
+  whatever delay it was given — a gateway that sheds load with 429 or 503 sheds a retry that comes sooner.
+- `HttpModelClient` status failures are `ModelEndpointException` rather than plain `HttpRequestException`.
+  `catch (HttpRequestException)` and `StatusCode` checks are unaffected; a check for the exact type
+  `HttpRequestException` (`Assert.ThrowsAsync<HttpRequestException>`, `GetType() ==`) needs the new type.
+
 ### Fixed
 
 - `ClericalReviewSampler.AllocateNeyman` refuses a stratum whose standard deviation is negative, NaN or

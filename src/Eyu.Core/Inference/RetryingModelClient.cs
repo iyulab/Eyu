@@ -27,7 +27,9 @@ namespace Eyu.Core.Inference;
 /// that failed and its exception, so a caller can say its results include retried calls (a review
 /// document's «retried 1», a benchmark's retried-call count) instead of reporting them as first-try
 /// answers. <paramref name="delay"/> is waited before the first retry and doubled before each further
-/// one; zero (the default) retries at once.
+/// one; zero (the default) retries at once. When the failure says how long the endpoint asked to be left
+/// alone (<see cref="ModelEndpointException.RetryAfter"/> — a load-shedding gateway's 429 or 503), the
+/// retry waits at least that long: asking again sooner is only shed again.
 /// </summary>
 public sealed class RetryingModelClient(
     IModelClient inner,
@@ -52,9 +54,15 @@ public sealed class RetryingModelClient(
             catch (Exception failure) when (attempt <= _retries && !cancellationToken.IsCancellationRequested && _isTransient(failure))
             {
                 onRetry?.Invoke(new ModelCallRetry(request, attempt, failure));
-                if (_delay > TimeSpan.Zero)
+                var wait = _delay * Math.Pow(2, attempt - 1);
+                if (failure is ModelEndpointException { RetryAfter: { } asked } && asked > wait)
                 {
-                    await Task.Delay(_delay * Math.Pow(2, attempt - 1), cancellationToken).ConfigureAwait(false);
+                    wait = asked;
+                }
+
+                if (wait > TimeSpan.Zero)
+                {
+                    await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
                 }
             }
         }

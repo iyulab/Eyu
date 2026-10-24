@@ -18,9 +18,10 @@ namespace Eyu.Core.Inference.Http;
 /// version the path does not exist on most servers. A thinking model can take minutes per call, past
 /// <see cref="HttpClient"/>'s default 100-second timeout.
 ///
-/// A response outside the success range throws <see cref="HttpRequestException"/> carrying the
-/// status, the request URI (without its query) and an excerpt of the body the server answered —
-/// OpenAI-compatible servers state the cause there (an unknown model, a rejected field).
+/// A response outside the success range throws <see cref="ModelEndpointException"/> (an
+/// <see cref="HttpRequestException"/>) carrying the status, the request URI (without its query), an
+/// excerpt of the body the server answered — OpenAI-compatible servers state the cause there (an
+/// unknown model, a rejected field) — and the wait its <c>Retry-After</c> asked for, if any.
 ///
 /// <paramref name="extraBody"/> lets the caller layer provider-specific request fields the library
 /// does not model — a self-hosted server's thinking control (<c>chat_template_kwargs</c>,
@@ -118,7 +119,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
         if (!httpResponse.IsSuccessStatusCode)
         {
             var failureBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            throw new HttpRequestException(DescribeFailure(httpRequest, httpResponse, failureBody), inner: null, httpResponse.StatusCode);
+            throw new ModelEndpointException(DescribeFailure(httpRequest, httpResponse, failureBody), httpResponse.StatusCode, RetryAfter(httpResponse));
         }
 
         if (stream)
@@ -246,6 +247,17 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
 
         return false;
     }
+
+    /// <summary>
+    /// The wait a response's <c>Retry-After</c> asks for: its seconds, or the time left until its date
+    /// (none when the date has passed). Null when the header is absent.
+    /// </summary>
+    private static TimeSpan? RetryAfter(HttpResponseMessage response) => response.Headers.RetryAfter switch
+    {
+        { Delta: { } delta } => delta,
+        { Date: { } date } => date - DateTimeOffset.UtcNow > TimeSpan.Zero ? date - DateTimeOffset.UtcNow : TimeSpan.Zero,
+        _ => null,
+    };
 
     /// <summary>
     /// What a failed call needs to be diagnosed without re-running it: where the request went (the

@@ -118,7 +118,50 @@ public class HttpModelClientTests
         var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
         var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ModelEndpointException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
+    }
+
+    // A gateway that sheds load says when to come back (RFC 9110 Retry-After, as seconds or as a date).
+    // The failure carries it, still as an HttpRequestException, so a retry can wait that long instead of
+    // asking again at once and being shed again.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CompleteAsync_failure_carries_the_wait_the_server_asked_for(bool asDate)
+    {
+        var handler = new FakeHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+            response.Headers.RetryAfter = asDate
+                ? new System.Net.Http.Headers.RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddSeconds(30))
+                : new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(7));
+            return Task.FromResult(response);
+        });
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+
+        var error = await Assert.ThrowsAsync<ModelEndpointException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, error.StatusCode);
+        Assert.NotNull(error.RetryAfter);
+        if (asDate)
+        {
+            Assert.InRange(error.RetryAfter.Value, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(31));
+        }
+        else
+        {
+            Assert.Equal(TimeSpan.FromSeconds(7), error.RetryAfter);
+        }
+    }
+
+    [Fact]
+    public async Task CompleteAsync_failure_without_a_retry_after_says_none()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+
+        var error = await Assert.ThrowsAsync<ModelEndpointException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
+
+        Assert.Null(error.RetryAfter);
     }
 
     [Fact]
@@ -130,7 +173,7 @@ public class HttpModelClientTests
         }));
         var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
 
-        var error = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<ModelEndpointException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
 
         Assert.Equal(HttpStatusCode.BadRequest, error.StatusCode);
         Assert.Contains("400", error.Message);
@@ -147,7 +190,7 @@ public class HttpModelClientTests
         var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)));
         var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/?key=secret") }, "test-model");
 
-        var error = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<ModelEndpointException>(() => client.CompleteAsync(new ModelRequest("anything"), TestContext.Current.CancellationToken));
 
         Assert.Equal(HttpStatusCode.NotFound, error.StatusCode);
         Assert.Contains("https://example.test/chat/completions", error.Message);
@@ -472,7 +515,7 @@ public class HttpModelClientTests
         }));
         var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", stream: true);
 
-        var failure = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+        var failure = await Assert.ThrowsAsync<ModelEndpointException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
 
         Assert.Equal(HttpStatusCode.GatewayTimeout, failure.StatusCode);
         Assert.Contains("upstream_timeout", failure.Message, StringComparison.Ordinal);

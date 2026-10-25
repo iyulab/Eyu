@@ -42,17 +42,29 @@ its report, not restated here, since the pre-filter below changes them run to ru
 A proposal can say that one type is a kind of another (`TypeRelations`, asked for with
 `proposeTypeRelations` or by declaring a super type). The wiring — the request unchanged when not asked
 for, the declared pair stamped declared, an inverted one rejected — is held by unit tests; how often a real
-model proposes the type relations a text supports was first measured on the LLMs4OL 2026 Reuse task
-(ontology extension), whose expected additions are 93.5% `is-a` triples — a share that was out of reach before
-this channel existed. On the first forty test samples, with `qwen3.8-27b`, the sample's initial ontology
-declared and only triples on its own vocabulary kept: `is-a` precision 0.92, recall 0.82; the task's graph
-similarity 0.80 (exact match, the forty samples' triples scored together). Of the 35 expected triples
-missed, 20 belong to three samples whose text never mentions them — their terms appear only in the
-sample's list of types, so no proposal grounded in the text can reach them — 2 to calls the model endpoint
-failed, and 5 to one type name the model misspelt. A misspelt type name is now written as the name in
-use when the records the answer cites carry that name's words (`OntologyProposal.RespelledTypeNames`):
-replayed on the same answers, recall 0.83 and graph similarity 0.81, precision unchanged. Forty samples are a
-pilot, not the task's split.
+model proposes the type relations a text supports is measured on the LLMs4OL 2026 Reuse task (ontology
+extension), whose expected additions are 93.5% `is-a` triples — a share that was out of reach before this
+channel existed. On the task's full test set — 1,799 samples — with `qwen3.8-27b`, each sample's initial
+ontology declared and only triples on its own vocabulary kept, every sample's triples scored together:
+`is-a` precision 0.92, recall 0.79 (F1 0.85); `instance-of` precision 0.99, recall 0.55; the task's graph
+similarity 0.78 under exact match and 0.79 under semantic match (0.79 and 0.80 as the mean over samples).
+Calls the model endpoint failed were run again until none was left, so no sample is scored on an empty
+answer.
+
+What is missed, and why. Of the `is-a` triples proposed that the expected answer lacks (about 490), three
+in four place a term the expected answer never mentions — a narrower concept the text does contain, such
+as `clay mineral` under `mineral` — and they gather in a few samples; the rest attach a term the answer
+knows to a different parent. Of the 467 expected `instance-of` triples, 190 type a term as `document` or
+`named individual` — labels of how the source ontology was packaged (a file name such as `ham.ttl`, an OWL
+individual) rather than kinds a text supports — and Eyu proposes 71 of them; without those two labels,
+`instance-of` recall is 0.68. Of the 208 missed, 53 name a term the sample's text does not contain — the
+task hands its terms in as input, while Eyu does not raise an entity no record supports — and 82 are terms
+in the text left untyped, many of them adjectives of state (`dense`, `triclinic`) or chemical symbols.
+
+For comparison, a published participant result — Qwen2.5-14B-Instruct with two retrieved examples per
+sample — reports graph similarity 0.869 under semantic match. That paper states neither the split nor how
+samples are aggregated, so the two figures bound a range rather than rank a pair: this run uses no
+retrieved examples and no task-specific prompt.
 
 ## Triple extraction against a declared ontology
 

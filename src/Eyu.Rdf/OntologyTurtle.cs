@@ -145,7 +145,7 @@ public static class OntologyTurtle
         foreach (var entity in proposal.Entities)
         {
             var subject = Iri(individuals[entity.EntityId]);
-            writer.Write(subject + " a owl:NamedIndividual, " + classes[Normalize(entity.EntityType)] + " ;\n");
+            writer.Write(subject + " a owl:NamedIndividual, " + classes[TermKey(entity.EntityType)] + " ;\n");
             writer.Write("    rdfs:label " + Text(entity.Name) + " ;\n");
             foreach (var recordId in entity.DenotedBy)
             {
@@ -159,7 +159,7 @@ public static class OntologyTurtle
         {
             var from = Iri(individuals[relation.FromEntityId]);
             var to = Iri(individuals[relation.ToEntityId]);
-            var predicate = properties[Normalize(relation.RelationName)];
+            var predicate = properties[TermKey(relation.RelationName)];
 
             writer.Write(from + " " + predicate + " " + to + " .\n");
             writer.Write("[] a owl:Axiom ;\n");
@@ -171,8 +171,8 @@ public static class OntologyTurtle
 
         foreach (var typeRelation in proposal.TypeRelations)
         {
-            var sub = classes[Normalize(typeRelation.SubType)];
-            var super = classes[Normalize(typeRelation.SuperType)];
+            var sub = classes[TermKey(typeRelation.SubType)];
+            var super = classes[TermKey(typeRelation.SuperType)];
 
             writer.Write(sub + " rdfs:subClassOf " + super + " .\n");
             writer.Write("[] a owl:Axiom ;\n");
@@ -281,7 +281,7 @@ public static class OntologyTurtle
             return null;
         }
 
-        return Part(Normalize(entity.EntityType)) + Part(name) + string.Concat(entity.DenotedBy
+        return Part(TermKey(entity.EntityType)) + Part(name) + string.Concat(entity.DenotedBy
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .Select(Part));
@@ -318,7 +318,7 @@ public static class OntologyTurtle
             var old = TermSet.PreviousRule(baseIri, name);
             if (!live.Contains(old) && seen.Add(old))
             {
-                retired.Add((old, kind, current[Normalize(name)]));
+                retired.Add((old, kind, current[TermKey(name)]));
             }
         }
 
@@ -379,6 +379,19 @@ public static class OntologyTurtle
     private static string Normalize(string name) => VocabularyName.Normalize(name);
 
     /// <summary>
+    /// What identifies a class or property within one export: the comparison key, or — for a name with no
+    /// letter or digit, whose comparison key is empty — the name as written (in Unicode Normalization
+    /// Form C), behind a control character no comparison key can start with. Without it every such
+    /// name shares the empty key and the first one seen names them all, so the IRI would depend on the
+    /// order of the input.
+    /// </summary>
+    private static string TermKey(string name)
+    {
+        var key = Normalize(name);
+        return key.Length == 0 ? "\u0001" + TextForm.Canonical(name) : key;
+    }
+
+    /// <summary>
     /// A literal holding text written for a reader — a name, a label, a claim — in Normalization Form
     /// C, as RDF 1.1 asks of a literal's lexical form. Identifiers (record ids, field names) go through
     /// <see cref="Literal"/> as given: a consumer joins back on them, and must find them unchanged.
@@ -422,7 +435,7 @@ public static class OntologyTurtle
     {
         public bool TryAdd(Dictionary<string, string> seen, string name, VocabularyOrigin origin, bool isClass, out string iri)
         {
-            var key = Normalize(name);
+            var key = TermKey(name);
             if (seen.TryGetValue(key, out var existing))
             {
                 iri = existing;
@@ -431,7 +444,7 @@ public static class OntologyTurtle
 
             iri = origin == VocabularyOrigin.Innate
                 ? Term(EyuVocabulary.Namespace, "eyu:", Canonical(name))
-                : Term(baseIri, ":", Acquired(name, key, isClass));
+                : Term(baseIri, ":", Acquired(name, Normalize(name), isClass));
             seen[key] = iri;
             return true;
         }

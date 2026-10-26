@@ -45,6 +45,14 @@ every published version has a section here.
 - `ClericalReviewEstimator.Estimate` refuses a reviewed score that is not a proportion in [0, 1] (NaN
   included), naming its stratum, and strata without a name of their own — empty, or the same name twice —
   as `ClericalReviewSampler.DrawPilot` already does. Such samples were estimated as given.
+- `OntologyTurtle` no longer folds type and relation names that have no letter or digit (`.`, `-`, `→`, `=`)
+  into one term. Their comparison key is empty, so the first such name in the proposal named every other: a
+  proposal with types `.` and `-` exported one class for both, and which spelling it carried depended on the
+  order of the entities. Such names now compare by their spelling (Unicode Normalization Form C), so each is its
+  own class or property and the export no longer depends on input order, and two entities that differ only in
+  such a type are two individuals. Exports that used a single such name are unchanged, except that an
+  individual typed by a symbol name gets a different IRI; exports whose names all contain a letter or digit are
+  unchanged. `eyu:iriRule` stays `"0.5.0"`.
 
 ## 0.23.0
 

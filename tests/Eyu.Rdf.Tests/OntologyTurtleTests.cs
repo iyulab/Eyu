@@ -431,4 +431,80 @@ public class OntologyTurtleTests
         Assert.Equal(asset, g.GetTriplesWithSubjectPredicate(annotated, U(g, Owl + "annotatedTarget")).Single().Object);
         Assert.Equal("declared", ((ILiteralNode)g.GetTriplesWithSubjectPredicate(annotated, U(g, EyuVocabulary.Basis)).Single().Object).Value);
     }
+
+    // A name with no letter or digit has no comparison key, so it is told apart by its spelling: two such
+    // names are two terms, and which of them an export mints first does not decide the other's IRI.
+    [Fact]
+    public void Type_names_without_a_letter_or_digit_are_each_their_own_class()
+    {
+        var proposal = new OntologyProposal([Entity("e1", "first", "."), Entity("e2", "second", "-")], [], []);
+
+        var g = Parse(proposal);
+
+        Assert.Contains(U(g, Base + "%2E"), g.GetTriplesWithSubjectPredicate(Individual(g, proposal, "e1"), U(g, Rdf + "type")).Select(t => t.Object));
+        Assert.Contains(U(g, Base + "-"), g.GetTriplesWithSubjectPredicate(Individual(g, proposal, "e2"), U(g, Rdf + "type")).Select(t => t.Object));
+        Assert.DoesNotContain(U(g, Base + "-"), g.GetTriplesWithSubjectPredicate(Individual(g, proposal, "e1"), U(g, Rdf + "type")).Select(t => t.Object));
+        Assert.Equal(2, SubjectsOfType(g, Owl + "Class").Count());
+    }
+
+    [Fact]
+    public void Symbol_names_get_the_same_iris_whatever_order_the_proposal_lists_them_in()
+    {
+        var forward = new OntologyProposal([Entity("e1", "a", "."), Entity("e2", "b", "-"), Entity("e3", "c", "Person")], [], []);
+        var backward = new OntologyProposal([Entity("e2", "b", "-"), Entity("e1", "a", "."), Entity("e3", "c", "Person")], [], []);
+
+        static HashSet<string> Classes(IGraph g) => SubjectsOfType(g, Owl + "Class").Select(n => n.ToString()).ToHashSet();
+
+        Assert.Equal(Classes(Parse(forward)), Classes(Parse(backward)));
+    }
+
+    [Fact]
+    public void Relation_names_without_a_letter_or_digit_are_each_their_own_property()
+    {
+        var proposal = new OntologyProposal(
+            [Entity("e1", "a", "Thing"), Entity("e2", "b", "Thing")],
+            [Relation("\u2192", "e1", "e2"), Relation("=", "e2", "e1")],
+            []);
+
+        var g = Parse(proposal);
+
+        var properties = SubjectsOfType(g, Owl + "ObjectProperty").ToList();
+        Assert.Equal(2, properties.Count);
+        var a = Individual(g, proposal, "e1");
+        var b = Individual(g, proposal, "e2");
+        Assert.Single(g.GetTriplesWithSubjectObject(a, b));
+        Assert.Single(g.GetTriplesWithSubjectObject(b, a));
+        Assert.NotEqual(
+            g.GetTriplesWithSubjectObject(a, b).Single().Predicate,
+            g.GetTriplesWithSubjectObject(b, a).Single().Predicate);
+    }
+
+    // Entities that differ only in a symbol type stay two individuals: the type is part of what an
+    // individual is, and a symbol type is told apart by its spelling like any other.
+    [Fact]
+    public void Entities_that_differ_only_in_a_symbol_type_are_two_individuals()
+    {
+        EntityProposal Same(string id, string type) =>
+            EntityProposal.Create(id, "same", type, Cite("same is a thing", new SourceRef("r-same")),
+                InnateVocabulary.OfEntityType(type), 0.8, ProposalBasis.Inferred);
+        var proposal = new OntologyProposal([Same("e1", "."), Same("e2", "-")], [], []);
+
+        var iris = OntologyTurtle.IndividualIris(proposal, Options);
+
+        Assert.NotEqual(iris["e1"], iris["e2"]);
+    }
+
+    [Fact]
+    public void A_symbol_type_relation_end_is_the_class_of_that_spelling()
+    {
+        var proposal = new OntologyProposal([Entity("e1", "a", "."), Entity("e2", "b", "-")], [], []) with
+        {
+            TypeRelations = [TypeRelationProposal.Create(".", "Asset", Cite(". is an asset", new SourceRef("r-e1")), 0.7, ProposalBasis.Declared)],
+        };
+
+        var g = Parse(proposal);
+
+        Assert.Single(g.GetTriplesWithSubjectPredicate(U(g, Base + "%2E"), U(g, Rdfs + "subClassOf")), t => t.Object.Equals(U(g, Base + "Asset")));
+        Assert.Empty(g.GetTriplesWithSubjectPredicate(U(g, Base + "-"), U(g, Rdfs + "subClassOf")));
+    }
 }

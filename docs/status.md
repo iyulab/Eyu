@@ -66,6 +66,11 @@ sample — reports graph similarity 0.869 under semantic match. That paper state
 samples are aggregated, so the two figures bound a range rather than rank a pair: this run uses no
 retrieved examples and no task-specific prompt.
 
+The challenge's final Reuse leaderboard ranks teams by averaged graph similarity under exact match. Against
+this run's 0.79 (the mean over samples; 0.78 pooled) the five teams ahead score 0.85 to 0.98 and the teams
+below it 0.70 or less. The leaderboard page does not say whether its scores come from the test inputs and
+the scoring this run used, so it too bounds a range rather than ranks this run.
+
 ## Triple extraction against a declared ontology
 
 Text2KGBench (Wikidata-TekGen) hands an ontology — concepts, and relations from a domain concept to a

@@ -14,7 +14,7 @@
       Contract-only package with zero dependencies; HoneAI.Core and HoneAI.Agents are deliberately
       not referenced — the review gate itself is the consumer's to wire (README, "Confidence routes").
     -->
-    <PackageVersion Include="HoneAI.Abstractions" Version="0.10.0" />
+    <PackageVersion Include="HoneAI.Abstractions" Version="0.12.0" />
     <!--
       Clerical-review statistics (pilot draw, Neyman allocation, stratified estimate, reviewer
       agreement) come from Gil.Review's Rust core over its C ABI, so Eyu.Core carries native assets
@@ -31,7 +31,7 @@
       resolves a release below the fix for GHSA-pgww-w46g-26qg.
     -->
     <PackageVersion Include="dotNetRdf.Core" Version="3.5.2" />
-    <PackageVersion Include="AngleSharp" Version="1.8.5" />
+    <PackageVersion Include="AngleSharp" Version="1.8.6" />
     <!-- Test -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />

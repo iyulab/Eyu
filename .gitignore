@@ -2,3 +2,30 @@ bin/
 obj/
 *.user
 .worktrees/
+nupkgs/
+[Dd]ebug/
+[Rr]elease/
+*.suo
+.vs/
+
+## Rider / VS Code
+.idea/
+.vscode/
+
+## Test / coverage
+[Tt]est[Rr]esult*/
+coverage*.json
+coverage*.xml
+*.coverage
+
+## Dev-tracking docs live in the umbrella, not this repository
+claudedocs/
+CLAUDE.md
+
+.serena/
+
+## Local environment: the live model tests read their key from the environment, and a copy kept in a
+## file must not be committed
+.env
+.env.*
+!.env.example

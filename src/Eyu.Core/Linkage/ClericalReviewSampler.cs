@@ -260,10 +260,9 @@ public static class ClericalReviewSampler
     /// design proportion is therefore truncated away from the boundary at the planning stage, the
     /// way survey allocation does when a pilot proportion comes back at 0 or 1.
     /// </summary>
-    // Defined here rather than read from Gil.Review (the same √(0.05 · 0.95)): reading it there is a
-    // native call, which would fail this type's initializer — and StratifyRecords with it — on a
-    // runtime the native library does not ship for.
-    public static readonly double MinimumDesignDeviation = Math.Sqrt(0.05 * 0.95);
+    // Gil.Review computes it in managed code, so reading it needs no native library: this type's
+    // initializer — and StratifyRecords with it — works on a runtime the native library does not ship for.
+    public static readonly double MinimumDesignDeviation = Gil.Review.ReviewSampler.MinimumDesignDeviation;
 
     /// <summary>
     /// Neyman allocation for the round after a pilot: spend the budget in proportion to

@@ -14,13 +14,13 @@
       Contract-only package with zero dependencies; HoneAI.Core and HoneAI.Agents are deliberately
       not referenced — the review gate itself is the consumer's to wire (README, "Confidence routes").
     -->
-    <PackageVersion Include="HoneAI.Abstractions" Version="0.12.0" />
+    <PackageVersion Include="HoneAI.Abstractions" Version="0.13.0" />
     <!--
       Clerical-review statistics (pilot draw, Neyman allocation, stratified estimate, reviewer
       agreement) come from Gil.Review's Rust core over its C ABI, so Eyu.Core carries native assets
       for the runtime identifiers that package ships.
     -->
-    <PackageVersion Include="Gil.Review" Version="0.1.0" />
+    <PackageVersion Include="Gil.Review" Version="0.1.1" />
   </ItemGroup>
 
   <ItemGroup>

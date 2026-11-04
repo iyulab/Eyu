@@ -35,7 +35,7 @@ every published version has a section here.
 - `HttpModelClient` status failures are `ModelEndpointException` rather than plain `HttpRequestException`.
   `catch (HttpRequestException)` and `StatusCode` checks are unaffected; a check for the exact type
   `HttpRequestException` (`Assert.ThrowsAsync<HttpRequestException>`, `GetType() ==`) needs the new type.
-- Built against HoneAI.Abstractions 0.13.0 (from 0.10.0); no change to what Eyu proposes.
+- Built against HoneAI.Abstractions 0.16.0 (from 0.10.0); no change to what Eyu proposes.
 
 ### Fixed
 

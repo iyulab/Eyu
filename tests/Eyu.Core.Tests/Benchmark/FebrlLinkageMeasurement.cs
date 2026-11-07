@@ -51,9 +51,9 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
     /// whose number is a multiple of five — whole clusters only, so the truth stays complete, and
     /// small enough for an all-pairs comparison.
     /// </summary>
-    private sealed record Dataset(string File, string Sha256, int EntityModulus, string Description);
+    internal sealed record Dataset(string File, string Sha256, int EntityModulus, string Description);
 
-    private static readonly Dataset[] Datasets =
+    internal static readonly Dataset[] Datasets =
     [
         new("dataset1.csv", "637acf9db993a77cc49d479c7c53b739a748615f272a050ff973e8038b1b9cb6", 1,
             "every entity exactly two records (one original, one duplicate with one modified field) — the easy case"),
@@ -664,7 +664,7 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
         return (records, entities.Values.Select(m => new RecordCluster(m)).ToList());
     }
 
-    private static async Task<string> LoadDatasetAsync(Dataset dataset)
+    internal static async Task<string> LoadDatasetAsync(Dataset dataset)
     {
         var cacheDirectory = Environment.GetEnvironmentVariable("EYU_BENCHMARK_CACHE") is { Length: > 0 } configured
             ? configured

@@ -214,15 +214,16 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var stats = new Dictionary<string, CaseStats>();
         foreach (var qualityCase in QualityCatalog.Cases.Where(c => selected is null || selected.Contains(c.Name)))
         {
+            var records = ThroughDoor(qualityCase.Records);
             var caseStats = stats[qualityCase.Name] = new CaseStats
             {
                 Name = qualityCase.Name,
-                Linkage = LinkagePipeline.Analyze(qualityCase.Records, linkageOptions),
+                Linkage = LinkagePipeline.Analyze(records, linkageOptions),
             };
             for (var attempt = 0; attempt < runs; attempt++)
             {
                 caseStats.Attempts++;
-                await RunAttemptAsync(proposer, [], qualityCase.Records, qualityCase.Questions, caseStats);
+                await RunAttemptAsync(proposer, [], records, qualityCase.Questions, caseStats);
             }
         }
 
@@ -302,6 +303,27 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         // parsed measured the transport, not the model.
         Assert.True(stats.Values.Sum(s => s.Attempts - s.ParseFailures - s.ModelFailures) + crossSourceStats.Sum(c => c.Separate.Parsed + c.Combined.Parsed) > 0,
             "at least one proposal must survive parsing for the measurement to mean anything");
+    }
+
+    /// <summary>
+    /// <c>EYU_LLM_QUALITY_DOOR</c> hands the record cases to the model the way another source would write
+    /// them, to see whether the proposal depends on that: <c>date-slash</c> writes <c>yyyy-MM-dd</c> values as
+    /// <c>dd/MM/yyyy</c>, <c>date-compact</c> as <c>yyyyMMdd</c>. Unset, or <c>identity</c>, the records are
+    /// handed over as the catalog has them. Nothing else about the case changes.
+    /// </summary>
+    private static RawRecord[] ThroughDoor(RawRecord[] records)
+    {
+        var door = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_DOOR");
+        Func<string, string>? rewrite = door switch
+        {
+            "date-slash" => v => System.Text.RegularExpressions.Regex.Replace(v, @"^(\d{4})-(\d{2})-(\d{2})$", "$3/$2/$1"),
+            "date-compact" => v => System.Text.RegularExpressions.Regex.Replace(v, @"^(\d{4})-(\d{2})-(\d{2})$", "$1$2$3"),
+            null or "" or "identity" => null,
+            _ => throw new ArgumentException($"EYU_LLM_QUALITY_DOOR '{door}' is not date-slash, date-compact or identity."),
+        };
+        return rewrite is null
+            ? records
+            : [.. records.Select(r => new RawRecord(r.Id, r.Fields.ToDictionary(f => f.Key, f => f.Value is null ? null : rewrite(f.Value)), r.Subject, r.Key))];
     }
 
     /// <summary>

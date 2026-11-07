@@ -20,7 +20,7 @@ every published version has a section here.
 
 - The clerical-review statistics — `ClericalReviewSampler.DrawPilot` and `AllocateNeyman`,
   `ClericalReviewEstimator.Estimate` and `UnobservedVariationBound`, `ClericalReviewAgreement.Measure` — are
-  computed by [`Gil.Review`](https://www.nuget.org/packages/Gil.Review) 0.1.1, a Rust implementation behind a
+  computed by [`Gil.Review`](https://www.nuget.org/packages/Gil.Review) 0.2.0, a Rust implementation behind a
   C ABI, instead of Eyu's own code. The public API, its argument checks and their exceptions do not change;
   allocations, estimates, intervals and agreement are the same numbers. Two things do change:
   - **The same seed draws a different pilot.** The draw is Gil's xoshiro256** rather than `System.Random`, so

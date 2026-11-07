@@ -90,6 +90,9 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 
     private sealed class CaseStats
     {
+        /// <summary>The case's name in the report — also the stem of the file its proposals are written under.</summary>
+        public string Name = "";
+
         public int Attempts;
         public int ParseFailures;
 
@@ -213,6 +216,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         {
             var caseStats = stats[qualityCase.Name] = new CaseStats
             {
+                Name = qualityCase.Name,
                 Linkage = LinkagePipeline.Analyze(qualityCase.Records, linkageOptions),
             };
             for (var attempt = 0; attempt < runs; attempt++)
@@ -228,6 +232,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         {
             var caseStats = stats[gold.Name] = new CaseStats
             {
+                Name = gold.Name,
                 Linkage = LinkagePipeline.Analyze(gold.Records, linkageOptions),
             };
             for (var attempt = 0; attempt < runs; attempt++)
@@ -245,8 +250,10 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             // before the declared row existed.
             foreach (var declared in new[] { false, true })
             {
-                var caseStats = stats[declared ? $"{documentCase.Name} + declared vocabulary" : documentCase.Name] = new CaseStats
+                var caseName = declared ? $"{documentCase.Name} + declared vocabulary" : documentCase.Name;
+                var caseStats = stats[caseName] = new CaseStats
                 {
+                    Name = caseName,
                     Linkage = LinkagePipeline.Analyze(documentCase.Chunks, documentOptions),
                     RecordsDenoteEntities = false,
                     VocabularyDeclared = declared,
@@ -297,6 +304,27 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             "at least one proposal must survive parsing for the measurement to mean anything");
     }
 
+    /// <summary>
+    /// With <c>EYU_LLM_QUALITY_TURTLE_DIR</c> set, each scored proposal is also written as the Turtle
+    /// <see cref="OntologyTurtle"/> exports, so a checker outside this repository can read what the model
+    /// proposed as an ontology. The files carry the records' text (names and claims): the directory belongs
+    /// beside the raw responses, never in the repository.
+    /// </summary>
+    private static void WriteTurtle(OntologyProposal proposal, CaseStats stats)
+    {
+        if (Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_TURTLE_DIR") is not { Length: > 0 } directory)
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(directory);
+        var stem = System.Text.RegularExpressions.Regex.Replace(stats.Name, "[^A-Za-z0-9]+", "-").Trim('-');
+        File.WriteAllText(
+            Path.Combine(directory, $"{stem}-{stats.ScoredAttempts:D2}.ttl"),
+            OntologyTurtle.ToTurtle(proposal, new RdfExportOptions(new Uri("https://example.org/measurement#"))),
+            new UTF8Encoding(false));
+    }
+
     private static async Task RunAttemptAsync(SinglePassOntologyProposer proposer, IReadOnlyList<DeclaredStructure> declared, RawRecord[] records, CompetencyQuestion[] questions, CaseStats stats)
     {
         var recordIds = records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
@@ -335,6 +363,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
 
         stats.ScoredAttempts++;
+        WriteTurtle(proposal, stats);
         RecordIdentity(proposal, stats);
         ScoreCompetencyQuestions(proposal, questions, stats);
 

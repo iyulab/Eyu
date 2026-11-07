@@ -174,6 +174,46 @@ public class ClericalReviewSamplerTests
         Assert.Equal([2, 6, 4], allocation);
     }
 
+    // A large noisy stratum and two quiet ones: planned by N*s alone, the smallest quiet stratum is handed a single
+    // record, which is what a pilot of a few records per stratum would leave it with. A floor lifts it.
+    [Fact]
+    public void A_floor_under_the_allocation_gives_every_stratum_at_least_that_many_records()
+    {
+        StratumSpread[] strata = [new(1000, 0.5), new(200, 0.0), new(30, 0.0)];
+
+        var plain = ClericalReviewSampler.AllocateNeyman(strata, 100);
+        var floored = ClericalReviewSampler.AllocateNeyman(strata, 100, minimumPerStratum: 5);
+
+        Assert.True(plain[2] < 5);
+        Assert.All(floored, count => Assert.True(count >= 5));
+        Assert.Equal(100, floored.Sum());
+        Assert.True(floored[0] < plain[0]);
+    }
+
+    [Fact]
+    public void A_floor_of_one_is_the_allocation_without_one()
+    {
+        StratumSpread[] strata = [new(1000, 0.5), new(200, 0.1), new(30, 0.0)];
+
+        Assert.Equal(ClericalReviewSampler.AllocateNeyman(strata, 100), ClericalReviewSampler.AllocateNeyman(strata, 100, minimumPerStratum: 1));
+    }
+
+    [Fact]
+    public void A_floor_larger_than_a_stratum_takes_the_whole_stratum()
+    {
+        var allocation = ClericalReviewSampler.AllocateNeyman([new StratumSpread(1000, 0.5), new StratumSpread(3, 0.0)], 100, minimumPerStratum: 10);
+
+        Assert.Equal(3, allocation[1]);
+        Assert.Equal(100, allocation.Sum());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void A_floor_below_one_is_refused_because_no_stratum_may_go_unsampled(int floor) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ClericalReviewSampler.AllocateNeyman([new StratumSpread(10, 0.5)], 5, floor));
+
     [Fact]
     public void A_capped_stratum_passes_its_surplus_to_the_others_until_the_budget_is_spent()
     {

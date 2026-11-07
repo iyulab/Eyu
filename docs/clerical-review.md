@@ -74,6 +74,22 @@ allocated more records than it holds is capped there and its surplus handed to t
 can still take records, in the same proportions, so the review budget is spent rather than
 silently returned short.
 
+**A floor under the allocation.** `AllocateNeyman(strata, budget, minimumPerStratum)` gives every stratum at
+least that many records before dividing the rest by `N_h · s_h` (capped at half the budget shared among the strata;
+a floor of 1, the default, is the allocation above). Whether it is worth setting depends on the pilot, and this was
+measured on Febrl (`dataset1`, `dataset3`; records compared without date of birth and identity number; 300 seeds
+per cell; the pilot and second round drawn as above, the benchmark labels answering for the reviewer; error against
+each stratum's census mean):
+
+- **At the protocol's 30 per stratum the floor buys almost nothing.** Every stratum already has 30 reviewed
+  records, so the floor only reshapes the second round: on `dataset3` the worst stratum's RMSE moved by 7 % at most
+  (floor 10 against floor 1, second round of 5 % and 10 % of the records) and the population estimate's by under
+  4 % either way — inside the noise of 300 seeds.
+- **With a small pilot it can.** At 10 per stratum the worst stratum's RMSE fell 6–13 % on `dataset3`; at 5 per
+  stratum, on a `dataset1` configuration with a ten-record contested stratum, the worst stratum's precision RMSE fell
+  from 0.058 (floor 1) to 0.007 (floor 5).
+  A pilot that small is outside the protocol; the floor is for a caller who is there anyway.
+
 ---
 
 ## 3. From reviewed records back to a population number

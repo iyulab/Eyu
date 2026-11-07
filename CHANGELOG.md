@@ -12,6 +12,10 @@ every published version has a section here.
 
 ### Added
 
+- `ClericalReviewSampler.AllocateNeyman(strata, totalBudget, minimumPerStratum)`: a floor under every stratum's share of
+  the round after the pilot (capped at half the budget shared among the strata; the two-argument form is a floor of
+  1, as before). It matters when the pilot left a stratum few records; at the protocol's 30 per stratum it moved the
+  worst stratum's error by 7 % at most on Febrl — see `docs/clerical-review.md`.
 - `ModelEndpointException`: what `HttpModelClient` throws for a response outside the success range — still an
   `HttpRequestException` with its `StatusCode`, now also carrying `RetryAfter`, the wait the response's
   `Retry-After` header asked for (seconds or a date), or null.

@@ -1,3 +1,4 @@
+using GilReview = Gil.Review;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -288,6 +289,123 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
 
             report.AppendLine(CultureInfo.InvariantCulture,
                 $"| {fields} | {(korean ? "Korean shares" : "Febrl")} | {(frequencies ? "yes" : "no")} | {n} | {match} / {gray} / {unlisted} of {wrongGray.Count} | {Spread(wrongGray)} | {wrongMatch} | {strangersMatched} of {strangers.Count} ({sameFullName} same full name) | {Spread(strangerGray)} |");
+        }
+
+        output.WriteLine(report.ToString());
+        var reportPath = Environment.GetEnvironmentVariable("EYU_BENCHMARK_REPORT");
+        if (!string.IsNullOrWhiteSpace(reportPath))
+        {
+            await File.WriteAllTextAsync(reportPath, report.ToString(), TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// The round after a pilot, with and without a floor under the allocation. <see cref="ClericalReviewSampler.AllocateNeyman"/>
+    /// gives every stratum at least one record; <c>Gil.Review</c> 0.2.0 can give it more
+    /// (<c>minimumPerStratum</c>). The pilot is simulated as the protocol draws it and the benchmark labels answer for the
+    /// reviewer; the second round is allocated by Neyman at a given floor and drawn from what the pilot left; the
+    /// estimate is the stratum mean of pilot and second round together. Over many seeds, the error of each stratum's
+    /// mean against the census value of that stratum — worst stratum and overall — says what the floor buys.
+    /// The pilot sizes include ones smaller than the protocol's 30 per stratum: with 30, no stratum is ever left with
+    /// fewer than 30 reviewed records whatever the allocation, so the floor can only matter when the pilot is small.
+    /// </summary>
+    [Fact]
+    public async Task Compare_allocation_floors_after_a_pilot_on_febrl_benchmarks()
+    {
+        string[] identifiers = ["date_of_birth", "soc_sec_id"];
+        var configurations = new (string Name, LinkageOptions Options)[]
+        {
+            ("exact", LinkageOptions.Default),
+            ("Jaro-Winkler levels 1.0 / 0.92 / 0.88", LinkageOptions.Default with { Comparison = JaroWinklerLevels }),
+        };
+        int[] pilots = [30, 10, 5];
+        double[] budgets = [0.05, 0.10];
+        int[] floors = [1, 5, 10];
+        const int draws = 300;
+
+        var report = new StringBuilder();
+        report.AppendLine("# Allocation floor after a pilot — Febrl (labeled public benchmark)");
+        report.AppendLine();
+        report.AppendLine(CultureInfo.InvariantCulture, $"Records are compared without date of birth and identity number (where errors appear). Per cell: {draws} seeds; the pilot is drawn by `DrawPilot`, the second round by Neyman allocation at the floor (floor 1 = `ClericalReviewSampler.AllocateNeyman`; 5 and 10 = `Gil.Review` `minimumPerStratum`) from the records the pilot left, the stratum estimate is the mean of both together. Error = estimate − the stratum's census mean; RMSE over seeds. *worst stratum* = the largest per-stratum RMSE; *overall* = RMSE of the population-weighted estimate.");
+        report.AppendLine();
+
+        foreach (var dataset in Datasets)
+        {
+            var (records, truth) = Parse(await LoadDatasetAsync(dataset), dataset.EntityModulus);
+            var compared = records.Select(r => new RawRecord(r.Id, r.Fields.Where(f => !identifiers.Contains(f.Key)).ToDictionary(f => f.Key, f => f.Value))).ToList();
+            foreach (var (name, options) in configurations)
+            {
+                var analysis = LinkagePipeline.Analyze(compared, options);
+                var perRecord = ClusteringMetrics.BCubedPerRecord(analysis.Clustering.Clusters, truth);
+                var strata = ClericalReviewSampler.StratifyRecords(analysis);
+                var groups = Enum.GetValues<ReviewStratumKind>()
+                    .Select(kind => (Kind: kind, Ids: strata.Where(p => p.Value == kind).Select(p => p.Key).Order(StringComparer.Ordinal).ToList()))
+                    .Where(g => g.Ids.Count > 0)
+                    .ToList();
+                report.AppendLine(CultureInfo.InvariantCulture, $"## {dataset.File} — {name}");
+                report.AppendLine();
+                report.AppendLine(CultureInfo.InvariantCulture, $"N = {records.Count}; strata: {string.Join(" · ", groups.Select(g => $"{g.Kind} {g.Ids.Count}"))}; census per stratum — precision {string.Join(" / ", groups.Select(g => g.Ids.Average(id => perRecord[id].Precision).ToString("0.000", CultureInfo.InvariantCulture)))}, recall {string.Join(" / ", groups.Select(g => g.Ids.Average(id => perRecord[id].Recall).ToString("0.000", CultureInfo.InvariantCulture)))}.");
+                report.AppendLine();
+                report.AppendLine("| score | pilot/stratum | round-2 budget | floor | worst-stratum RMSE | overall RMSE | seeds a stratum got < 5 round-2 records |");
+                report.AppendLine("|---|---|---|---|---|---|---|");
+                foreach (var score in new[] { "precision", "recall" })
+                {
+                    double Of(string id) => score == "precision" ? perRecord[id].Precision : perRecord[id].Recall;
+                    var census = groups.Select(g => g.Ids.Average(Of)).ToArray();
+                    var weights = groups.Select(g => (double)g.Ids.Count / records.Count).ToArray();
+                    var overallCensus = weights.Zip(census, (w, c) => w * c).Sum();
+                    foreach (var pilot in pilots)
+                    {
+                        foreach (var fraction in budgets)
+                        {
+                            var budget = Math.Max(groups.Count * 2, (int)Math.Round(records.Count * fraction));
+                            foreach (var floor in floors)
+                            {
+                                var squared = new double[groups.Count];
+                                var overallSquared = 0.0;
+                                var thin = 0;
+                                for (var seed = 1; seed <= draws; seed++)
+                                {
+                                    var sample = ClericalReviewSampler.DrawPilot(analysis, pilot, seed);
+                                    var spreads = new List<StratumSpread>();
+                                    var pilotIds = new List<HashSet<string>>();
+                                    for (var h = 0; h < groups.Count; h++)
+                                    {
+                                        var picked = sample.Strata.Single(s => s.Name == groups[h].Kind.ToString()).SelectedRecordIds;
+                                        pilotIds.Add([.. picked]);
+                                        var scores = picked.Select(Of).ToArray();
+                                        var mean = scores.Average();
+                                        var sd = scores.Length > 1 ? Math.Sqrt(scores.Sum(x => (x - mean) * (x - mean)) / (scores.Length - 1)) : 0.0;
+                                        spreads.Add(new StratumSpread(groups[h].Ids.Count, sd));
+                                    }
+
+                                    var allocation = floor == 1
+                                        ? ClericalReviewSampler.AllocateNeyman(spreads, budget)
+                                        : [.. GilReview.ReviewSampler.AllocateNeyman([.. spreads.Select(sp => new GilReview.StratumSpread(sp.PopulationSize, sp.StandardDeviation))], budget, floor).Select(c => checked((int)c))];
+                                    var estimate = 0.0;
+                                    for (var h = 0; h < groups.Count; h++)
+                                    {
+                                        var rest = groups[h].Ids.Where(id => !pilotIds[h].Contains(id)).ToList();
+                                        var rng = new Random((seed * 7919) + h);
+                                        var round2 = rest.OrderBy(_ => rng.Next()).Take(allocation[h]).ToList();
+                                        thin += round2.Count < 5 ? 1 : 0;
+                                        var mean = pilotIds[h].Concat(round2).Average(Of);
+                                        squared[h] += (mean - census[h]) * (mean - census[h]);
+                                        estimate += weights[h] * mean;
+                                    }
+
+                                    overallSquared += (estimate - overallCensus) * (estimate - overallCensus);
+                                }
+
+                                var worst = squared.Max(x => Math.Sqrt(x / draws));
+                                report.AppendLine(CultureInfo.InvariantCulture, $"| {score} | {pilot} | {budget} | {floor} | {worst:0.0000} | {Math.Sqrt(overallSquared / draws):0.0000} | {thin}/{draws * groups.Count} |");
+                            }
+                        }
+                    }
+                }
+
+                report.AppendLine();
+            }
         }
 
         output.WriteLine(report.ToString());

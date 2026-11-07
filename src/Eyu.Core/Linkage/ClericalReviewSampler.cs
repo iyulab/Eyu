@@ -279,7 +279,27 @@ public static class ClericalReviewSampler
     /// it into the weights would plan the round on a number nobody measured.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">When the budget cannot give every stratum one record.</exception>
-    public static IReadOnlyList<int> AllocateNeyman(IReadOnlyList<StratumSpread> strata, int totalBudget)
+    public static IReadOnlyList<int> AllocateNeyman(IReadOnlyList<StratumSpread> strata, int totalBudget) =>
+        AllocateNeyman(strata, totalBudget, minimumPerStratum: 1);
+
+    /// <summary>
+    /// <see cref="AllocateNeyman(IReadOnlyList{StratumSpread}, int)"/> with a floor under every stratum: each gets at
+    /// least <paramref name="minimumPerStratum"/> records (a stratum smaller than that, all of it) before the rest of
+    /// the budget is divided by <c>N_h · s_h</c>. The floor is capped at half the budget shared among the strata, so it
+    /// never spends more than half of it, and a floor of 1 is the allocation above.
+    /// <para>
+    /// Measured on Febrl (<c>docs/clerical-review.md</c>), the floor matters when the pilot left a stratum few records:
+    /// with the protocol's 30 per stratum it moved the worst stratum's error by 7 % at most; with a pilot of 5 it cut
+    /// that error several times over on a stratum of ten records. It does not change the pilot — the protocol's size
+    /// stays the default.
+    /// </para>
+    /// </summary>
+    /// <param name="strata">One entry per stratum: its population and its pilot's score deviation.</param>
+    /// <param name="totalBudget">The size of the round after the pilot.</param>
+    /// <param name="minimumPerStratum">The floor; at least 1, because the protocol forbids leaving a stratum unsampled.</param>
+    /// <exception cref="ArgumentException">As for the two-argument form.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">When the budget cannot give every stratum one record, or the floor is below 1.</exception>
+    public static IReadOnlyList<int> AllocateNeyman(IReadOnlyList<StratumSpread> strata, int totalBudget, int minimumPerStratum)
     {
         ArgumentNullException.ThrowIfNull(strata);
         if (strata.Count == 0)
@@ -305,10 +325,12 @@ public static class ClericalReviewSampler
         }
 
         ArgumentOutOfRangeException.ThrowIfLessThan(totalBudget, strata.Count);
+        ArgumentOutOfRangeException.ThrowIfLessThan(minimumPerStratum, 1);
 
         var allocation = GilReview.ReviewSampler.AllocateNeyman(
             [.. strata.Select(stratum => new GilReview.StratumSpread(stratum.PopulationSize, stratum.StandardDeviation))],
-            totalBudget);
+            totalBudget,
+            minimumPerStratum);
 
         return [.. allocation.Select(count => checked((int)count))];
     }

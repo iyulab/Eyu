@@ -27,6 +27,10 @@ every published version has a section here.
 - `ModelEndpointException`: what `HttpModelClient` throws for a response outside the success range — still an
   `HttpRequestException` with its `StatusCode`, now also carrying `RetryAfter`, the wait the response's
   `Retry-After` header asked for (seconds or a date), or null.
+- `docs/linkage-benchmark.md`, "Does the source change the judgment?": the linkage clusters of the same Febrl records rewritten the way
+  another source would write them. Padding, case and surrounding spaces change nothing; the text `NULL` for a missing value, a
+  number written two ways across sources and fields not named alike do. It says what a source adapter should hand over.
+  The measurement (`SourceInvarianceLinkageMeasurement`) is excluded from the default build like the other benchmarks.
 
 ### Changed
 

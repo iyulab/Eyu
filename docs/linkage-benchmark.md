@@ -41,6 +41,31 @@ and addresses alone — the common real case — are where exact comparison star
 wrongly, and where the similarity comparator (`LinkageOptions.Comparison = FieldComparison.JaroWinkler()`)
 recovers nearly all of it.
 
+## Does the source change the judgment?
+
+Eyu takes a `RawRecord` and nothing about where it came from, so the clusters it assigns should not
+depend on the system that handed the records over. Only one source adapter exists, so the differences
+a second one would bring are modeled instead: the same Febrl records rewritten the way another source
+would write them — a missing value as an empty string, as an absent field, as the text `NULL` or `N/A`;
+a date as `yyyy-MM-dd` or `dd/MM/yyyy`; a number as `4223.0`; a postcode zero-padded; every value
+padded to a fixed width, upper-cased or wrapped in spaces; the fields renamed and reordered; the record
+id rewritten and a key set. No model is called. Each rewriting is scored by the B-cubed F1 of its
+clusters against the clusters of the unrewritten records (1.000 means the source made no difference);
+the renaming and id rewritings are controls that must read 1.000, and the measurement fails if they do not.
+
+| | rewriting every record | rewriting only each entity's duplicates (two sources) |
+|---|---|---|
+| exact, all fields | 1.000 on both sets | 0.998 / 0.999 — worst: a number as `4223.0` / a date as `yyyy-MM-dd` |
+| exact, without date of birth and identity number | 0.995 / 0.987 — worst: missing as the text `NULL` | 0.984 / 0.990 — worst: a number as `4223.0` / missing as `NULL` |
+
+Padding, case and surrounding spaces change nothing. What does move the clusters is what a comparison
+cannot see through: **the text `NULL` or `N/A` standing for a missing value** (it agrees with itself, so
+records missing the same field look alike; it matters most when few fields are compared), **two sources
+writing the same number differently** (`4223` against `4223.0`, under exact comparison), and **fields
+that are not named alike across sources** (the clusters fall to F1 0.667 when only the duplicates are
+renamed). A source adapter should therefore hand a missing value over as `null` or leave the field out,
+write numbers and dates in one form, and use one name per field across the sources it links.
+
 ## The review protocol, checked against the census
 
 For each configuration the protocol was run as written — a pilot of 30 records per stratum

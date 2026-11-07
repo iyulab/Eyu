@@ -98,6 +98,22 @@ public sealed class KnownTypeProposalTests
         Assert.Equal("item", Assert.Single(proposal.Entities, e => e.EntityId == "e1").EntityType);
     }
 
+    // Nothing on a proposal says "grounded in a known type": a kind no known type names gets a name of the model's own,
+    // and a caller who needs the split reads it off the type names, the way the parse compares them.
+    [Fact]
+    public async Task A_caller_tells_the_proposals_on_a_known_type_from_the_ones_with_a_name_of_the_models_own()
+    {
+        KnownType[] known = [Part, WorkOrder];
+        var proposal = await new SinglePassOntologyProposer(new StubModelClient(Response("Part", poType: "purchase_order")))
+            .ProposeAsync([], Purchases, PriorKnowledge.Of(known), TestContext.Current.CancellationToken);
+
+        var onKnownType = proposal.Entities.Where(e => known.Any(k => TypeNames.SameType(k.Name, e.EntityType))).Select(e => e.EntityId);
+        var withOwnName = proposal.Entities.Where(e => !known.Any(k => TypeNames.SameType(k.Name, e.EntityType))).Select(e => e.EntityId);
+
+        Assert.Equal(["e1"], onKnownType);
+        Assert.Equal(["e2"], withOwnName);
+    }
+
     [Fact]
     public async Task A_known_entitys_type_is_a_name_in_use_too()
     {

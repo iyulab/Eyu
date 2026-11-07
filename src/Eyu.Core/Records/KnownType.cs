@@ -6,7 +6,9 @@ namespace Eyu.Core.Records;
 /// were exported under and passes them in, and an entity of a kind one of them names is proposed under
 /// it rather than under a new name for the same kind (<c>part</c> stays <c>part</c>, not <c>item</c>).
 /// Unlike a declared type, it is not a fact the caller asserts — it stays inferred vocabulary, and a
-/// kind no known type names still gets a name of the model's own.
+/// kind no known type names still gets a name of the model's own. A proposal carries no mark that says which
+/// it did: compare its <c>EntityType</c> with the known names by <see cref="TypeNames.SameType"/>, which is how the
+/// parse compares them (a known entity, by contrast, is marked on the proposal by its <c>KnownEntityKey</c>).
 /// <para>
 /// A known entity's type is already a known type; this record carries the kinds no known entity stands
 /// for — those an earlier call proposed but the caller did not keep as an identity, or only mentioned.

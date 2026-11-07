@@ -70,6 +70,36 @@ public class FormbaseRecordSampleTests
     }
 
     [Fact]
+    public async Task SampleAsync_carries_the_record_key_which_a_correction_does_not_change_while_the_id_does()
+    {
+        var rawStore = new InMemoryRawStore();
+        var type = FormTypeRef.Create("supplier");
+        var key = RecordKey.Create("S-1");
+        var sample = new FormbaseRecordSample(rawStore, new InMemoryFieldHintSource());
+        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"name":"Acme"}"""), key, TestContext.Current.CancellationToken);
+        var before = Assert.Single(await sample.SampleAsync(SubjectRef.Create("supplier"), maxCount: 10, TestContext.Current.CancellationToken));
+
+        await rawStore.AppendAsync(type, DocumentId.New(), DocumentBody.Parse("""{"name":"Acme Ltd"}"""), key, TestContext.Current.CancellationToken);
+        var after = Assert.Single(await sample.SampleAsync(SubjectRef.Create("supplier"), maxCount: 10, TestContext.Current.CancellationToken));
+
+        Assert.NotEqual(before.Id, after.Id);
+        Assert.Equal("S-1", before.Key);
+        Assert.Equal("S-1", after.Key);
+        Assert.False(after.Fields.ContainsKey("S-1") || after.Fields.Values.Contains("S-1"), "the key is a property of the record, not a field Eyu invents in its body");
+    }
+
+    [Fact]
+    public async Task SampleAsync_gives_a_document_filed_without_a_record_key_no_key()
+    {
+        var rawStore = new InMemoryRawStore();
+        await rawStore.AppendAsync(FormTypeRef.Create("invoice"), DocumentId.New(), DocumentBody.Parse("""{"lot":"L1"}"""), cancellationToken: TestContext.Current.CancellationToken);
+
+        var records = await new FormbaseRecordSample(rawStore, new InMemoryFieldHintSource()).SampleAsync(SubjectRef.Create("invoice"), maxCount: 10, TestContext.Current.CancellationToken);
+
+        Assert.Null(Assert.Single(records).Key);
+    }
+
+    [Fact]
     public async Task SampleAsync_leaves_out_a_retired_record()
     {
         var rawStore = new InMemoryRawStore();

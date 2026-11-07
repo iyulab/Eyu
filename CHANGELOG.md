@@ -12,6 +12,14 @@ every published version has a section here.
 
 ### Added
 
+- `RawRecord.Key`: the record's identity apart from any one version of it, when the source has one. A source that files
+  a correction as a new version of a record gives each version a new `Id` (what a grounded claim cites — it names exactly
+  which version was read) while the record keeps one `Key`. `Eyu.Formbase`'s `FormbaseRecordSample` fills it from the
+  document's record key, so a correction changes `Id` and leaves `Key`, and a reference held by record key has a value to
+  be resolved against. `null` for a source with no such identity. The proposer does not read it yet. The record gained a
+  fourth positional parameter, so a call that passes the first three is unchanged; a deconstruction of `RawRecord` into three
+  names now needs a fourth.
+
 - `ClericalReviewSampler.AllocateNeyman(strata, totalBudget, minimumPerStratum)`: a floor under every stratum's share of
   the round after the pilot (capped at half the budget shared among the strata; the two-argument form is a floor of
   1, as before). It matters when the pilot left a stratum few records; at the protocol's 30 per stratum it moved the

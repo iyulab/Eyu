@@ -21,5 +21,15 @@ namespace Eyu.Core.Records;
 /// reference to the equipment, and only the subject says which one a record holds
 /// (<see cref="Eyu.Core.Linkage.LinkageEvidence"/>). Without it the record is read as before.
 /// </para>
+/// <para>
+/// <paramref name="Key"/> is the record's identity <em>apart from any one version of it</em>, when the source has
+/// one: a source that keeps corrections as new versions of a record (Formbase files each correction as another
+/// document under the same record key) hands each version a new <paramref name="Id"/> — the id a grounded claim
+/// cites, because it names exactly which version was read — while the record stays the same record, under one
+/// <paramref name="Key"/>. It is what a reference held by <em>key</em> (a field whose value is the key of the
+/// record it points at) can be resolved against, and what tells two versions of a record apart from two records.
+/// It is <c>null</c> for a source with no such identity (a record of its own, never corrected), and the
+/// proposer does not yet read it: it travels with the record so a caller and a later change can.
+/// </para>
 /// </summary>
-public sealed record RawRecord(string Id, IReadOnlyDictionary<string, string?> Fields, SubjectRef? Subject = null);
+public sealed record RawRecord(string Id, IReadOnlyDictionary<string, string?> Fields, SubjectRef? Subject = null, string? Key = null);

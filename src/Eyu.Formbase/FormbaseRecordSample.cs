@@ -20,7 +20,8 @@ namespace Eyu.Formbase;
 /// folds them (<see cref="RecordFold.Latest"/>) — a corrected record appears once, as its latest
 /// document, and a retired one not at all — so every document of the form type is read before the
 /// first <c>maxCount</c> records are taken. A record appears under the id of the document that
-/// stands for it, which changes when the record is corrected.
+/// stands for it, which changes when the record is corrected; its <see cref="RawRecord.Key"/> is the
+/// record key the documents share (null for a document filed without one), which does not.
 /// <para>
 /// A form type that is a repeated section of another (<see cref="SectionSource"/>) has no documents
 /// of its own: its records are the rows Formbase projects for it, cut from the parent's standing
@@ -56,7 +57,8 @@ public sealed class FormbaseRecordSample(IRawStore rawStore, IFieldHintSource hi
                 .Select(document => new RawRecord(
                     document.Id.ToString(),
                     Flatten(document.Body!.Root).Where(f => !sectionFields.Contains(f.Key)).ToDictionary(),
-                    subject))
+                    subject,
+                    document.Key?.Value))
                 .ToList();
         }
 

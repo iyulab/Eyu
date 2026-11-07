@@ -22,6 +22,16 @@
     <Compile Include="..\Eyu.Core.Tests\Quality\RecordedModelResponses.cs" Link="Live/Llm/RecordedModelResponses.cs" />
   </ItemGroup>
 
+  <!--
+    A corpus of awkward names written as Turtle for an outside parser to read back (Measurement/): it
+    writes files and asserts nothing about them, so it is a measurement, not a gate.
+      dotnet test -p:IncludeEyuBenchmarks=true  with  EYU_RDF_CORPUS_DIR=<directory>
+    Excluded by default, like the benchmarks of Eyu.Core.Tests.
+  -->
+  <ItemGroup Condition="'$(IncludeEyuBenchmarks)' != 'true'">
+    <Compile Remove="Measurement/**/*.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Eyu.Rdf\Eyu.Rdf.csproj" />
   </ItemGroup>

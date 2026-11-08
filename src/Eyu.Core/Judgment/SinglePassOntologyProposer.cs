@@ -246,7 +246,7 @@ public sealed partial class SinglePassOntologyProposer(
             };
     }
 
-    private const string DeclarationClause = "Declared structure is authoritative: a declared type, field or relation is fact, not a hypothesis. Where a declared type describes an entity, propose the entity under that type; where a declared relation describes a relation, propose it under that name -- the quoted name alone, not the ends written after it; never contradict declared structure. A declaration is a floor, not a ceiling: the declared types and relations are not the only ones, so still propose every entity and relation the records show beyond what is declared, under types and names of your own.";
+    private const string DeclarationClause = "Declared structure is authoritative: a declared type, field or relation is fact, not a hypothesis. Where a declared type describes an entity, propose the entity under that type; where a declared relation describes a relation, propose it under that name -- the quoted name alone, not the ends written after it; never contradict declared structure. A declared relation joins entities of its declared end types: when you use a declared relation's name, propose the entity at each end under that declared end type, not under a more specific type of your own. A declaration is a floor, not a ceiling: the declared types and relations are not the only ones, so still propose every entity and relation the records show beyond what is declared, under types and names of your own.";
 
     /// <summary>
     /// First 8 hex characters of the SHA-256 of the request's fixed part (preamble + the declaration

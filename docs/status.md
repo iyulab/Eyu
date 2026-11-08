@@ -86,6 +86,23 @@ human-verified sentences, with `qwen3.8-27b`:
 | sport (97 sentences) | everything proposed | 0.24 | 0.23 | 0.22 | 0.36 | 0.64 | 0.50 |
 | sport | declared basis only | 0.24 | 0.23 | 0.22 | 0.98 | 0.02 | |
 
+With one more sentence in the declaration clause — a declared relation joins entities of its declared end
+types, so each end is proposed under the declared end type rather than a more specific type of the
+model's own (prompt fingerprint `86b45d32`; `98229faf` before) — rerun the same day, arms side by side
+against the same endpoint, on the declared-basis output:
+
+| ontology | prompt | runs | F1 per run | declared relations the declaration rejected, per run |
+|---|---|---|---|---|
+| sport | before (`98229faf`) | 2 | 0.17 · 0.29 | 50 · 40 |
+| sport | after (`86b45d32`) | 3 | 0.26 · 0.29 · 0.21 (a run with three failed calls) | 2 · 2 · 1 |
+| movie | before | 1 | 0.34 | 64 |
+| movie | after | 1 | 0.36 (one failed call) | 12 |
+
+The clause removes nearly all of those rejections; the F1 moves by no more than the run-to-run spread
+(0.12 between the two runs of one arm on sport), so it is a change in what the proposal keeps, not a
+measured gain in score. Conformance and hallucination are unchanged. Any measurement stamped `98229faf` was
+taken before the clause and is not comparable with one taken after it.
+
 Precision and recall are the same for both outputs because the scorer compares only triples on the
 relations a sentence's gold triples use; what the declared-basis filter changes is conformance and
 hallucination — a consumer that keeps the declared basis gets the ontology's relations alone. The

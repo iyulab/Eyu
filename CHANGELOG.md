@@ -37,6 +37,14 @@ every published version has a section here.
 
 ### Changed
 
+- The declaration clause of the proposal prompt now says a declared relation joins entities of its declared end types: when the
+  model uses a declared relation's name it proposes the entity at each end under the declared end type, not under a more
+  specific type of its own. A relation whose ends were typed more narrowly than the declaration was rejected as contradicting
+  it (50 and 64 such rejections on two Text2KGBench ontologies, 1–2 and 12 after); the entity now keeps the declared type and the
+  relation stays. `SinglePassOntologyProposer.PromptFingerprint` moves `98229faf` → `86b45d32` (the fingerprint covers the clause
+  whether or not a request declares anything; a request with no declared structure is worded as before): a measurement stamped with
+  the old one is not comparable with one stamped with the new. See `docs/status.md`, "Triple extraction against a declared ontology".
+
 - The clerical-review statistics — `ClericalReviewSampler.DrawPilot` and `AllocateNeyman`,
   `ClericalReviewEstimator.Estimate` and `UnobservedVariationBound`, `ClericalReviewAgreement.Measure` — are
   computed by [`Gil.Review`](https://www.nuget.org/packages/Gil.Review) 0.2.0, a Rust implementation behind a

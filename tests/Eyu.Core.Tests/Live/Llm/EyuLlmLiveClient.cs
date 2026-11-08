@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text.Json;
 using Eyu.Core.Inference.Http;
 using Eyu.Core.Ports;
 using Eyu.Core.Tests.Quality;
@@ -14,6 +15,7 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// 100s timeout is too short for that and was raised here, not in <see cref="HttpModelClient"/>
 /// itself, which leaves timeouts to the caller by design.
 /// <para>
+/// <c>EYU_LLM_EXTRA_BODY</c> (a JSON object) is layered onto every request body, e.g. <c>{"temperature":0}</c>.
 /// <c>EYU_LLM_RAW_RESPONSE_DIR</c> keeps every call's request and response there
 /// (<see cref="RecordingModelClient"/>). <c>EYU_LLM_REPLAY_DIR</c> answers from such a directory instead
 /// of a model (<see cref="ReplayModelClient"/>) — no endpoint is needed then, and there is no
@@ -46,7 +48,17 @@ internal static class EyuLlmLiveClient
         // EYU_LLM_STREAM=true streams the answer — for an endpoint behind a gateway that closes a
         // response whose first byte takes longer than its limit while a thinking model reasons.
         var stream = bool.TryParse(Environment.GetEnvironmentVariable("EYU_LLM_STREAM"), out var streamed) && streamed;
-        IModelClient client = new HttpModelClient(httpClient, model, stream: stream);
+        // EYU_LLM_EXTRA_BODY is a JSON object merged into every request body (HttpModelClient's extraBody):
+        // the way a round asks for a sampling setting — {"temperature":0} — without a code change, to see
+        // whether the setting moves what a measurement reads.
+        IReadOnlyDictionary<string, JsonElement>? extraBody = null;
+        if (Environment.GetEnvironmentVariable("EYU_LLM_EXTRA_BODY") is { Length: > 0 } extra)
+        {
+            extraBody = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(extra)
+                ?? throw new InvalidOperationException("EYU_LLM_EXTRA_BODY must be a JSON object.");
+        }
+
+        IModelClient client = new HttpModelClient(httpClient, model, extraBody, stream);
         if (Environment.GetEnvironmentVariable("EYU_LLM_RAW_RESPONSE_DIR") is { Length: > 0 } raw)
         {
             client = new RecordingModelClient(client, raw);

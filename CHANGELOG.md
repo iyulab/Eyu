@@ -31,6 +31,9 @@ every published version has a section here.
   another source would write them. Padding, case and surrounding spaces change nothing; the text `NULL` for a missing value, a
   number written two ways across sources and fields not named alike do. It says what a source adapter should hand over.
   The measurement (`SourceInvarianceLinkageMeasurement`) is excluded from the default build like the other benchmarks.
+- README, "extraBody": what a sampling setting does to repeatability — asking a self-hosted reasoning model for the same proposal
+  again agreed on the proposed entities far more often with `{"temperature":0}` than at the server's default sampling (two small
+  cases, one model; more repeatable, not deterministic). The live harness gained `EYU_LLM_EXTRA_BODY` to ask a round for such a setting.
 
 ### Changed
 

@@ -297,7 +297,13 @@ address, auth header and timeout. A provider-specific request field the library 
 model — a self-hosted server's thinking control (`chat_template_kwargs`, `reasoning`), a
 `temperature` — is passed through an optional `extraBody` of opaque JSON merged into every
 request (the OpenAI SDK's `extra_body` convention; `model` and `messages` stay owned by the
-client). When the provider reports token counts, `ModelResponse.Usage` carries them
+client). Eyu does not choose a sampling setting; the caller does, and it matters for repeatability:
+asking a self-hosted 27B reasoning model for the same proposal again (two small record cases, two
+attempts per round, rounds interleaved) agreed on the proposed (label, class) entities with a
+Jaccard of 0.59 and 0.21 at the server's default sampling, and 1.00 and 0.48 with
+`{"temperature":0}` — more repeatable, not deterministic, since rounds on a shared server still
+differed once. Two cases and one model: treat it as a direction to check on your own model, not a
+guarantee. When the provider reports token counts, `ModelResponse.Usage` carries them
 (prompt / completion / total, each optional) verbatim, so a caller can budget context or
 bill against the server's own numbers.
 

@@ -248,6 +248,9 @@ public sealed partial class SinglePassOntologyProposer(
 
     private const string DeclarationClause = "Declared structure is authoritative: a declared type, field or relation is fact, not a hypothesis. Where a declared type describes an entity, propose the entity under that type; where a declared relation describes a relation, propose it under that name -- the quoted name alone, not the ends written after it; never contradict declared structure. A declared relation joins entities of its declared end types: when you use a declared relation's name, propose the entity at each end under that declared end type, not under a more specific type of your own. A declaration is a floor, not a ceiling: the declared types and relations are not the only ones, so still propose every entity and relation the records show beyond what is declared, under types and names of your own.";
 
+    // Appended only to a request whose records carry a Key, so every other request is worded exactly as before.
+    private const string RecordKeyClause = "A record marked \"record key\" carries the identity its source gives that record apart from any one version of it. A field that holds another record's record key refers to that record: the entity the record with that key denotes is the one the field names. A record that only refers to an entity is not a record of it -- relate the two entities instead of letting the referring record denote the referred one.";
+
     /// <summary>
     /// First 8 hex characters of the SHA-256 of the request's fixed part (preamble + the declaration
     /// clause + the response schema) — a short, stable identifier that changes whenever that wording
@@ -284,6 +287,13 @@ public sealed partial class SinglePassOntologyProposer(
     /// beside the others, which this feature leaves unchanged.
     /// </summary>
     public static string TypeRelationsPromptFingerprint { get; } = Fingerprint(string.Join('\n', PromptSchemaTypeRelations, TypeRelationsClause, TypeRelationsSchema.GetRawText()));
+
+    /// <summary>
+    /// The fingerprint of the fixed part a call whose records carry a <see cref="RawRecord.Key"/> adds (the
+    /// record-key clause). A report of such a call stamps it beside the others, which this feature leaves
+    /// unchanged: a request without keys is worded exactly as before.
+    /// </summary>
+    public static string RecordKeysPromptFingerprint { get; } = Fingerprint(RecordKeyClause);
 
     private static string ComputeFingerprint() =>
         Fingerprint(string.Join('\n', PromptInstruction, PromptSchema, PromptReferenceRule, DeclarationClause, ResponseSchema.GetRawText()));
@@ -478,11 +488,17 @@ public sealed partial class SinglePassOntologyProposer(
             text.AppendLine(TypeRelationsClause);
         }
 
+        if (records.Any(r => !string.IsNullOrWhiteSpace(r.Key)))
+        {
+            text.AppendLine();
+            text.AppendLine(RecordKeyClause);
+        }
+
         text.AppendLine();
         text.AppendLine("Records:");
         foreach (var record in records)
         {
-            text.AppendLine(CultureInfo.InvariantCulture, $"- {record.Id}: {DescribeFields(record)}");
+            text.AppendLine(CultureInfo.InvariantCulture, $"- {record.Id}{DescribeKey(record)}: {DescribeFields(record)}");
         }
 
         var linkedClusters = linkageAnalysis.Clustering.Clusters.Where(c => c.RecordIds.Count > 1).ToList();
@@ -587,6 +603,8 @@ public sealed partial class SinglePassOntologyProposer(
         DeclaredValueKind.Date => "date",
         _ => kind.ToString().ToLowerInvariant(),
     };
+
+    private static string DescribeKey(RawRecord record) => string.IsNullOrWhiteSpace(record.Key) ? "" : $" [record key: {record.Key}]";
 
     private static string DescribeFields(RawRecord record) => string.Join(", ", record.Fields.Select(f => $"{f.Key}={f.Value}"));
 

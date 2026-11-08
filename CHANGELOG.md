@@ -12,11 +12,20 @@ every published version has a section here.
 
 ### Added
 
+- The proposer reads `RawRecord.Key`. A request whose records carry a key shows each as `[record key: …]` beside its id and adds one
+  sentence (fingerprint `SinglePassOntologyProposer.RecordKeysPromptFingerprint`): a field holding another record's record key
+  refers to that record, and a record that only refers to an entity is not a record of it. A request with no keys is worded exactly
+  as before, so `PromptFingerprint` is unchanged by this entry. Declared reference fields are also read by key: when a reference
+  field's value is the key of a record the answer says denotes an entity, the referring record's claim on that entity is withdrawn
+  as a reference (`DemotedDenotations`), whatever the entity's name is written as. Measured on a small supplier/inspection case whose
+  codes are not in row order, same model, eight attempts per arm: inspections related to the right supplier 0 of 24 without the key,
+  24 of 24 with it, none to the wrong one.
+
 - `RawRecord.Key`: the record's identity apart from any one version of it, when the source has one. A source that files
   a correction as a new version of a record gives each version a new `Id` (what a grounded claim cites — it names exactly
   which version was read) while the record keeps one `Key`. `Eyu.Formbase`'s `FormbaseRecordSample` fills it from the
   document's record key, so a correction changes `Id` and leaves `Key`, and a reference held by record key has a value to
-  be resolved against. `null` for a source with no such identity. The proposer does not read it yet. The record gained a
+  be resolved against. `null` for a source with no such identity. (The proposer reads it since the entry below.) The record gained a
   fourth positional parameter, so a call that passes the first three is unchanged; a deconstruction of `RawRecord` into three
   names now needs a fourth.
 

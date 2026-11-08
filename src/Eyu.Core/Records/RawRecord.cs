@@ -28,8 +28,10 @@ namespace Eyu.Core.Records;
 /// cites, because it names exactly which version was read — while the record stays the same record, under one
 /// <paramref name="Key"/>. It is what a reference held by <em>key</em> (a field whose value is the key of the
 /// record it points at) can be resolved against, and what tells two versions of a record apart from two records.
-/// It is <c>null</c> for a source with no such identity (a record of its own, never corrected), and the
-/// proposer does not yet read it: it travels with the record so a caller and a later change can.
+/// It is <c>null</c> for a source with no such identity (a record of its own, never corrected). The proposer reads it:
+/// a record with a key is shown to the model as <c>[record key: …]</c> beside its id, with a sentence saying a field
+/// holding another record's key refers to that record, and a declared reference field whose value is the key of a
+/// record the answer says denotes an entity is read as a reference to that entity, not as the referring record's own.
 /// </para>
 /// </summary>
 public sealed record RawRecord(string Id, IReadOnlyDictionary<string, string?> Fields, SubjectRef? Subject = null, string? Key = null);

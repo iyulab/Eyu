@@ -55,6 +55,13 @@ internal static partial class DeclaredReferenceDenotation
             : [];
 
         var recordsById = records.ToDictionary(r => r.Id, StringComparer.Ordinal);
+        // The records a reference value can point at by key: a source that files a correction as a new
+        // version gives each version a new Id and the record one Key, and a field holding that key names
+        // the record, not any one version of it.
+        var idsByKey = records
+            .Where(r => !string.IsNullOrWhiteSpace(r.Key))
+            .GroupBy(r => Normalize(r.Key!), StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.Id).ToList(), StringComparer.Ordinal);
         var candidates = new List<DemotedDenotation>();
         foreach (var claim in claims)
         {
@@ -62,8 +69,15 @@ internal static partial class DeclaredReferenceDenotation
             foreach (var recordId in claim.DenotedBy)
             {
                 var record = recordsById[recordId];
-                var field = ReferenceFieldsOf(record).FirstOrDefault(f =>
-                    record.Fields.TryGetValue(f, out var value) && value is not null && Normalize(value) == name);
+                var fields = ReferenceFieldsOf(record).ToList();
+                var field = fields.FirstOrDefault(f =>
+                    record.Fields.TryGetValue(f, out var value) && value is not null && Normalize(value) == name)
+                    // The value is another record's key and the answer says that record denotes this entity:
+                    // the field refers to the entity, whatever its name is written as.
+                    ?? fields.FirstOrDefault(f =>
+                        record.Fields.TryGetValue(f, out var value) && value is not null
+                        && idsByKey.TryGetValue(Normalize(value), out var targets)
+                        && targets.Any(t => t != recordId && claim.DenotedBy.Contains(t, StringComparer.Ordinal)));
                 if (field is not null)
                 {
                     candidates.Add(new DemotedDenotation(claim.EntityId, recordId, field));

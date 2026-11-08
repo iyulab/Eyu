@@ -194,6 +194,82 @@ public class DeclaredReferenceDenotationTests
         Assert.Equal([new DemotedDenotation("press", "w-01", "machine")], proposal.DemotedDenotations);
     }
 
+    // A source that files a correction as a new version of a record gives the version a new Id and the
+    // record one Key. A work order holding the machine's key (not its name) refers to the machine, and the
+    // answer saying that machine record denotes "Press 3" is enough to withdraw the work order's claim.
+    private static readonly DeclaredStructure KeyedWorkOrderDeclaration = new(
+        SubjectRef.Create("work_order"),
+        [new DeclaredField("order_no"), new DeclaredField("machine_key")],
+        [new DeclaredRelation("uses_machine", SubjectRef.Create("machine"), ViaField: "machine_key", DeclaredRelationKind.Reference)]);
+
+    private static RawRecord[] KeyedWorkOrdersAndMachine() =>
+    [
+        new("w-01", new Dictionary<string, string?> { ["order_no"] = "WO-2024-0311", ["machine_key"] = "M-3" }),
+        new("m-01@2", new Dictionary<string, string?> { ["machine_name"] = "Press 3 (rev)", ["maker"] = "Hanbit" }, Key: "M-3"),
+    ];
+
+    [Fact]
+    public async Task A_record_holding_another_records_key_is_demoted_when_that_record_denotes_the_entity()
+    {
+        var model = new StubModelClient(Response(
+            Entity("wo1", "WO-2024-0311", "WorkOrder", ["w-01"], ["w-01"]),
+            Entity("press", "Press 3", "Machine", ["w-01", "m-01@2"], ["w-01", "m-01@2"])));
+
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([KeyedWorkOrderDeclaration], KeyedWorkOrdersAndMachine(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(["m-01@2"], proposal.Entities.Single(e => e.EntityId == "press").DenotedBy);
+        Assert.Equal([new DemotedDenotation("press", "w-01", "machine_key")], proposal.DemotedDenotations);
+    }
+
+    // Without a Key on the target nothing says the field's value is a record, and the name does not match.
+    [Fact]
+    public async Task The_same_value_without_a_record_key_demotes_nothing()
+    {
+        var model = new StubModelClient(Response(
+            Entity("wo1", "WO-2024-0311", "WorkOrder", ["w-01"], ["w-01"]),
+            Entity("press", "Press 3", "Machine", ["w-01", "m-01@2"], ["w-01", "m-01@2"])));
+        var unkeyed = KeyedWorkOrdersAndMachine().Select(r => r with { Key = null }).ToArray();
+
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([KeyedWorkOrderDeclaration], unkeyed, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["w-01", "m-01@2"], proposal.Entities.Single(e => e.EntityId == "press").DenotedBy);
+        Assert.Empty(proposal.DemotedDenotations);
+    }
+
+    // The key proves the field points at that record; it does not prove the entity is that record's. An
+    // entity the keyed record does not denote keeps the referring record's claim.
+    [Fact]
+    public async Task An_entity_the_keyed_record_does_not_denote_keeps_the_referring_records_claim()
+    {
+        var model = new StubModelClient(Response(
+            Entity("wo1", "WO-2024-0311", "WorkOrder", ["w-01"], ["w-01"]),
+            Entity("press", "Press 3", "Machine", ["m-01@2"], ["m-01@2"]),
+            Entity("shift", "Night shift", "Shift", ["w-01"], ["w-01"])));
+
+        var proposal = await new SinglePassOntologyProposer(model).ProposeAsync([KeyedWorkOrderDeclaration], KeyedWorkOrdersAndMachine(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(["w-01"], proposal.Entities.Single(e => e.EntityId == "shift").DenotedBy);
+        Assert.Empty(proposal.DemotedDenotations);
+    }
+
+    // The prompt names the record key beside the id, and says what a reference to it means, only for a
+    // request whose records carry one -- every other request is worded exactly as before.
+    [Fact]
+    public async Task The_prompt_shows_record_keys_and_the_clause_only_when_a_record_has_one()
+    {
+        var keyed = new StubModelClient(Response());
+        await new SinglePassOntologyProposer(keyed).ProposeAsync([KeyedWorkOrderDeclaration], KeyedWorkOrdersAndMachine(), TestContext.Current.CancellationToken);
+        var plain = new StubModelClient(Response());
+        await new SinglePassOntologyProposer(plain).ProposeAsync([KeyedWorkOrderDeclaration], KeyedWorkOrdersAndMachine().Select(r => r with { Key = null }).ToArray(), TestContext.Current.CancellationToken);
+
+        Assert.Contains("- m-01@2 [record key: M-3]: ", keyed.LastPrompt!, StringComparison.Ordinal);
+        Assert.Contains("A record marked \"record key\"", keyed.LastPrompt!, StringComparison.Ordinal);
+        Assert.DoesNotContain("record key", plain.LastPrompt!, StringComparison.Ordinal);
+        Assert.Contains("- m-01@2: ", plain.LastPrompt!, StringComparison.Ordinal);
+        Assert.Matches("^[0-9a-f]{8}$", SinglePassOntologyProposer.RecordKeysPromptFingerprint);
+        Assert.NotEqual(SinglePassOntologyProposer.PromptFingerprint, SinglePassOntologyProposer.RecordKeysPromptFingerprint);
+    }
+
     private static RawRecord[] WorkOrdersAndMachine() =>
     [
         new("w-01", new Dictionary<string, string?> { ["order_no"] = "WO-2024-0311", ["machine"] = "Press 3", ["operator"] = "Kim" }),

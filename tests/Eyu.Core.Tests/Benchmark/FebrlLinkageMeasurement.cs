@@ -235,61 +235,61 @@ public class FebrlLinkageMeasurement(ITestOutputHelper output)
         report.AppendLine("| fields | surnames | value frequencies | N known | returning: Match / Gray / not listed | wrong Gray per returning record: mean · p95 · max | wrong Match (total) | strangers with a Match (of which every Match shares the full name) | stranger Gray: mean · p95 · max |");
         report.AppendLine("|---|---|---|---|---|---|---|---|---|");
         foreach (var fields in new[] { "all", "names and town" })
-        foreach (var korean in new[] { false, true })
-        foreach (var frequencies in new[] { false, true })
-        foreach (var n in new[] { 500, 1500 })
-        {
-            RawRecord Shape(RawRecord r) => new(r.Id, r.Fields
-                .Where(f => fields == "all" || thin.Contains(f.Key))
-                .ToDictionary(f => f.Key, f => f.Key == "surname" && korean ? KoreanSurname(Entity(r.Id)) : f.Value, StringComparer.Ordinal));
+            foreach (var korean in new[] { false, true })
+                foreach (var frequencies in new[] { false, true })
+                    foreach (var n in new[] { 500, 1500 })
+                    {
+                        RawRecord Shape(RawRecord r) => new(r.Id, r.Fields
+                            .Where(f => fields == "all" || thin.Contains(f.Key))
+                            .ToDictionary(f => f.Key, f => f.Key == "surname" && korean ? KoreanSurname(Entity(r.Id)) : f.Value, StringComparer.Ordinal));
 
-            var known = drawn.Take(n).Select(Shape).ToList();
-            var knownIds = known.Select(r => Entity(r.Id)).ToHashSet(StringComparer.Ordinal);
-            var parameters = FieldLinkageParameters.FromNonMatchAgreement(LinkagePipeline.EstimateNonMatchAgreement(known), 0.92, 0.001);
-            if (frequencies)
-            {
-                parameters = parameters with { ValueFrequencies = LinkagePipeline.MeasureValueFrequencies(known, ["given_name", "surname", "suburb"]) };
-            }
+                        var known = drawn.Take(n).Select(Shape).ToList();
+                        var knownIds = known.Select(r => Entity(r.Id)).ToHashSet(StringComparer.Ordinal);
+                        var parameters = FieldLinkageParameters.FromNonMatchAgreement(LinkagePipeline.EstimateNonMatchAgreement(known), 0.92, 0.001);
+                        if (frequencies)
+                        {
+                            parameters = parameters with { ValueFrequencies = LinkagePipeline.MeasureValueFrequencies(known, ["given_name", "surname", "suburb"]) };
+                        }
 
-            var entities = known.Select(r => new KnownEntity(Entity(r.Id), r.Id, "Person", [r])).ToList();
-            IReadOnlyList<KnownEntityCandidate> Score(RawRecord r) => LinkagePipeline.Analyze([r], entities, parameters).KnownCandidates;
+                        var entities = known.Select(r => new KnownEntity(Entity(r.Id), r.Id, "Person", [r])).ToList();
+                        IReadOnlyList<KnownEntityCandidate> Score(RawRecord r) => LinkagePipeline.Analyze([r], entities, parameters).KnownCandidates;
 
-            int match = 0, gray = 0, unlisted = 0, wrongMatch = 0;
-            var wrongGray = new List<int>();
-            foreach (var record in returning.Where(r => knownIds.Contains(Entity(r.Id))).Take(300).Select(Shape))
-            {
-                var candidates = Score(record);
-                var truth = candidates.FirstOrDefault(c => c.KnownEntityKey == Entity(record.Id));
-                if (truth is null) unlisted++;
-                else if (truth.Classification == LinkageClassification.Match) match++;
-                else gray++;
-                wrongGray.Add(candidates.Count(c => c.KnownEntityKey != Entity(record.Id) && c.Classification == LinkageClassification.GrayZone));
-                wrongMatch += candidates.Count(c => c.KnownEntityKey != Entity(record.Id) && c.Classification == LinkageClassification.Match);
-            }
+                        int match = 0, gray = 0, unlisted = 0, wrongMatch = 0;
+                        var wrongGray = new List<int>();
+                        foreach (var record in returning.Where(r => knownIds.Contains(Entity(r.Id))).Take(300).Select(Shape))
+                        {
+                            var candidates = Score(record);
+                            var truth = candidates.FirstOrDefault(c => c.KnownEntityKey == Entity(record.Id));
+                            if (truth is null) unlisted++;
+                            else if (truth.Classification == LinkageClassification.Match) match++;
+                            else gray++;
+                            wrongGray.Add(candidates.Count(c => c.KnownEntityKey != Entity(record.Id) && c.Classification == LinkageClassification.GrayZone));
+                            wrongMatch += candidates.Count(c => c.KnownEntityKey != Entity(record.Id) && c.Classification == LinkageClassification.Match);
+                        }
 
-            var strangerGray = new List<int>();
-            int strangersMatched = 0, sameFullName = 0;
-            var byKey = known.ToDictionary(r => Entity(r.Id), StringComparer.Ordinal);
-            var strangers = drawn.Skip(n).Take(300).Select(Shape).Select(r => r with { Id = r.Id + "-new" }).ToList();
-            foreach (var stranger in strangers)
-            {
-                var candidates = Score(stranger);
-                strangerGray.Add(candidates.Count(c => c.Classification == LinkageClassification.GrayZone));
-                var matched = candidates.Where(c => c.Classification == LinkageClassification.Match).ToList();
-                if (matched.Count == 0) continue;
-                strangersMatched++;
-                if (matched.All(c => SameName(byKey[c.KnownEntityKey], stranger, "given_name") && SameName(byKey[c.KnownEntityKey], stranger, "surname"))) sameFullName++;
-            }
+                        var strangerGray = new List<int>();
+                        int strangersMatched = 0, sameFullName = 0;
+                        var byKey = known.ToDictionary(r => Entity(r.Id), StringComparer.Ordinal);
+                        var strangers = drawn.Skip(n).Take(300).Select(Shape).Select(r => r with { Id = r.Id + "-new" }).ToList();
+                        foreach (var stranger in strangers)
+                        {
+                            var candidates = Score(stranger);
+                            strangerGray.Add(candidates.Count(c => c.Classification == LinkageClassification.GrayZone));
+                            var matched = candidates.Where(c => c.Classification == LinkageClassification.Match).ToList();
+                            if (matched.Count == 0) continue;
+                            strangersMatched++;
+                            if (matched.All(c => SameName(byKey[c.KnownEntityKey], stranger, "given_name") && SameName(byKey[c.KnownEntityKey], stranger, "surname"))) sameFullName++;
+                        }
 
-            static string Spread(List<int> xs)
-            {
-                var sorted = xs.Order().ToList();
-                return string.Create(CultureInfo.InvariantCulture, $"{xs.Average():0.0} · {sorted[(int)(0.95 * (sorted.Count - 1))]} · {sorted[^1]}");
-            }
+                        static string Spread(List<int> xs)
+                        {
+                            var sorted = xs.Order().ToList();
+                            return string.Create(CultureInfo.InvariantCulture, $"{xs.Average():0.0} · {sorted[(int)(0.95 * (sorted.Count - 1))]} · {sorted[^1]}");
+                        }
 
-            report.AppendLine(CultureInfo.InvariantCulture,
-                $"| {fields} | {(korean ? "Korean shares" : "Febrl")} | {(frequencies ? "yes" : "no")} | {n} | {match} / {gray} / {unlisted} of {wrongGray.Count} | {Spread(wrongGray)} | {wrongMatch} | {strangersMatched} of {strangers.Count} ({sameFullName} same full name) | {Spread(strangerGray)} |");
-        }
+                        report.AppendLine(CultureInfo.InvariantCulture,
+                            $"| {fields} | {(korean ? "Korean shares" : "Febrl")} | {(frequencies ? "yes" : "no")} | {n} | {match} / {gray} / {unlisted} of {wrongGray.Count} | {Spread(wrongGray)} | {wrongMatch} | {strangersMatched} of {strangers.Count} ({sameFullName} same full name) | {Spread(strangerGray)} |");
+                    }
 
         output.WriteLine(report.ToString());
         var reportPath = Environment.GetEnvironmentVariable("EYU_BENCHMARK_REPORT");

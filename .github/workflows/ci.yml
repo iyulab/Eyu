@@ -73,6 +73,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       IncludeEyuLlmLiveTests: 'true'
+      # The measurement harnesses (linkage benchmarks, RDF corpus runs) are a second optional
+      # compilation. They are measurement tools, not tests CI runs -- but they are code: compiled
+      # and formatted here so they cannot rot unseen. Running them needs a corpus, which CI lacks.
+      IncludeEyuBenchmarks: 'true'
 
     steps:
       - name: Checkout

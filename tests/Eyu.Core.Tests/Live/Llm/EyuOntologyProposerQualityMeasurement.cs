@@ -81,6 +81,14 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// caller — and every source in one call, and the report counts, per thing, the IRIs
 /// <c>Eyu.Rdf</c> would write it under in each mode and whether the two modes share one.
 /// </para>
+/// <para>
+/// A round through a real source door (<c>EYU_LLM_QUALITY_DOOR</c> = <c>table</c>, <c>formbase</c> or
+/// <c>formbase-null</c>, see <see cref="SourceDoor"/>) measures the case files of
+/// <c>EYU_LLM_QUALITY_DOOR_CASES</c> (<see cref="DoorCase"/>) and nothing else: the same rows of a public
+/// table, handed over the way that door writes them, each case named after the door it went through. No
+/// competency question is asked — the round is read by how the proposals differ between doors, from the
+/// Turtle each one is written as. One door per round; the doors are compared across interleaved rounds.
+/// </para>
 /// </summary>
 public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
 {
@@ -211,10 +219,22 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var proposer = new SinglePassOntologyProposer(modelClient, linkageOptions);
 
         var selected = QualityCatalog.SelectedCaseNames();
-        var stats = new Dictionary<string, CaseStats>();
-        foreach (var qualityCase in QualityCatalog.Cases.Where(c => selected is null || selected.Contains(c.Name)))
+        var door = SourceDoor.Parse(Environment.GetEnvironmentVariable(SourceDoor.Variable));
+        var doorRound = SourceDoor.ReadsDoorCases(door);
+        var doorCases = DoorCase.FromEnvironment();
+        if (doorRound != (doorCases.Count > 0))
         {
-            var records = ThroughDoor(qualityCase.Records);
+            // A round through a real door with no cases measures nothing, and cases named without a real door would be
+            // measured through whichever door the round happened to default to — either way, say so.
+            throw new InvalidOperationException(doorRound
+                ? $"{SourceDoor.Variable} names a real door but {DoorCase.FolderVariable} holds no case file."
+                : $"{DoorCase.FolderVariable} is set but {SourceDoor.Variable} is not table, formbase or formbase-null — the door cases are measured through a real door.");
+        }
+
+        var stats = new Dictionary<string, CaseStats>();
+        foreach (var qualityCase in QualityCatalog.Cases.Where(c => !doorRound && (selected is null || selected.Contains(c.Name))))
+        {
+            var records = SourceDoor.RewriteCatalog(qualityCase.Records, door);
             var caseStats = stats[qualityCase.Name] = new CaseStats
             {
                 Name = qualityCase.Name,
@@ -228,7 +248,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
 
         // Gold-annotated cases from outside the repository (EYU_CQ4OE_ROOT), scored as record cases are.
-        var cq4oeCases = Cq4oeCase.FromEnvironment().Where(c => selected is null || selected.Contains(c.Name)).ToList();
+        var cq4oeCases = Cq4oeCase.FromEnvironment().Where(c => !doorRound && (selected is null || selected.Contains(c.Name))).ToList();
         foreach (var gold in cq4oeCases)
         {
             var caseStats = stats[gold.Name] = new CaseStats
@@ -243,9 +263,27 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             }
         }
 
+        // The rows of a public table, handed over through the door this round names. No competency question is asked: what
+        // the round reads is how the proposals differ between doors, scored on the Turtle each proposal is written as.
+        foreach (var doorCase in doorCases.Where(c => selected is null || selected.Contains(c.Name)))
+        {
+            var records = await SourceDoor.BuildAsync(doorCase, door, TestContext.Current.CancellationToken);
+            var caseName = SourceDoor.CaseName(doorCase.Name, door);
+            var caseStats = stats[caseName] = new CaseStats
+            {
+                Name = caseName,
+                Linkage = LinkagePipeline.Analyze(records, linkageOptions),
+            };
+            for (var attempt = 0; attempt < runs; attempt++)
+            {
+                caseStats.Attempts++;
+                await RunAttemptAsync(proposer, [], records, [], caseStats);
+            }
+        }
+
         var documentOptions = linkageOptions with { RecordsDenoteEntities = false };
         var documentProposer = new SinglePassOntologyProposer(modelClient, documentOptions);
-        foreach (var documentCase in QualityCatalog.DocumentCases.Where(c => selected is null || selected.Contains(c.Name)))
+        foreach (var documentCase in QualityCatalog.DocumentCases.Where(c => !doorRound && (selected is null || selected.Contains(c.Name))))
         {
             // The undeclared row keeps the case's own name, so it still compares with runs made
             // before the declared row existed.
@@ -268,7 +306,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
 
         var crossSourceStats = new List<CrossSourceStats>();
-        foreach (var crossSource in QualityCatalog.CrossSourceCases.Where(c => selected is null || selected.Contains(c.Name)))
+        foreach (var crossSource in QualityCatalog.CrossSourceCases.Where(c => !doorRound && (selected is null || selected.Contains(c.Name))))
         {
             var caseStats = new CrossSourceStats(crossSource);
             crossSourceStats.Add(caseStats);
@@ -303,27 +341,6 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         // parsed measured the transport, not the model.
         Assert.True(stats.Values.Sum(s => s.Attempts - s.ParseFailures - s.ModelFailures) + crossSourceStats.Sum(c => c.Separate.Parsed + c.Combined.Parsed) > 0,
             "at least one proposal must survive parsing for the measurement to mean anything");
-    }
-
-    /// <summary>
-    /// <c>EYU_LLM_QUALITY_DOOR</c> hands the record cases to the model the way another source would write
-    /// them, to see whether the proposal depends on that: <c>date-slash</c> writes <c>yyyy-MM-dd</c> values as
-    /// <c>dd/MM/yyyy</c>, <c>date-compact</c> as <c>yyyyMMdd</c>. Unset, or <c>identity</c>, the records are
-    /// handed over as the catalog has them. Nothing else about the case changes.
-    /// </summary>
-    private static RawRecord[] ThroughDoor(RawRecord[] records)
-    {
-        var door = Environment.GetEnvironmentVariable("EYU_LLM_QUALITY_DOOR");
-        Func<string, string>? rewrite = door switch
-        {
-            "date-slash" => v => System.Text.RegularExpressions.Regex.Replace(v, @"^(\d{4})-(\d{2})-(\d{2})$", "$3/$2/$1"),
-            "date-compact" => v => System.Text.RegularExpressions.Regex.Replace(v, @"^(\d{4})-(\d{2})-(\d{2})$", "$1$2$3"),
-            null or "" or "identity" => null,
-            _ => throw new ArgumentException($"EYU_LLM_QUALITY_DOOR '{door}' is not date-slash, date-compact or identity."),
-        };
-        return rewrite is null
-            ? records
-            : [.. records.Select(r => new RawRecord(r.Id, r.Fields.ToDictionary(f => f.Key, f => f.Value is null ? null : rewrite(f.Value)), r.Subject, r.Key))];
     }
 
     /// <summary>

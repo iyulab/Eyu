@@ -101,7 +101,8 @@ jobs:
       # `dotnet build` (file excluded) and `dotnet format` (which reports formatting, not semantic
       # errors). Compiling them here is what catches that. The build job cannot do it -- turning
       # the flag on there would make its `dotnet test` try to reach a live model. Building is
-      # enough; running these tests needs an endpoint, which CI does not have.
+      # enough for the live tests themselves: running them needs an endpoint, which CI does not have.
+      # The checks of the measurement's own source-door builders need none and run in the next step.
       #
       # The same flag also opens the formatting gate over those files. Measured when it was added:
       # green by default, 580 violations in two files with the flag on. `dotnet format` takes no
@@ -111,6 +112,12 @@ jobs:
 
       - name: Check formatting
         run: dotnet format --verify-no-changes --verbosity diagnostic
+
+      # The door builders compile only with the flag above, so the build job's `dotnet test` never sees their tests.
+      # They build the records two source doors hand to the model and pin that the doors differ only where the
+      # measurement says they do; a change that breaks that would read as an effect of the door.
+      - name: Run the checks of the measurement's own door builders
+        run: dotnet test --project tests/Eyu.Core.Tests --no-build --configuration Release --filter-class "*FormbaseDoorTests*" --filter-class "*SourceDoorTests*"
 
   security:
     runs-on: ubuntu-latest

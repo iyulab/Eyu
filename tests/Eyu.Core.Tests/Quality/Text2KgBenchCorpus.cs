@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Eyu.Core.Declared;
 using Eyu.Core.Primitives;
@@ -76,6 +78,55 @@ internal static partial class Text2KgBenchCorpus
         var declarations = order.Select(l => new DeclaredStructure(SubjectRef.Create(l), [], relations[l])).ToList();
         return (declarations, undeclarable);
     }
+
+    /// <summary>
+    /// A seeded sample of <paramref name="count"/> sentence ids out of <paramref name="ids"/>: the ids ordered by the
+    /// SHA-256 of the seed and the id, the first <paramref name="count"/> kept, and the kept ones handed back in the
+    /// order of <paramref name="ids"/> — so the batches a sampled round cuts are the batches the same sample cuts again
+    /// (a rerun of a failed batch needs them to line up), and the sample does not depend on how a platform's random
+    /// generator is written. A count at or past the number of ids is all of them.
+    /// </summary>
+    public static string[] Sample(IReadOnlyList<string> ids, int count, int seed)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
+        var distinct = ids.Distinct(StringComparer.Ordinal).ToArray();
+        if (count >= distinct.Length)
+        {
+            return distinct;
+        }
+
+        var chosen = distinct
+            .OrderBy(id => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{seed}/{id}")))), StringComparer.Ordinal)
+            .Take(count)
+            .ToHashSet(StringComparer.Ordinal);
+        return [.. distinct.Where(chosen.Contains)];
+    }
+
+    /// <summary>
+    /// The scorer's configuration: the benchmark's ground truth and ontologies, this run's outputs.
+    /// <paramref name="selectedIdsPattern"/> is the file the scorer's <c>selected_test_cases</c> average is taken over — by default
+    /// the benchmark's list of human-verified sentences. A run of fewer sentences than that list must name its own list: the scorer
+    /// divides the sum over the sentences it was given by the length of this one, so a sample scored against the whole verified
+    /// list reads every score at the sample's share of it.
+    /// </summary>
+    public static string EvalConfig(string repo, string dataset, string directory, IReadOnlyList<string> ontologies, string? selectedIdsPattern = null) =>
+        JsonSerializer.Serialize(
+            new Dictionary<string, object>
+            {
+                ["onto_list"] = ontologies,
+                ["path_patterns"] = new Dictionary<string, string>
+                {
+                    ["sys"] = Path.Combine(directory, "ont_$$onto$$_responses.jsonl"),
+                    ["gt"] = Path.Combine(repo, "data", dataset, "ground_truth", "ont_$$onto$$_ground_truth.jsonl"),
+                    ["selected_ids"] = selectedIdsPattern ?? Path.Combine(repo, "data", dataset, "manually_verified_sentences", "selected_ont_$$onto$$.txt"),
+                    ["onto"] = Path.Combine(repo, "data", dataset, "ontologies", "$$onto$$_ontology.json"),
+                    ["output"] = Path.Combine(directory, "ont_$$onto$$_stats.jsonl"),
+                },
+                ["avg_out_file"] = Path.Combine(directory, "avg_stats.jsonl"),
+            },
+            IndentedJson);
+
+    private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
 
     /// <summary>A sentence as the record a proposer reads.</summary>
     public static RawRecord Sentence(string id, string text) => new(id, new Dictionary<string, string?> { ["sentence"] = text });

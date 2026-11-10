@@ -27,7 +27,11 @@ namespace Eyu.Core.Tests.Live.Llm;
 /// <c>EYU_TEXT2KGBENCH_OUT</c> the directory the outputs go to. <c>EYU_TEXT2KGBENCH_ONTOLOGIES</c> picks
 /// Wikidata-TekGen ontologies (default <c>1_movie,3_sport</c>), <c>EYU_TEXT2KGBENCH_BATCH</c> the sentences
 /// per call (default 10), <c>EYU_TEXT2KGBENCH_LIMIT</c> the most sentences per ontology (default all — a
-/// smaller number is a smoke run whose scores are not the benchmark's). A call that fails leaves its sentences with no triples — scored as missed — and
+/// smaller number is a smoke run whose scores are not the benchmark's). <c>EYU_TEXT2KGBENCH_SAMPLE</c> instead takes that many
+/// sentences per ontology as a seeded sample of the verified ones (<c>EYU_TEXT2KGBENCH_SEED</c>, default 20261110 — the same seed
+/// cuts the same sample and the same batches, so a failed batch can be rerun), and the scorer is then pointed at the sample's id
+/// files (<c>sample/</c> beside the outputs), so its averages are over the sample and not diluted by the verified sentences left
+/// out; the two settings are not combined. A call that fails leaves its sentences with no triples — scored as missed — and
 /// is counted in the report. <c>EYU_TEXT2KGBENCH_BATCHES</c> — the first sentence id of each batch to run, comma-separated — runs only those
 /// batches (the ones a round's failed calls name), batched as the full round batches them, and writes only their sentences, for merging back.
 /// A call that fails transiently is tried once more (<see cref="RetryingModelClient"/>); the report counts the calls that needed it. What the proposer
@@ -39,6 +43,7 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
 {
     private const string Dataset = "wikidata_tekgen";
     private const int DefaultBatch = 10;
+    private const int DefaultSeed = 20261110;
 
     private static readonly string[] DefaultOntologies = ["1_movie", "3_sport"];
 
@@ -57,6 +62,10 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
             : DefaultOntologies;
         var batchSize = int.TryParse(Environment.GetEnvironmentVariable("EYU_TEXT2KGBENCH_BATCH"), out var size) && size > 0 ? size : DefaultBatch;
         var limit = int.TryParse(Environment.GetEnvironmentVariable("EYU_TEXT2KGBENCH_LIMIT"), out var most) && most > 0 ? most : int.MaxValue;
+        int? sample = int.TryParse(Environment.GetEnvironmentVariable("EYU_TEXT2KGBENCH_SAMPLE"), out var sampled) && sampled > 0 ? sampled : null;
+        var seed = int.TryParse(Environment.GetEnvironmentVariable("EYU_TEXT2KGBENCH_SEED"), out var seeded) ? seeded : DefaultSeed;
+        Assert.True(sample is null || limit == int.MaxValue, "EYU_TEXT2KGBENCH_SAMPLE and EYU_TEXT2KGBENCH_LIMIT are two ways to take fewer sentences — set one.");
+        var sampleDirectory = Path.Combine(outDirectory, "sample");
 
         var repo = Path.Combine(root, "repo");
         var manifest = ReadManifest(root);
@@ -89,10 +98,16 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
             var ontologyJson = JsonDocument.Parse(await ReadVerifiedAsync(manifest, repo, $"data/{Dataset}/ontologies/{ontology}_ontology.json", cancellation)).RootElement;
             var (declarations, undeclarable) = Text2KgBenchCorpus.Declarations(ontologyJson);
 
-            var selected = (await ReadVerifiedAsync(manifest, repo, $"data/{Dataset}/manually_verified_sentences/selected_ont_{ontology}.txt", cancellation))
-                .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-                .Take(limit)
-                .ToArray();
+            var verified = (await ReadVerifiedAsync(manifest, repo, $"data/{Dataset}/manually_verified_sentences/selected_ont_{ontology}.txt", cancellation))
+                .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            var selected = sample is { } count ? Text2KgBenchCorpus.Sample(verified, count, seed) : [.. verified.Take(limit)];
+            if (sample is not null)
+            {
+                // The sample as a whole, before a rerun's batch filter narrows `selected` — the scorer's denominator.
+                Directory.CreateDirectory(sampleDirectory);
+                await File.WriteAllTextAsync(Path.Combine(sampleDirectory, $"selected_ont_{ontology}.txt"), string.Concat(selected.Select(id => id + "\n")), cancellation);
+            }
+
             var sentences = (await ReadVerifiedAsync(manifest, repo, $"data/{Dataset}/test/ont_{ontology}_test.jsonl", cancellation))
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(line => JsonDocument.Parse(line).RootElement)
@@ -174,7 +189,9 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
         {
             await File.WriteAllTextAsync(
                 Path.Combine(outDirectory, variant.Name, "eval_config.json"),
-                EvalConfig(repo, Path.Combine(outDirectory, variant.Name), ontologies),
+                Text2KgBenchCorpus.EvalConfig(
+                    repo, Dataset, Path.Combine(outDirectory, variant.Name), ontologies,
+                    sample is null ? null : Path.Combine(sampleDirectory, "selected_ont_$$onto$$.txt")),
                 cancellation);
         }
 
@@ -187,26 +204,6 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
     internal static string Excerpt(string message) => message.Length <= 300 ? message.ReplaceLineEndings(" ") : message[..300].ReplaceLineEndings(" ") + "…";
 
     private static readonly (string Name, bool DeclaredOnly)[] Variants = [("all", false), ("declared", true)];
-
-    /// <summary>The scorer's configuration: the benchmark's ground truth and ontologies, this run's outputs.</summary>
-    private static string EvalConfig(string repo, string directory, IReadOnlyList<string> ontologies) =>
-        JsonSerializer.Serialize(
-            new Dictionary<string, object>
-            {
-                ["onto_list"] = ontologies,
-                ["path_patterns"] = new Dictionary<string, string>
-                {
-                    ["sys"] = Path.Combine(directory, "ont_$$onto$$_responses.jsonl"),
-                    ["gt"] = Path.Combine(repo, "data", Dataset, "ground_truth", "ont_$$onto$$_ground_truth.jsonl"),
-                    ["selected_ids"] = Path.Combine(repo, "data", Dataset, "manually_verified_sentences", "selected_ont_$$onto$$.txt"),
-                    ["onto"] = Path.Combine(repo, "data", Dataset, "ontologies", "$$onto$$_ontology.json"),
-                    ["output"] = Path.Combine(directory, "ont_$$onto$$_stats.jsonl"),
-                },
-                ["avg_out_file"] = Path.Combine(directory, "avg_stats.jsonl"),
-            },
-            IndentedJson);
-
-    private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
 
     /// <summary>The manifest's sha256 per path relative to <c>repo/</c>.</summary>
     private static Dictionary<string, string> ReadManifest(string root)

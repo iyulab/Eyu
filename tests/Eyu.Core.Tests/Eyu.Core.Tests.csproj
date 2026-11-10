@@ -37,6 +37,16 @@
     <ProjectReference Include="..\..\src\Eyu.Rdf\Eyu.Rdf.csproj" />
   </ItemGroup>
 
+  <!--
+    The Formbase door of a source-door measurement (Live/Llm/FormbaseDoor.cs) builds its records through
+    Eyu.Formbase's own sampler, not a copy of it. A test-only reference: the product's dependency direction
+    (Eyu.Formbase -> Eyu.Core) is unchanged, and Formbase.Core arrives transitively as the package Eyu.Formbase
+    already uses.
+  -->
+  <ItemGroup Condition="'$(IncludeEyuLlmLiveTests)' == 'true'">
+    <ProjectReference Include="..\..\src\Eyu.Formbase\Eyu.Formbase.csproj" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Eyu.Core\Eyu.Core.csproj" />
   </ItemGroup>

@@ -1,3 +1,5 @@
+using Eyu.Core.Primitives;
+
 namespace Eyu.Core.Records;
 
 /// <summary>
@@ -5,7 +7,9 @@ namespace Eyu.Core.Records;
 /// writes <c>WorkOrder</c> or <c>work order</c> about as often: the spelling varies, the name does not.
 /// Two names are the same when they agree letter for letter once case and every character that is not a
 /// letter or a digit are set aside — a rule about spelling only, never about meaning (<c>part</c> and
-/// <c>item</c> stay two names).
+/// <c>item</c> stay two names). The names are compared in the Unicode form <see cref="TextForm.Fold"/> gives them — a name saved
+/// decomposed (macOS), or in full-width letters, is the name it renders as; and decomposed, an accent would otherwise be set aside
+/// as a character that is not a letter and <c>Café</c> would be <c>Cafe</c>.
 /// </summary>
 public static class TypeNames
 {
@@ -18,5 +22,5 @@ public static class TypeNames
     }
 
     internal static string Key(string name) =>
-        string.Concat(name.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant));
+        string.Concat(TextForm.Fold(name).Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant));
 }

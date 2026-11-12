@@ -25,6 +25,10 @@ every published version has a section here.
   was part of the endpoint it named.
 - `RetryingModelClient` bounds every wait to one hour. An endpoint's `Retry-After` of weeks, or a long doubling sequence, no
   longer throws from the delay in place of the failure being retried.
+- Type names are compared in the Unicode form `TextForm.Fold` gives them: a name saved decomposed (as macOS does with Hangul), or
+  in full-width letters, is now the name it renders as, and a decomposed `Café` is no longer `Cafe`.
+- The proposer refuses an answer that is valid JSON but not a proposal (an envelope such as `{"response":{…}}`, `null`, an
+  array) instead of reading it as «nothing found»; `{}`, or an object that names a proposal array, is read as before.
 - A confidence of NaN is refused with the other out-of-range values by the proposal types and the confidence adjuster.
 
 ### Changed

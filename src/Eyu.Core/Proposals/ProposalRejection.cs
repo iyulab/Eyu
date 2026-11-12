@@ -52,6 +52,9 @@ public enum RejectionReason
 
     /// <summary>A type relation's two ends name one type (case and separators aside) — a type is not a kind of itself.</summary>
     ReflexiveTypeRelation,
+
+    /// <summary>The element's JSON has the wrong type for a field — a number where the id is text, text where the sources are a list; its id is <c>null</c>, since none can be trusted.</summary>
+    MalformedElement,
 }
 
 /// <summary>

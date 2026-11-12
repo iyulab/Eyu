@@ -606,18 +606,78 @@ public sealed partial class SinglePassOntologyProposer(
 
     private static readonly string[] ProposalArrays = ["entities", "relations", "mergeCandidates", "typeRelations"];
 
-    // Valid JSON that is not a proposal (an envelope the model chose, null, an array) has no array a proposal is made of, and read as
-    // «nothing found» it could not be told from a model that looked and found nothing. An object that names no array and nothing else is that.
-    private static void RefuseWhatIsNotAProposal(string responseText)
+    /// <summary>
+    /// Reads the answer's JSON element by element. Invalid JSON, and valid JSON that is not a proposal (an envelope the model chose, a bare
+    /// null, an array — which read as «nothing found» could not be told from a model that looked and found nothing), refuse the whole answer.
+    /// An element whose JSON has the wrong type for a field is that element's defect, like a missing field: it is left out and reported in
+    /// <paramref name="rejections"/>, and the rest is read.
+    /// </summary>
+    private static ProposalResponse ReadResponse(string responseText, List<ProposalRejection> rejections)
     {
-        using var document = JsonDocument.Parse(responseText);
-        var root = document.RootElement;
-        var isProposal = root.ValueKind == JsonValueKind.Object
-            && (!root.EnumerateObject().Any() || root.EnumerateObject().Any(p => ProposalArrays.Contains(p.Name, StringComparer.OrdinalIgnoreCase)));
-        if (!isProposal)
+        JsonDocument document;
+        try
         {
-            throw new FormatException(
-                $"The model response is valid JSON but not a proposal: it is {(root.ValueKind == JsonValueKind.Object ? "an object with none of " + string.Join(", ", ProposalArrays) : "not an object")}. Response text: {Excerpt(responseText)}");
+            document = JsonDocument.Parse(responseText);
+        }
+        catch (JsonException ex)
+        {
+            throw new FormatException($"The model response was not valid JSON. Response text: {Excerpt(responseText)}", ex);
+        }
+
+        using (document)
+        {
+            var root = document.RootElement;
+            var isProposal = root.ValueKind == JsonValueKind.Object
+                && (!root.EnumerateObject().Any() || root.EnumerateObject().Any(p => ProposalArrays.Contains(p.Name, StringComparer.OrdinalIgnoreCase)));
+            if (!isProposal)
+            {
+                throw new FormatException(
+                    $"The model response is valid JSON but not a proposal: it is {(root.ValueKind == JsonValueKind.Object ? "an object with none of " + string.Join(", ", ProposalArrays) : "not an object")}. Response text: {Excerpt(responseText)}");
+            }
+
+            IReadOnlyList<T>? Elements<T>(string name, ProposalElement kind, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> info)
+            {
+                var property = root.EnumerateObject().FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (property.Value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+                {
+                    return null;
+                }
+
+                if (property.Value.ValueKind != JsonValueKind.Array)
+                {
+                    throw new FormatException($"The model response was not valid JSON for a proposal: '{name}' is not an array. Response text: {Excerpt(responseText)}");
+                }
+
+                var read = new List<T>();
+                var index = 0;
+                foreach (var element in property.Value.EnumerateArray())
+                {
+                    index++;
+                    try
+                    {
+                        if (JsonSerializer.Deserialize(element, info) is { } value)
+                        {
+                            read.Add(value);
+                        }
+                        else
+                        {
+                            rejections.Add(new ProposalRejection(kind, null, RejectionReason.MalformedElement, $"{kind} {index} of '{name}' is null."));
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        rejections.Add(new ProposalRejection(kind, null, RejectionReason.MalformedElement, $"{kind} {index} of '{name}' does not have the shape of one: {ex.Message}"));
+                    }
+                }
+
+                return read;
+            }
+
+            return new ProposalResponse(
+                Elements("entities", ProposalElement.Entity, ResponseJsonContext.Default.EntityResponse),
+                Elements("relations", ProposalElement.Relation, ResponseJsonContext.Default.RelationResponse),
+                Elements("mergeCandidates", ProposalElement.MergeCandidate, ResponseJsonContext.Default.MergeCandidateResponse),
+                Elements("typeRelations", ProposalElement.TypeRelation, ResponseJsonContext.Default.TypeRelationResponse));
         }
     }
 
@@ -640,22 +700,11 @@ public sealed partial class SinglePassOntologyProposer(
         var namesInUse = NamesInUse(declaredStructures, prior);
         var recordsById = records.ToDictionary(r => r.Id, StringComparer.Ordinal);
         var respellings = new List<RespelledTypeName>();
-        ProposalResponse parsed;
-        try
-        {
-            parsed = JsonSerializer.Deserialize(responseText, ResponseJsonContext.Default.ProposalResponse)
-                ?? new ProposalResponse(null, null);
-        }
-        catch (JsonException ex)
-        {
-            throw new FormatException(
-                $"The model response was not valid JSON. Response text: {Excerpt(responseText)}",
-                ex);
-        }
-
-        RefuseWhatIsNotAProposal(responseText);
+        var rejections = new List<ProposalRejection>();
+        var parsed = ReadResponse(responseText, rejections);
         var entityResponses = parsed.Entities ?? [];
         var relationResponses = parsed.Relations ?? [];
+
         var candidateResponses = parsed.MergeCandidates ?? [];
 
         // Type relations the call did not ask for are not read at all: the request did not offer the
@@ -663,7 +712,6 @@ public sealed partial class SinglePassOntologyProposer(
         var typeRelationResponses = typeRelations ? parsed.TypeRelations ?? [] : [];
         RejectUnknownSources(entityResponses, relationResponses, candidateResponses, typeRelationResponses, records, responseText);
 
-        var rejections = new List<ProposalRejection>();
         var duplicatedIds = entityResponses
             .Where(e => !string.IsNullOrWhiteSpace(e.Id))
             .GroupBy(e => e.Id!, StringComparer.Ordinal)
@@ -1060,6 +1108,9 @@ public sealed partial class SinglePassOntologyProposer(
     /// where reflection-based serialization is off (Native AOT, trimmed hosts).
     /// </summary>
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
-    [JsonSerializable(typeof(ProposalResponse))]
+    [JsonSerializable(typeof(EntityResponse))]
+    [JsonSerializable(typeof(RelationResponse))]
+    [JsonSerializable(typeof(MergeCandidateResponse))]
+    [JsonSerializable(typeof(TypeRelationResponse))]
     private sealed partial class ResponseJsonContext : JsonSerializerContext;
 }

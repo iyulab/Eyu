@@ -103,6 +103,35 @@ public class SinglePassOntologyProposerTests
         Assert.Empty(proposal.Entities);
     }
 
+    /// <summary>
+    /// An element whose JSON has the wrong type for a field — a number where the id is a string, a string where the sources are a list —
+    /// is that element's defect, like a missing field: it is left out and reported, and the rest of the answer is read. It used to refuse the
+    /// whole answer as «not valid JSON», losing every good element beside it.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"id": 1, "name": "Bad", "type": "Person", "claim": "x", "sources": ["rec-1"], "confidence": 0.9}""")]
+    [InlineData("""{"id": "e9", "name": "Bad", "type": "Person", "claim": "x", "sources": "rec-1", "confidence": 0.9}""")]
+    [InlineData("""{"id": "e9", "name": "Bad", "type": "Person", "claim": "x", "sources": ["rec-1"], "confidence": "high"}""")]
+    public async Task ProposeAsync_leaves_out_an_element_of_the_wrong_json_type_and_reads_the_rest(string malformed)
+    {
+        var model = new StubModelClient($$"""
+            {
+              "entities": [
+                {{malformed}},
+                {"id": "e1", "name": "Kim", "type": "Person", "claim": "rec-1 denotes a person", "sources": ["rec-1"], "confidence": 0.8}
+              ],
+              "relations": []
+            }
+            """);
+        var proposer = new SinglePassOntologyProposer(model);
+
+        var proposal = await proposer.ProposeAsync(declaredStructures: [], records: [OneRecord("rec-1")], TestContext.Current.CancellationToken);
+
+        Assert.Equal(["e1"], proposal.Entities.Select(e => e.EntityId));
+        var rejection = Assert.Single(proposal.Rejections);
+        Assert.Equal((ProposalElement.Entity, RejectionReason.MalformedElement), (rejection.Element, rejection.Reason));
+    }
+
     [Fact]
     public async Task ProposeAsync_fails_loudly_when_the_model_response_is_not_valid_json()
     {

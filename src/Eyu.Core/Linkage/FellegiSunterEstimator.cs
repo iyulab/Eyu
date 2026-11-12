@@ -117,7 +117,10 @@ public static class FellegiSunterEstimator
 
         double[] InitialM(string field) => [.. FieldLinkageParameters.TopWeighted(levels[field], HeuristicDefaultMAgreeProbability)];
 
-        if (comparisonVectors.Count < MinimumPairsForEmEstimation || fieldNames.Count == 0)
+        // Pairs that all look the same (every record a copy of one, or no two alike) fit a mixture of any m and u equally well: EM settles on
+        // m = u, every pair scores zero, and the batch is read as nothing but gray pairs. That is no estimate, so it is answered as one that
+        // could not be made — as for too few pairs.
+        if (comparisonVectors.Count < MinimumPairsForEmEstimation || fieldNames.Count == 0 || LooksAlikeEverywhere(comparisonVectors))
         {
             return new FieldLinkageParameters(
                 fieldNames.ToDictionary(f => f, f => (IReadOnlyList<double>)InitialM(f), StringComparer.Ordinal),
@@ -207,6 +210,15 @@ public static class FellegiSunterEstimator
     /// Each field's level count, read off the vectors themselves; a field whose levels disagree on the
     /// scale was compared two different ways, and no single distribution describes it.
     /// </summary>
+    private static bool LooksAlikeEverywhere(IReadOnlyList<IReadOnlyDictionary<string, FieldAgreementLevel>> comparisonVectors)
+    {
+        static string Pattern(IReadOnlyDictionary<string, FieldAgreementLevel> vector) =>
+            string.Join(';', vector.OrderBy(e => e.Key, StringComparer.Ordinal).Select(e => $"{e.Key}={e.Value.Rank}/{e.Value.Count}"));
+
+        var first = Pattern(comparisonVectors[0]);
+        return comparisonVectors.All(v => Pattern(v) == first);
+    }
+
     private static Dictionary<string, int> LevelCounts(IReadOnlyList<IReadOnlyDictionary<string, FieldAgreementLevel>> comparisonVectors)
     {
         var levels = new Dictionary<string, int>(StringComparer.Ordinal);

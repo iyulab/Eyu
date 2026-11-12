@@ -27,6 +27,28 @@ public class FellegiSunterEstimatorTests
     private static IReadOnlyDictionary<string, FieldAgreementLevel> Vector(params (string Field, FieldAgreementLevel Level)[] entries) =>
         entries.ToDictionary(e => e.Field, e => e.Level);
 
+    /// <summary>
+    /// A batch whose every pair has the same agreement vector — all copies of one record, or no two records alike — says nothing about
+    /// which of its pairs are matches: both mixture components fit it equally, EM settles on m = u, and every pair scores exactly zero. That
+    /// is not an estimate, so it is answered as one that could not be made: the heuristic default, as for too few pairs.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Pairs_that_all_look_the_same_cannot_be_fitted_and_get_the_heuristic_default(bool agree)
+    {
+        var level = agree ? FieldAgreementLevel.Agree : FieldAgreementLevel.Disagree;
+        var vectors = Enumerable.Range(0, 2 * FellegiSunterEstimator.MinimumPairsForEmEstimation)
+            .Select(_ => Vector(("name", level), ("phone", level)))
+            .ToList();
+
+        var parameters = FellegiSunterEstimator.Estimate(vectors);
+
+        Assert.Equal(EstimationStatus.HeuristicDefault, parameters.Status);
+        Assert.Equal(FellegiSunterEstimator.HeuristicDefaultMatchPrior, parameters.MatchPrior);
+        Assert.NotEqual(0.0, FellegiSunterEstimator.ComputeLogLikelihoodRatio(vectors[0], parameters));
+    }
+
     [Fact]
     public void Below_the_minimum_pair_count_returns_the_heuristic_default_without_running_EM()
     {

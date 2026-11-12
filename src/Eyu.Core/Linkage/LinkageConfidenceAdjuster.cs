@@ -24,7 +24,7 @@ public static class LinkageConfidenceAdjuster
         ArgumentNullException.ThrowIfNull(citedRecordIds);
         ArgumentNullException.ThrowIfNull(analysis);
 
-        if (llmConfidence is < 0.0 or > 1.0)
+        if (!(llmConfidence >= 0.0 && llmConfidence <= 1.0))
         {
             throw new ArgumentOutOfRangeException(nameof(llmConfidence), llmConfidence, "Confidence must be within [0, 1].");
         }

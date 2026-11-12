@@ -9,6 +9,34 @@ public class LinkagePipelineTests
     private static RawRecord Record(string id, params (string Key, string? Value)[] fields) =>
         new(id, fields.ToDictionary(f => f.Key, f => f.Value));
 
+    /// <summary>
+    /// A batch with nothing to tell its pairs apart — every record a copy of the same one, or no two alike — gave every pair a score of
+    /// exactly zero: four identical records stayed four, and five different ones were all sent to the model as gray. A batch whose records
+    /// share only a city is still read on the heuristic default, but its pairs now carry a score.
+    /// </summary>
+    [Fact]
+    public void Identical_records_are_one_cluster_and_unrelated_ones_leave_nothing_gray()
+    {
+        var copies = Enumerable.Range(1, 4).Select(i => Record($"c{i}", ("name", "Kim Minji"), ("phone", "010-1234-5678"), ("city", "Seoul"))).ToArray();
+        var strangers = new[]
+        {
+            Record("s1", ("name", "Kim Minji"), ("phone", "010-1111-1111"), ("city", "Seoul")),
+            Record("s2", ("name", "Lee Junho"), ("phone", "010-2222-2222"), ("city", "Busan")),
+            Record("s3", ("name", "Park Sooyoung"), ("phone", "010-3333-3333"), ("city", "Daegu")),
+            Record("s4", ("name", "Choi Hyunwoo"), ("phone", "010-4444-4444"), ("city", "Incheon")),
+            Record("s5", ("name", "Jung Haeun"), ("phone", "010-5555-5555"), ("city", "Gwangju")),
+        };
+        var sameCity = strangers.Select(r => new RawRecord(r.Id, new Dictionary<string, string?>(r.Fields) { ["city"] = "Seoul" })).ToArray();
+
+        var duplicates = LinkagePipeline.Analyze(copies);
+        var distinct = LinkagePipeline.Analyze(strangers);
+        var alike = LinkagePipeline.Analyze(sameCity);
+
+        Assert.Single(duplicates.Clustering.Clusters, c => c.RecordIds.Count == 4);
+        Assert.Empty(distinct.Clustering.GrayZonePairs);
+        Assert.All(alike.PairLinkages, p => Assert.NotEqual(0.0, p.LogLikelihoodRatio));
+    }
+
     [Fact]
     public void An_empty_batch_produces_no_clusters_and_no_pair_linkages()
     {

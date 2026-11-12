@@ -29,7 +29,7 @@ namespace Eyu.Core.Inference;
 /// answers. <paramref name="delay"/> is waited before the first retry and doubled before each further
 /// one; zero (the default) retries at once. When the failure says how long the endpoint asked to be left
 /// alone (<see cref="ModelEndpointException.RetryAfter"/> — a load-shedding gateway's 429 or 503), the
-/// retry waits at least that long: asking again sooner is only shed again.
+/// retry waits at least that long: asking again sooner is only shed again. No wait is longer than an hour.
 /// </summary>
 public sealed class RetryingModelClient(
     IModelClient inner,
@@ -38,6 +38,8 @@ public sealed class RetryingModelClient(
     Func<Exception, bool>? isTransient = null,
     TimeSpan delay = default) : IModelClient
 {
+    private static readonly TimeSpan LongestWait = TimeSpan.FromHours(1);
+
     private readonly IModelClient _inner = inner ?? throw new ArgumentNullException(nameof(inner));
     private readonly int _retries = retries >= 0 ? retries : throw new ArgumentOutOfRangeException(nameof(retries), retries, "Retries must not be negative.");
     private readonly Func<Exception, bool> _isTransient = isTransient ?? IsTransient;
@@ -54,10 +56,12 @@ public sealed class RetryingModelClient(
             catch (Exception failure) when (attempt <= _retries && !cancellationToken.IsCancellationRequested && _isTransient(failure))
             {
                 onRetry?.Invoke(new ModelCallRetry(request, attempt, failure));
-                var wait = _delay * Math.Pow(2, attempt - 1);
+                // The doubled delay and the endpoint's own request are both bounded: a delay can wait no longer than about 49 days, and a
+                // retry after a thousand hours is a call nobody is waiting on. An unbounded one would throw from here, replacing the failure.
+                var wait = TimeSpan.FromMilliseconds(Math.Min(_delay.TotalMilliseconds * Math.Pow(2, attempt - 1), LongestWait.TotalMilliseconds));
                 if (failure is ModelEndpointException { RetryAfter: { } asked } && asked > wait)
                 {
-                    wait = asked;
+                    wait = asked < LongestWait ? asked : LongestWait;
                 }
 
                 if (wait > TimeSpan.Zero)

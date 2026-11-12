@@ -84,6 +84,23 @@ public class RetryingModelClientTests
         Assert.True(clock.Elapsed >= TimeSpan.FromMilliseconds(280), $"retried after {clock.Elapsed.TotalMilliseconds} ms");
     }
 
+    /// <summary>
+    /// An endpoint that asks to be left alone for longer than any wait can be (a <c>Retry-After</c> of weeks) is waited on for the longest
+    /// wait there is, not turned into an <see cref="ArgumentOutOfRangeException"/> from the delay that replaces the failure it was to retry.
+    /// </summary>
+    [Fact]
+    public async Task A_retry_after_beyond_what_a_delay_can_wait_is_waited_on_and_not_an_argument_error()
+    {
+        var shed = new ModelEndpointException("too many in flight", HttpStatusCode.TooManyRequests, TimeSpan.FromSeconds(5_000_000));
+        var inner = new ScriptedModelClient(call => call == 1 ? throw shed : new ModelResponse("second"));
+        var client = new RetryingModelClient(inner, retries: 1);
+        using var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+
+        var failure = await Record.ExceptionAsync(() => client.CompleteAsync(new ModelRequest("p"), stop.Token));
+
+        Assert.IsAssignableFrom<OperationCanceledException>(failure);
+    }
+
     [Fact]
     public async Task Zero_retries_passes_the_first_failure_through()
     {

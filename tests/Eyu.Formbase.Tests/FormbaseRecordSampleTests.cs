@@ -231,24 +231,28 @@ public class FormbaseRecordSampleTests
     }
 
     /// <summary>
-    /// Pins a difference rather than wanting it: a keyed parent's rows are named by its document id here and by its record key in
-    /// the projection (`fb_record`), so one row has two names until the name has a single source.
+    /// A section row is cited by the name Formbase gives it — the parent document's id and the position — and not by a name this
+    /// adapter puts together; for a keyed parent that is the document, where the projection's record column names the record.
     /// </summary>
     [Fact]
-    public async Task SampleAsync_names_a_keyed_parents_section_rows_by_document_where_the_projection_names_them_by_record()
+    public async Task SampleAsync_cites_a_section_row_by_the_name_formbase_gives_it()
     {
         var rawStore = new InMemoryRawStore();
         var key = RecordKey.Create("sheet-1");
         var document = DocumentId.New();
         await rawStore.AppendAsync(Log, document, DocumentBody.Parse("""{"log_no":"L-1","items":[{"item":"a"}]}"""), key, TestContext.Current.CancellationToken);
-        var sample = new FormbaseRecordSample(rawStore, WithChecklist());
+        var hints = WithChecklist();
+        var sample = new FormbaseRecordSample(rawStore, hints);
 
         var records = await sample.SampleAsync(SubjectRef.Create(Item.Value), maxCount: 10, TestContext.Current.CancellationToken);
 
-        var projected = $"{ProjectionSystemColumns.RecordOf(document, key)}/0";
-        Assert.Equal("sheet-1/0", projected);
-        Assert.Equal($"{document}/0", Assert.Single(records).Id);
-        Assert.NotEqual(projected, records[0].Id);
+        var stored = (await rawStore.GetAsync(document, TestContext.Current.CancellationToken))!;
+        var source = (await hints.GetSectionSourceAsync(Item, TestContext.Current.CancellationToken))!;
+        var definition = SectionDef.From(source, (await hints.GetHintsAsync(Item, TestContext.Current.CancellationToken))!);
+        var row = Assert.Single(SectionRows.Expand(stored, definition).Rows);
+        Assert.Equal(row.Citation, Assert.Single(records).Id);
+        Assert.Equal($"{document}/0", row.Citation);
+        Assert.Equal("sheet-1/0", row.Record);
     }
 
     /// <summary>The sheet's own record does not carry its checklist: those items are the section's records.</summary>

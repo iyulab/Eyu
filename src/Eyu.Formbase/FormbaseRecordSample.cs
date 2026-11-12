@@ -26,9 +26,10 @@ namespace Eyu.Formbase;
 /// A form type that is a repeated section of another (<see cref="SectionSource"/>) has no documents
 /// of its own: its records are the rows Formbase projects for it, cut from the parent's standing
 /// documents the same way (<see cref="SectionRows"/>) — each row a record of the section, with the
-/// parent's key value in the relation's key field, under the parent document's id, a slash and the
-/// row's position. A parent whose section cannot be read contributes no rows, as it contributes none
-/// to the projection.
+/// parent's key value in the relation's key field, under the name Formbase gives the row to be cited by
+/// (<see cref="SectionRow.Citation"/>: the parent document's id, a slash and the row's position — the
+/// version the row was cut from, where the projection's record column names the record). A parent whose
+/// section cannot be read contributes no rows, as it contributes none to the projection.
 /// </para>
 /// </summary>
 public sealed class FormbaseRecordSample(IRawStore rawStore, IFieldHintSource hintSource) : IRecordSample
@@ -64,7 +65,7 @@ public sealed class FormbaseRecordSample(IRawStore rawStore, IFieldHintSource hi
 
         return standing
             .SelectMany(document => SectionRows.Expand(document, section).Rows
-                .Select(row => new RawRecord($"{document.Id}/{row.Position}", Flatten(row.Body), subject)))
+                .Select(row => new RawRecord(row.Citation, Flatten(row.Body), subject)))
             .Take(maxCount)
             .ToList();
     }

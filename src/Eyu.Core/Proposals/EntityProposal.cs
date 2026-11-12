@@ -104,7 +104,7 @@ public sealed record EntityProposal
             throw new ArgumentException("EntityType must be a non-empty identifier.", nameof(entityType));
         }
 
-        if (confidence is < 0.0 or > 1.0)
+        if (!(confidence >= 0.0 && confidence <= 1.0))
         {
             throw new ArgumentOutOfRangeException(nameof(confidence), confidence, "Confidence must be within [0, 1].");
         }

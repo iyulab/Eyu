@@ -48,7 +48,7 @@ public sealed record RelationProposal
             throw new ArgumentException("ToEntityId must be a non-empty identifier.", nameof(toEntityId));
         }
 
-        if (confidence is < 0.0 or > 1.0)
+        if (!(confidence >= 0.0 && confidence <= 1.0))
         {
             throw new ArgumentOutOfRangeException(nameof(confidence), confidence, "Confidence must be within [0, 1].");
         }

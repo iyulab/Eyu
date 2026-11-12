@@ -59,7 +59,7 @@ public sealed record TypeRelationProposal
             throw new ArgumentException($"A type is not a kind of itself: '{subType}' and '{superType}' name one type.", nameof(superType));
         }
 
-        if (confidence is < 0.0 or > 1.0)
+        if (!(confidence >= 0.0 && confidence <= 1.0))
         {
             throw new ArgumentOutOfRangeException(nameof(confidence), confidence, "Confidence must be within [0, 1].");
         }

@@ -604,6 +604,23 @@ public sealed partial class SinglePassOntologyProposer(
         _ => kind.ToString().ToLowerInvariant(),
     };
 
+    private static readonly string[] ProposalArrays = ["entities", "relations", "mergeCandidates", "typeRelations"];
+
+    // Valid JSON that is not a proposal (an envelope the model chose, null, an array) has no array a proposal is made of, and read as
+    // «nothing found» it could not be told from a model that looked and found nothing. An object that names no array and nothing else is that.
+    private static void RefuseWhatIsNotAProposal(string responseText)
+    {
+        using var document = JsonDocument.Parse(responseText);
+        var root = document.RootElement;
+        var isProposal = root.ValueKind == JsonValueKind.Object
+            && (!root.EnumerateObject().Any() || root.EnumerateObject().Any(p => ProposalArrays.Contains(p.Name, StringComparer.OrdinalIgnoreCase)));
+        if (!isProposal)
+        {
+            throw new FormatException(
+                $"The model response is valid JSON but not a proposal: it is {(root.ValueKind == JsonValueKind.Object ? "an object with none of " + string.Join(", ", ProposalArrays) : "not an object")}. Response text: {Excerpt(responseText)}");
+        }
+    }
+
     private static string DescribeKey(RawRecord record) => string.IsNullOrWhiteSpace(record.Key) ? "" : $" [record key: {record.Key}]";
 
     private static string DescribeFields(RawRecord record) => string.Join(", ", record.Fields.Select(f => $"{f.Key}={f.Value}"));
@@ -636,6 +653,7 @@ public sealed partial class SinglePassOntologyProposer(
                 ex);
         }
 
+        RefuseWhatIsNotAProposal(responseText);
         var entityResponses = parsed.Entities ?? [];
         var relationResponses = parsed.Relations ?? [];
         var candidateResponses = parsed.MergeCandidates ?? [];

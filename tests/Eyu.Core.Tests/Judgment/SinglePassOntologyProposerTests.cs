@@ -72,6 +72,37 @@ public class SinglePassOntologyProposerTests
         Assert.Empty(proposal.Relations);
     }
 
+    /// <summary>
+    /// An answer that is valid JSON but not a proposal — an envelope the model chose (<c>{"response":{…}}</c>), a bare <c>null</c> or
+    /// an array — has none of the arrays a proposal is made of. Read as «nothing found» it would be indistinguishable from a model that
+    /// looked and found nothing: no entities and no rejection. Only an object that names no array at all and nothing else (<c>{}</c>) is that.
+    /// </summary>
+    [Theory]
+    [InlineData("{\"response\":{\"entities\":[],\"relations\":[]}}")]
+    [InlineData("{\"data\":[]}")]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("\"nothing\"")]
+    public async Task ProposeAsync_refuses_valid_json_that_is_not_a_proposal(string answer)
+    {
+        var proposer = new SinglePassOntologyProposer(new StubModelClient(answer));
+
+        await Assert.ThrowsAsync<FormatException>(() => proposer.ProposeAsync(declaredStructures: [], records: [], TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("{\"entities\":[]}")]
+    [InlineData("{\"Relations\":[]}")]
+    [InlineData("{\"entities\":[],\"reasoning\":\"nothing stands out\"}")]
+    public async Task ProposeAsync_still_reads_an_object_that_names_a_proposal_array_whatever_else_it_carries(string answer)
+    {
+        var proposer = new SinglePassOntologyProposer(new StubModelClient(answer));
+
+        var proposal = await proposer.ProposeAsync(declaredStructures: [], records: [], TestContext.Current.CancellationToken);
+
+        Assert.Empty(proposal.Entities);
+    }
+
     [Fact]
     public async Task ProposeAsync_fails_loudly_when_the_model_response_is_not_valid_json()
     {

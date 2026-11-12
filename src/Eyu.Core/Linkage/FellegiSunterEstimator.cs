@@ -139,17 +139,7 @@ public static class FellegiSunterEstimator
             var responsibilities = new double[comparisonVectors.Count];
             for (var i = 0; i < comparisonVectors.Count; i++)
             {
-                var matchLikelihood = matchPrior;
-                var nonMatchLikelihood = 1.0 - matchPrior;
-
-                foreach (var (field, level) in comparisonVectors[i])
-                {
-                    matchLikelihood *= m[field][level.Rank];
-                    nonMatchLikelihood *= u[field][level.Rank];
-                }
-
-                var total = matchLikelihood + nonMatchLikelihood;
-                responsibilities[i] = total <= 0.0 ? 0.0 : matchLikelihood / total;
+                responsibilities[i] = Responsibility(matchPrior, comparisonVectors[i], m, u);
             }
 
             var newM = new Dictionary<string, double[]>(StringComparer.Ordinal);
@@ -238,6 +228,43 @@ public static class FellegiSunterEstimator
         }
 
         return levels;
+    }
+
+    /// <summary>
+    /// The probability that a pair with this agreement vector is a match, given the current parameters — the E step for one pair.
+    /// It is a ratio of two products with one factor per field, taken as the difference of their logs: the products themselves fall
+    /// below the smallest double on a few hundred fields, both to zero, and a pair that agrees on most of them would be scored as a
+    /// certain non-match.
+    /// </summary>
+    private static double Responsibility(
+        double matchPrior,
+        IReadOnlyDictionary<string, FieldAgreementLevel> vector,
+        Dictionary<string, double[]> m,
+        Dictionary<string, double[]> u)
+    {
+        var logMatch = Math.Log(matchPrior);
+        var logNonMatch = Math.Log(1.0 - matchPrior);
+
+        foreach (var (field, level) in vector)
+        {
+            logMatch += Math.Log(m[field][level.Rank]);
+            logNonMatch += Math.Log(u[field][level.Rank]);
+        }
+
+        if (double.IsNegativeInfinity(logMatch) && double.IsNegativeInfinity(logNonMatch))
+        {
+            // A level either side gives no probability at all: nothing says the pair is a match.
+            return 0.0;
+        }
+
+        var logOdds = logMatch - logNonMatch;
+        if (logOdds >= 0.0)
+        {
+            return 1.0 / (1.0 + Math.Exp(-logOdds));
+        }
+
+        var odds = Math.Exp(logOdds);
+        return odds / (1.0 + odds);
     }
 
     /// <summary>

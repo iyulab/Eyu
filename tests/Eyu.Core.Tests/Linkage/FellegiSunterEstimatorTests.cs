@@ -24,6 +24,35 @@ public class FellegiSunterEstimatorTests
             BinaryLevels.None, BinaryLevels.None, prior, EstimationStatus.HeuristicDefault));
     }
 
+    /// <summary>
+    /// The E step multiplied one probability per field, so a pair compared on a few hundred fields underflowed both its match and its
+    /// non-match likelihood to zero — and a pair that agrees on most of them, a plain match, was scored as a certain non-match, however
+    /// many such pairs there were. The step is a ratio of the two, so it is taken in log space, where the width of the record does not matter.
+    /// </summary>
+    [Fact]
+    public void Pairs_compared_on_hundreds_of_fields_are_fitted_by_their_evidence_not_by_underflow()
+    {
+        const int fields = 800;
+        const int pairs = 100;
+
+        // Half the pairs are what duplicates look like (they agree on the first 450 fields and differ on the rest, in a different
+        // place each, so no field is constant); the other half are what two different records look like (agreeing on only a few).
+        // A pair of the first kind has both likelihoods below the smallest double under the starting parameters.
+        var vectors = new List<IReadOnlyDictionary<string, FieldAgreementLevel>>(pairs);
+        for (var p = 0; p < pairs; p++)
+        {
+            var duplicate = p % 2 == 0;
+            vectors.Add(Enumerable.Range(0, fields).ToDictionary(
+                i => $"f{i}",
+                i => (duplicate ? (i + p) % fields < 450 : (i + p) % fields < 60) ? FieldAgreementLevel.Agree : FieldAgreementLevel.Disagree));
+        }
+
+        var parameters = FellegiSunterEstimator.Estimate(vectors);
+
+        // Half the pairs are duplicates, and the fit has to say so: with the underflow the duplicates scored zero, and the prior fell to the floor.
+        Assert.InRange(parameters.MatchPrior, 0.3, 0.7);
+    }
+
     private static IReadOnlyDictionary<string, FieldAgreementLevel> Vector(params (string Field, FieldAgreementLevel Level)[] entries) =>
         entries.ToDictionary(e => e.Field, e => e.Level);
 

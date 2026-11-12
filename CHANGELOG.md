@@ -33,6 +33,10 @@ every published version has a section here.
   are a list, a null) is left out and reported as the new rejection reason `MalformedElement`, and the rest of the answer is
   read. It used to refuse the whole answer as «not valid JSON», losing every good element beside it.
 - A confidence of NaN is refused with the other out-of-range values by the proposal types and the confidence adjuster.
+- Entity resolution no longer scores a pair compared on a few hundred fields as a certain non-match. The E step multiplied one
+  probability per field, so on a record that wide both the match and the non-match likelihood fell below the smallest double, the
+  pair's posterior became zero whatever its evidence, and a batch of such duplicates fitted a match prior at the floor. The step is
+  now taken in log space.
 
 ### Added
 

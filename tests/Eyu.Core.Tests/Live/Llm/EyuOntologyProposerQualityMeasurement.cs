@@ -1217,6 +1217,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         var report = new StringBuilder()
             .AppendLine(CultureInfo.InvariantCulture, $"# SinglePassOntologyProposer quality measurement — {runs} runs/case")
             .AppendLine(CultureInfo.InvariantCulture, $"Prompt {SinglePassOntologyProposer.PromptFingerprint} (fixed preamble + declaration clause + response schema; changes when that wording or schema changes — runs under different fingerprints are not comparable).")
+            .AppendLine(CultureInfo.InvariantCulture, $"Linkage hints {SinglePassOntologyProposer.LinkageHintsPromptFingerprint} (the sentences that introduce what record linkage found — pre-linked groups, known-entity links, pairs left to the model; a run whose linkage found nothing sends none).")
             .AppendLine()
             .AppendLine(CultureInfo.InvariantCulture,
                 $"LinkageOptions: MatchThreshold={linkageOptions.MatchThreshold}, NonMatchThreshold={linkageOptions.NonMatchThreshold}, " +

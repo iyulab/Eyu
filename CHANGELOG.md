@@ -10,6 +10,23 @@ every published version has a section here.
 
 ## Unreleased
 
+### Fixed
+
+- The Turtle export no longer writes a known-entity key that cannot stand inside an IRI as one. A key that parses as an absolute
+  http(s) or urn URI but holds a space, `>`, a quote, a brace, `|`, `^`, a backtick or a backslash was written between angle
+  brackets as it was: it could end its own IRI and state triples of its own. Such a key is now minted from like any opaque key.
+- Entity resolution no longer reads a batch whose pairs all look alike as an estimate. Four identical records, or records that
+  share nothing, made EM settle on identical match and non-match distributions: every pair scored exactly zero, identical
+  records stayed separate and unrelated ones were all sent on as gray. Such a batch now takes the heuristic default, as one with
+  too few pairs does.
+- A streamed completion that ends cleanly before `[DONE]` after some content is a failed request (`HttpRequestException`, retried
+  by `RetryingModelClient`), as the documentation says, instead of being returned as a complete answer.
+- A failure's message no longer carries credentials held in the base address: the user information of `https://user:secret@host/`
+  was part of the endpoint it named.
+- `RetryingModelClient` bounds every wait to one hour. An endpoint's `Retry-After` of weeks, or a long doubling sequence, no
+  longer throws from the delay in place of the failure being retried.
+- A confidence of NaN is refused with the other out-of-range values by the proposal types and the confidence adjuster.
+
 ### Changed
 
 - Built against Formbase.Core 0.35.0 (from 0.34.0); no change to what Eyu proposes.

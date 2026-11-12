@@ -1,6 +1,7 @@
 using Eyu.Core.Primitives;
 using Formbase.Core.InMemory;
 using Formbase.Core.Primitives;
+using Formbase.Core.Projection;
 using Formbase.Core.Schema;
 using Xunit;
 
@@ -227,6 +228,27 @@ public class FormbaseRecordSampleTests
         var record = Assert.Single(records);
         Assert.Equal($"{corrected}/0", record.Id);
         Assert.Equal("a2", record.Fields["item"]);
+    }
+
+    /// <summary>
+    /// Pins a difference rather than wanting it: a keyed parent's rows are named by its document id here and by its record key in
+    /// the projection (`fb_record`), so one row has two names until the name has a single source.
+    /// </summary>
+    [Fact]
+    public async Task SampleAsync_names_a_keyed_parents_section_rows_by_document_where_the_projection_names_them_by_record()
+    {
+        var rawStore = new InMemoryRawStore();
+        var key = RecordKey.Create("sheet-1");
+        var document = DocumentId.New();
+        await rawStore.AppendAsync(Log, document, DocumentBody.Parse("""{"log_no":"L-1","items":[{"item":"a"}]}"""), key, TestContext.Current.CancellationToken);
+        var sample = new FormbaseRecordSample(rawStore, WithChecklist());
+
+        var records = await sample.SampleAsync(SubjectRef.Create(Item.Value), maxCount: 10, TestContext.Current.CancellationToken);
+
+        var projected = $"{ProjectionSystemColumns.RecordOf(document, key)}/0";
+        Assert.Equal("sheet-1/0", projected);
+        Assert.Equal($"{document}/0", Assert.Single(records).Id);
+        Assert.NotEqual(projected, records[0].Id);
     }
 
     /// <summary>The sheet's own record does not carry its checklist: those items are the section's records.</summary>

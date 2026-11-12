@@ -110,6 +110,16 @@ public class ClericalReviewEstimatorTests
         Assert.Equal(fraction * (1 - fraction), ClericalReviewEstimator.UnobservedVariationBound(reviewed), 4);
     }
 
+    // A stratum with no reviewed record has no bound to give. The call is refused here, in managed
+    // code, before it reaches the native library: Gil.Review 0.2.0 aborted the host process on it.
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void The_unobserved_variation_bound_of_a_stratum_with_no_reviewed_record_is_refused(int reviewed)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => ClericalReviewEstimator.UnobservedVariationBound(reviewed));
+    }
+
     // A stratum reviewed in full keeps contributing nothing even when its scores are all alike:
     // the bound is about what was not looked at, and in a census nothing was left.
     [Fact]

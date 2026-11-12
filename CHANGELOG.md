@@ -13,6 +13,9 @@ every published version has a section here.
 ### Changed
 
 - Built against Formbase.Core 0.35.0 (from 0.34.0); no change to what Eyu proposes.
+- Built against Gil.Review 0.2.1 (from 0.2.0), whose native library and .NET binding move together to C ABI 3. Eyu already
+  refuses a stratum with no reviewed record before the native call, so the 0.2.0 abort on that input was never reachable
+  through Eyu; a test now pins the refusal.
 
 ## 0.24.0
 

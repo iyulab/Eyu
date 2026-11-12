@@ -20,7 +20,7 @@
       agreement) come from Gil.Review's Rust core over its C ABI, so Eyu.Core carries native assets
       for the runtime identifiers that package ships.
     -->
-    <PackageVersion Include="Gil.Review" Version="0.2.0" />
+    <PackageVersion Include="Gil.Review" Version="0.2.1" />
   </ItemGroup>
 
   <ItemGroup>

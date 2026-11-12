@@ -8,6 +8,12 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
+## Unreleased
+
+### Changed
+
+- Built against Formbase.Core 0.35.0 (from 0.34.0); no change to what Eyu proposes.
+
 ## 0.24.0
 
 A minor: the proposer reads a record's key (`RawRecord.Key`) and resolves references held by it, a declared relation joins

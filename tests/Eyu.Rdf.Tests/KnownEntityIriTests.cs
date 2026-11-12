@@ -83,4 +83,28 @@ public class KnownEntityIriTests
         var individual = graph.CreateUriNode(new Uri(iris["e1"]));
         Assert.Equal(2, graph.GetTriplesWithSubjectPredicate(individual, graph.CreateUriNode(new Uri(EyuVocabulary.Claim))).Count());
     }
+
+    /// <summary>
+    /// A known key that parses as an absolute IRI is used as written — but <see cref="Uri.TryCreate(string?, UriKind, out Uri?)"/> also
+    /// accepts a space, <c>&gt;</c>, a quote or a brace, which end or break an IRI in Turtle. Written raw, a key could close its own IRI and
+    /// state triples of its own. Such a key is not an IRI the output can carry, so it is minted from like any opaque name.
+    /// </summary>
+    [Theory]
+    [InlineData("https://example.org/p/a> <https://example.org/x> <https://example.org/y")]
+    [InlineData("https://example.org/Kim Minji")]
+    [InlineData("https://example.org/a\"b")]
+    [InlineData("https://example.org/a{b}")]
+    [InlineData("https://example.org/a|b^c`d")]
+    public void A_known_key_that_cannot_stand_inside_an_iri_is_not_written_as_one(string key)
+    {
+        var proposal = Proposal(Entity("e1", "Press", "Equipment", key));
+
+        var iri = OntologyTurtle.IndividualIris(proposal, Options)["e1"];
+        var turtle = OntologyTurtle.ToTurtle(proposal, Options);
+
+        Assert.StartsWith(Base + "entity/known/", iri, StringComparison.Ordinal);
+        var graph = new Graph();
+        new TurtleParser().Load(graph, new StringReader(turtle));
+        Assert.DoesNotContain(graph.Triples, t => t.Subject is IUriNode u && u.Uri.AbsoluteUri.Contains("example.org/x", StringComparison.Ordinal));
+    }
 }

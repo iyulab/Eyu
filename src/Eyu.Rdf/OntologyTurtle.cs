@@ -263,12 +263,17 @@ public static class OntologyTurtle
         return iris;
     }
 
-    // An absolute http(s) or urn key is already an IRI; anything else is the caller's opaque name for the
-    // entity, hashed into its own branch so it can never collide with an IRI minted from a name and type.
+    // An absolute http(s) or urn key that can stand between the angle brackets of Turtle's IRIREF is already an IRI; anything else is the
+    // caller's opaque name for the entity, hashed into its own branch so it can never collide with an IRI minted from a name and type.
+    // Uri.TryCreate alone is not the test: it accepts a space, '>', a quote or a brace, which a key would write into the output as it is —
+    // closing its own IRI and stating triples of its own.
     private static string KnownIri(string knownEntityKey, string baseIri) =>
-        Uri.TryCreate(knownEntityKey, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" or "urn"
+        Uri.TryCreate(knownEntityKey, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" or "urn" && StandsInIriRef(knownEntityKey)
             ? knownEntityKey
             : baseIri + "entity/known/" + Hash(knownEntityKey);
+
+    // Turtle's IRIREF: no control character or space, and none of < > " { } | ^ ` \.
+    private static bool StandsInIriRef(string text) => text.All(c => c > ' ' && "<>\"{}|^`\\".IndexOf(c, StringComparison.Ordinal) < 0);
 
     // Each part is length-prefixed, so no two different inputs spell the same key whatever characters a
     // record id or name holds. Null when there is nothing to key on: no denoting record, and a name with

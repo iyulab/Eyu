@@ -413,6 +413,37 @@ public class HttpModelClientTests
         Assert.Contains("context length exceeded", failure.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A stream that ends cleanly after some content but before <c>[DONE]</c> is a connection closed while the answer was still coming —
+    /// a proxy that cut it, a server that stopped — and it is a failed request, not a short answer: the cut text would otherwise be
+    /// returned as complete.
+    /// </summary>
+    /// <summary>A failure names the endpoint it was talking to, and a base address may carry credentials — as user information or in a query — that must not be part of the name.</summary>
+    [Fact]
+    public async Task The_endpoint_a_failure_names_carries_no_credentials()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError) { Content = new StringContent("boom") }));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://user:s3cret@example.test:8443/v1/?key=q-secret") }, "test-model");
+
+        var failure = await Assert.ThrowsAnyAsync<Exception>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+
+        Assert.Contains("https://example.test:8443/v1/chat/completions", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("s3cret", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("q-secret", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_stream_that_ends_cleanly_before_done_is_a_failed_request_not_a_short_answer()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(Streamed("""data: {"choices":[{"delta":{"content":"{\"entities\":["}}]}""")));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", stream: true);
+
+        var failure = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+
+        Assert.Contains("before [DONE]", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("POST https://example.test/v1/chat/completions", failure.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_connection_closed_mid_stream_ends_the_call_as_a_failed_request()
     {

@@ -203,6 +203,14 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
                 $"The streamed completion carried no message content{(done ? "" : " and ended before [DONE]")}. Stream began: {Excerpt(seen.ToString())}");
         }
 
+        if (!done)
+        {
+            // The stream closed cleanly while the answer was still coming: what arrived is a cut answer, not a short one.
+            throw new HttpRequestException(
+                HttpRequestError.ResponseEnded,
+                $"The response from {DescribeTarget(httpRequest)} ended while the answer was streaming, after {text.Length} chars of content and before [DONE].");
+        }
+
         return new ModelResponse(text.ToString(), Usage: usage);
     }
 
@@ -278,8 +286,9 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
     /// </summary>
     private static string DescribeTarget(HttpRequestMessage request)
     {
+        // Scheme, host, port and path — never the user information (https://user:secret@host/), which GetLeftPart would carry — nor the query.
         var uri = request.RequestUri is { IsAbsoluteUri: true } requested
-            ? requested.GetLeftPart(UriPartial.Path)
+            ? requested.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped)
             : request.RequestUri?.OriginalString ?? "(unknown)";
         return $"{request.Method.Method} {uri}";
     }

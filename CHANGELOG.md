@@ -8,7 +8,13 @@ bump may carry a breaking change.
 The release workflow refuses to publish a version this file does not record, so
 every published version has a section here.
 
-## Unreleased
+## 0.24.0
+
+A minor: the proposer reads a record's key (`RawRecord.Key`) and resolves references held by it, a declared relation joins
+entities of its declared end types, and the clerical-review statistics are computed by `Gil.Review`. Small breaking changes:
+`RawRecord` has a fourth positional parameter (a deconstruction into three names needs a fourth), `HttpModelClient` status
+failures are `ModelEndpointException` (still an `HttpRequestException`), the same seed draws a different clerical-review pilot,
+and `PromptFingerprint` moves — a measurement stamped with the old one is not comparable with one stamped with the new.
 
 ### Added
 

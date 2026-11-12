@@ -29,10 +29,14 @@ every published version has a section here.
   in full-width letters, is now the name it renders as, and a decomposed `Café` is no longer `Cafe`.
 - The proposer refuses an answer that is valid JSON but not a proposal (an envelope such as `{"response":{…}}`, `null`, an
   array) instead of reading it as «nothing found»; `{}`, or an object that names a proposal array, is read as before.
+- An element of the model's answer whose JSON has the wrong type for a field (a number where the id is text, text where the sources
+  are a list, a null) is left out and reported as the new rejection reason `MalformedElement`, and the rest of the answer is
+  read. It used to refuse the whole answer as «not valid JSON», losing every good element beside it.
 - A confidence of NaN is refused with the other out-of-range values by the proposal types and the confidence adjuster.
 
 ### Changed
 
+- `RejectionReason` has a new last member, `MalformedElement`.
 - Built against Formbase.Core 0.35.0 (from 0.34.0); no change to what Eyu proposes.
 - Built against Gil.Review 0.2.1 (from 0.2.0), whose native library and .NET binding move together to C ABI 3. Eyu already
   refuses a stratum with no reviewed record before the native call, so the 0.2.0 abort on that input was never reachable

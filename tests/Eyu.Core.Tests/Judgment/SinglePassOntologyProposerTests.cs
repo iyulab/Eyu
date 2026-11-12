@@ -685,6 +685,25 @@ public class SinglePassOntologyProposerTests
         Assert.Contains("prior log-odds", model.LastPrompt);
     }
 
+    // The sentences that introduce the linkage hints are fixed prompt text, so a change to one is a change of prompt:
+    // a measurement stamped with the fingerprints must not read two runs across such an edit as comparable.
+    [Fact]
+    public async Task The_linkage_hint_sentences_are_covered_by_a_prompt_fingerprint()
+    {
+        var model = new StubModelClient("""{"entities":[],"relations":[]}""");
+        var records = new[]
+        {
+            new RawRecord("rec-1", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+            new RawRecord("rec-2", new Dictionary<string, string?> { ["name"] = "Acme Corp", ["city"] = "Springfield" }),
+        };
+        await new SinglePassOntologyProposer(model).ProposeAsync(declaredStructures: [], records, TestContext.Current.CancellationToken);
+        Assert.Contains("Pre-linked record groups", model.LastPrompt);
+
+        Assert.Matches("^[0-9a-f]{8}$", SinglePassOntologyProposer.LinkageHintsPromptFingerprint);
+        Assert.NotEqual(SinglePassOntologyProposer.PromptFingerprint, SinglePassOntologyProposer.LinkageHintsPromptFingerprint);
+        Assert.NotEqual(SinglePassOntologyProposer.RecordKeysPromptFingerprint, SinglePassOntologyProposer.LinkageHintsPromptFingerprint);
+    }
+
     [Fact]
     public async Task ProposeAsync_overrides_confidence_with_FS_derived_probability_for_a_clear_match()
     {

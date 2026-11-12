@@ -248,6 +248,14 @@ public sealed partial class SinglePassOntologyProposer(
 
     private const string DeclarationClause = "Declared structure is authoritative: a declared type, field or relation is fact, not a hypothesis. Where a declared type describes an entity, propose the entity under that type; where a declared relation describes a relation, propose it under that name -- the quoted name alone, not the ends written after it; never contradict declared structure. A declared relation joins entities of its declared end types: when you use a declared relation's name, propose the entity at each end under that declared end type, not under a more specific type of your own. A declaration is a floor, not a ceiling: the declared types and relations are not the only ones, so still propose every entity and relation the records show beyond what is declared, under types and names of your own.";
 
+    // The sentences that introduce the linkage hints (the groups linkage merged, the records it tied to a known entity, the pairs
+    // and candidates it left to the model). Fixed text like the clauses above, so LinkageHintsPromptFingerprint covers them: an
+    // edit here is an edit of the prompt, and a measurement that stamps the fingerprints must say so.
+    private const string LinkedGroupsClause = "Pre-linked record groups (record linkage already confirmed these denote the same entity -- merge them, do not re-decide):";
+    private const string LinkedToKnownClause = "Records pre-linked to known entities (record linkage already confirmed the record denotes that known entity -- use its key, do not re-decide):";
+    private const string KnownJudgmentClause = "Records that may denote a known entity, needing your judgment (prior evidence toward the same entity, in log-odds -- positive favors the same entity):";
+    private const string PairJudgmentClause = "Ambiguous record pairs needing your judgment (prior evidence toward same entity, in log-odds -- positive favors same entity, negative favors different entities):";
+
     // Appended only to a request whose records carry a Key, so every other request is worded exactly as before.
     private const string RecordKeyClause = "A record marked \"record key\" carries the identity its source gives that record apart from any one version of it. A field that holds another record's record key refers to that record: the entity the record with that key denotes is the one the field names. A record that only refers to an entity is not a record of it -- relate the two entities instead of letting the referring record denote the referred one.";
 
@@ -294,6 +302,14 @@ public sealed partial class SinglePassOntologyProposer(
     /// unchanged: a request without keys is worded exactly as before.
     /// </summary>
     public static string RecordKeysPromptFingerprint { get; } = Fingerprint(RecordKeyClause);
+
+    /// <summary>
+    /// The fingerprint of the sentences that introduce the linkage hints a call's prompt carries when record linkage
+    /// found something (merged groups, records tied to a known entity, pairs and candidates left to the model). A report
+    /// of such a call stamps it beside the others, which this entry leaves unchanged: a call whose linkage found
+    /// nothing sends no such sentence.
+    /// </summary>
+    public static string LinkageHintsPromptFingerprint { get; } = Fingerprint(string.Join('\n', LinkedGroupsClause, LinkedToKnownClause, KnownJudgmentClause, PairJudgmentClause));
 
     private static string ComputeFingerprint() =>
         Fingerprint(string.Join('\n', PromptInstruction, PromptSchema, PromptReferenceRule, DeclarationClause, ResponseSchema.GetRawText()));
@@ -515,7 +531,7 @@ public sealed partial class SinglePassOntologyProposer(
         if (linkedClusters.Count > 0)
         {
             text.AppendLine();
-            text.AppendLine("Pre-linked record groups (record linkage already confirmed these denote the same entity -- merge them, do not re-decide):");
+            text.AppendLine(LinkedGroupsClause);
             foreach (var cluster in linkedClusters)
             {
                 text.AppendLine(CultureInfo.InvariantCulture, $"- {string.Join(", ", cluster.RecordIds)}");
@@ -526,7 +542,7 @@ public sealed partial class SinglePassOntologyProposer(
         if (linkedToKnown.Count > 0)
         {
             text.AppendLine();
-            text.AppendLine("Records pre-linked to known entities (record linkage already confirmed the record denotes that known entity -- use its key, do not re-decide):");
+            text.AppendLine(LinkedToKnownClause);
             foreach (var candidate in linkedToKnown)
             {
                 text.AppendLine(CultureInfo.InvariantCulture, $"- {candidate.RecordId} -> {candidate.KnownEntityKey}");
@@ -536,7 +552,7 @@ public sealed partial class SinglePassOntologyProposer(
         if (promptedKnown.Count > 0)
         {
             text.AppendLine();
-            text.AppendLine("Records that may denote a known entity, needing your judgment (prior evidence toward the same entity, in log-odds -- positive favors the same entity):");
+            text.AppendLine(KnownJudgmentClause);
             foreach (var candidate in promptedKnown)
             {
                 text.AppendLine(CultureInfo.InvariantCulture, $"- {candidate.RecordId} vs {candidate.KnownEntityKey}: prior log-odds {candidate.LogLikelihoodRatio:F2}");
@@ -546,7 +562,7 @@ public sealed partial class SinglePassOntologyProposer(
         if (promptedPairs.Count > 0)
         {
             text.AppendLine();
-            text.AppendLine("Ambiguous record pairs needing your judgment (prior evidence toward same entity, in log-odds -- positive favors same entity, negative favors different entities):");
+            text.AppendLine(PairJudgmentClause);
             foreach (var pair in promptedPairs)
             {
                 text.AppendLine(CultureInfo.InvariantCulture, $"- {pair.RecordIdA} vs {pair.RecordIdB}: prior log-odds {pair.LogLikelihoodRatio:F2}");

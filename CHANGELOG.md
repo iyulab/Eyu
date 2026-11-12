@@ -40,6 +40,10 @@ every published version has a section here.
 
 ### Added
 
+- `SinglePassOntologyProposer.LinkageHintsPromptFingerprint` covers the sentences that introduce the linkage hints a call's prompt
+  carries when record linkage found something (merged groups, records tied to a known entity, pairs and candidates left to the model).
+  They were fixed prompt text no fingerprint hashed, so editing one left every fingerprint unchanged and a report stamped with them
+  could read two runs across the edit as comparable. `PromptFingerprint` and the other fingerprints keep their values.
 - `ModelResponse.FinishReason` carries the provider's reason the model stopped (`stop`, `length`, …) when it reports one, for both the
   streamed and the non-streamed call. `SinglePassOntologyProposer` uses it where it matters: an answer cut off at the output limit
   (`length`) that is not valid JSON is refused with a message that names the limit, instead of «not valid JSON» alone.

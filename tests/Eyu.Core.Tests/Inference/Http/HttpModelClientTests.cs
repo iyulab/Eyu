@@ -355,6 +355,49 @@ public class HttpModelClientTests
         Assert.Null(response.Usage);
     }
 
+    /// <summary>
+    /// «The model stopped because it ran out of output» is a fact about the call, and a half answer that says nothing of it
+    /// reads as a model that wrote broken JSON.
+    /// </summary>
+    [Fact]
+    public async Task CompleteAsync_carries_the_reason_the_model_stopped()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""{"choices":[{"message":{"content":"{\"entities\":["},"finish_reason":"length"}]}""", Encoding.UTF8, "application/json"),
+        }));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+
+        var response = await client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken);
+
+        Assert.Equal("length", response.FinishReason);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_leaves_the_finish_reason_unset_when_the_response_carries_none()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(CannedResponse("x")));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+
+        var response = await client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken);
+
+        Assert.Null(response.FinishReason);
+    }
+
+    [Fact]
+    public async Task A_streaming_client_carries_the_reason_the_model_stopped()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(Streamed(
+            """data: {"choices":[{"delta":{"content":"{\"entities\":["},"finish_reason":null}]}""",
+            """data: {"choices":[{"delta":{},"finish_reason":"length"}]}""",
+            "data: [DONE]")));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", stream: true);
+
+        var response = await client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken);
+
+        Assert.Equal("length", response.FinishReason);
+    }
+
     [Fact]
     public async Task A_streaming_client_asks_for_a_stream_and_joins_the_answer_chunks()
     {

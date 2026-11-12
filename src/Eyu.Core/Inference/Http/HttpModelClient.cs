@@ -139,7 +139,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
         }
 
         var usage = parsed?.Usage is { } u ? new TokenUsage(u.PromptTokens, u.CompletionTokens, u.TotalTokens) : null;
-        return new ModelResponse(messageText, Usage: usage);
+        return new ModelResponse(messageText, Usage: usage, FinishReason: parsed?.Choices?[0].FinishReason);
     }
 
     /// <summary>
@@ -157,6 +157,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
         var text = new StringBuilder();
         var seen = new StringBuilder();
         TokenUsage? usage = null;
+        string? finishReason = null;
         var done = false;
         using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
@@ -175,7 +176,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
                     break;
                 }
 
-                done = ReadChunk(line, text, seen, ref usage);
+                done = ReadChunk(line, text, seen, ref usage, ref finishReason);
             }
         }
         catch (Exception ex) when (ex is OperationCanceledException or IOException
@@ -211,13 +212,13 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
                 $"The response from {DescribeTarget(httpRequest)} ended while the answer was streaming, after {text.Length} chars of content and before [DONE].");
         }
 
-        return new ModelResponse(text.ToString(), Usage: usage);
+        return new ModelResponse(text.ToString(), Usage: usage, FinishReason: finishReason);
     }
 
     /// <summary>
     /// Takes one line of the stream into the answer; true when it is the closing <c>[DONE]</c>.
     /// </summary>
-    private static bool ReadChunk(string line, StringBuilder text, StringBuilder seen, ref TokenUsage? usage)
+    private static bool ReadChunk(string line, StringBuilder text, StringBuilder seen, ref TokenUsage? usage, ref string? finishReason)
     {
         if (!line.StartsWith("data:", StringComparison.Ordinal))
         {
@@ -246,6 +247,11 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
         if (chunk?.Choices is [{ Delta.Content: { } piece }, ..])
         {
             text.Append(piece);
+        }
+
+        if (chunk?.Choices is [{ FinishReason: { } reason }, ..])
+        {
+            finishReason = reason;
         }
 
         if (chunk?.Usage is { } u)
@@ -308,13 +314,13 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
 
     private sealed record ChatCompletionResponse(IReadOnlyList<ChatChoice>? Choices, ChatUsage? Usage);
 
-    private sealed record ChatChoice(ChatResponseMessage? Message);
+    private sealed record ChatChoice(ChatResponseMessage? Message, [property: JsonPropertyName("finish_reason")] string? FinishReason = null);
 
     private sealed record ChatResponseMessage(string? Content);
 
     private sealed record ChatCompletionChunk(IReadOnlyList<ChatChunkChoice>? Choices, ChatUsage? Usage, JsonElement? Error);
 
-    private sealed record ChatChunkChoice(ChatResponseMessage? Delta);
+    private sealed record ChatChunkChoice(ChatResponseMessage? Delta, [property: JsonPropertyName("finish_reason")] string? FinishReason = null);
 
     private sealed record ChatUsage(
         [property: JsonPropertyName("prompt_tokens")] int? PromptTokens,

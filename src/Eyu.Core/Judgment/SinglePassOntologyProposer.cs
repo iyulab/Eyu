@@ -337,7 +337,17 @@ public sealed partial class SinglePassOntologyProposer(
         var prompt = BuildPrompt(declaredStructures, records, prior, linkageAnalysis, promptedPairs, promptedKnown, typeRelations);
         var schema = ResponseSchemaFor(knownEntities.Count > 0, mentionedEntities.Count > 0, typeRelations);
         var response = await modelClient.CompleteAsync(new ModelRequest(prompt, schema), cancellationToken).ConfigureAwait(false);
-        var parsed = ParseResponse(response.Text, declaredStructures, records, prior, linkageAnalysis, options.RecordsDenoteEntities, typeRelations);
+        ParsedResponse parsed;
+        try
+        {
+            parsed = ParseResponse(response.Text, declaredStructures, records, prior, linkageAnalysis, options.RecordsDenoteEntities, typeRelations);
+        }
+        catch (FormatException ex) when (response.FinishReason == "length")
+        {
+            // The same refusal, with the cause the provider reported: a larger output limit or fewer records cures it, which
+            // is not what «not valid JSON» tells a caller to do.
+            throw new FormatException($"The model's answer was cut off at its output limit (finish reason \"length\"), so it is not a complete proposal. {ex.Message}", ex);
+        }
         var proposal = DeclaredStructureMerge.Apply(declaredStructures, parsed.Proposal.Entities, parsed.Proposal.Relations, parsed.Proposal.Rejections);
         return proposal with
         {

@@ -1064,6 +1064,37 @@ public class SinglePassOntologyProposerTests
         new("m-01", new Dictionary<string, string?> { ["machine_name"] = "Press 3", ["maker"] = "Hanbit", ["installed_at"] = "Plant 1", ["rated_tons"] = "200" }),
     ];
 
+    /// <summary>
+    /// An answer the model cut off at its output limit is not valid JSON, and the refusal says so: the cause is the limit, and
+    /// the cure — a larger one, or fewer records — is not the cure for a model that wrote broken JSON.
+    /// </summary>
+    [Fact]
+    public async Task ProposeAsync_names_the_output_limit_when_a_cut_off_answer_is_not_valid_json()
+    {
+        var proposer = new SinglePassOntologyProposer(new CutOffModelClient("""{"entities":[{"id":"e1","name":"Pre"""));
+
+        var error = await Assert.ThrowsAsync<FormatException>(() => proposer.ProposeAsync(declaredStructures: [], records: [], TestContext.Current.CancellationToken));
+
+        Assert.Contains("output limit", error.Message);
+        Assert.Contains("not valid JSON", error.Message);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_does_not_blame_the_output_limit_for_broken_json_the_model_finished_writing()
+    {
+        var proposer = new SinglePassOntologyProposer(new StubModelClient("""{"entities":[{"id":"e1","name":"Pre"""));
+
+        var error = await Assert.ThrowsAsync<FormatException>(() => proposer.ProposeAsync(declaredStructures: [], records: [], TestContext.Current.CancellationToken));
+
+        Assert.DoesNotContain("output limit", error.Message);
+    }
+
+    private sealed class CutOffModelClient(string text) : IModelClient
+    {
+        public Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ModelResponse(text, FinishReason: "length"));
+    }
+
     private static string WorkOrdersAndMachineResponse(string pressDenotedBy) => $$"""
         {
           "entities": [

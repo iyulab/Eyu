@@ -34,6 +34,12 @@ every published version has a section here.
   read. It used to refuse the whole answer as «not valid JSON», losing every good element beside it.
 - A confidence of NaN is refused with the other out-of-range values by the proposal types and the confidence adjuster.
 
+### Added
+
+- `ModelResponse.FinishReason` carries the provider's reason the model stopped (`stop`, `length`, …) when it reports one, for both the
+  streamed and the non-streamed call. `SinglePassOntologyProposer` uses it where it matters: an answer cut off at the output limit
+  (`length`) that is not valid JSON is refused with a message that names the limit, instead of «not valid JSON» alone.
+
 ### Changed
 
 - `RejectionReason` has a new last member, `MalformedElement`.

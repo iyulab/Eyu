@@ -20,7 +20,7 @@ public class Text2KgBenchCorpusTests
     [Fact]
     public void Each_concept_is_a_structure_and_each_relation_is_declared_on_its_domain()
     {
-        var (declarations, undeclarable) = Text2KgBenchCorpus.Declarations(JsonDocument.Parse(Ontology).RootElement);
+        var (declarations, undeclarable) = Text2KgBenchCorpus.Declarations(JsonElement.Parse(Ontology));
 
         Assert.Equal(["film", "human"], declarations.Select(d => d.Subject.Value));
         Assert.Equal(
@@ -165,7 +165,7 @@ public class Text2KgBenchCorpusTests
         Assert.Throws<ArgumentOutOfRangeException>(() => Text2KgBenchCorpus.Sample(SentenceIds, count, seed: 1));
     }
 
-    private static JsonElement Patterns(string config) => JsonDocument.Parse(config).RootElement.GetProperty("path_patterns");
+    private static JsonElement Patterns(string config) => JsonElement.Parse(config).GetProperty("path_patterns");
 
     [Fact]
     public void The_scorer_averages_over_the_verified_sentences_unless_told_otherwise()
@@ -185,7 +185,7 @@ public class Text2KgBenchCorpusTests
         var config = Text2KgBenchCorpus.EvalConfig("/bench/repo", "wikidata_tekgen", "/out/all", ["1_movie", "3_sport"], "/out/sample/selected_ont_$$onto$$.txt");
 
         Assert.Equal("/out/sample/selected_ont_$$onto$$.txt", Patterns(config).GetProperty("selected_ids").GetString());
-        Assert.Equal(["1_movie", "3_sport"], JsonDocument.Parse(config).RootElement.GetProperty("onto_list").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["1_movie", "3_sport"], JsonElement.Parse(config).GetProperty("onto_list").EnumerateArray().Select(e => e.GetString()));
     }
 
     [Fact]

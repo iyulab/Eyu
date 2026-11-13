@@ -95,7 +95,7 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
 
         foreach (var ontology in ontologies)
         {
-            var ontologyJson = JsonDocument.Parse(await ReadVerifiedAsync(manifest, repo, $"data/{Dataset}/ontologies/{ontology}_ontology.json", cancellation)).RootElement;
+            var ontologyJson = JsonElement.Parse(await ReadVerifiedAsync(manifest, repo, $"data/{Dataset}/ontologies/{ontology}_ontology.json", cancellation));
             var (declarations, undeclarable) = Text2KgBenchCorpus.Declarations(ontologyJson);
 
             var verified = (await ReadVerifiedAsync(manifest, repo, $"data/{Dataset}/manually_verified_sentences/selected_ont_{ontology}.txt", cancellation))
@@ -110,7 +110,7 @@ public class Text2KgBenchMeasurement(ITestOutputHelper output)
 
             var sentences = (await ReadVerifiedAsync(manifest, repo, $"data/{Dataset}/test/ont_{ontology}_test.jsonl", cancellation))
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                .Select(line => JsonDocument.Parse(line).RootElement)
+                .Select(line => JsonElement.Parse(line))
                 .ToDictionary(e => e.GetProperty("id").GetString()!, e => e.GetProperty("sent").GetString()!, StringComparer.Ordinal);
             var missing = selected.Where(id => !sentences.ContainsKey(id)).ToList();
             Assert.True(missing.Count == 0, $"{ontology}: verified ids not in the test split: {string.Join(", ", missing.Take(5))}");

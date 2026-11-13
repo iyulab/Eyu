@@ -32,8 +32,11 @@ internal enum BlankCell
 /// </summary>
 internal static class FormbaseDoor
 {
-    /// <summary>The case's rows as the Formbase door hands them to Eyu, in the order they were filed.</summary>
-    public static async Task<RawRecord[]> ThroughAsync(DoorCase doorCase, BlankCell blank, CancellationToken cancellationToken)
+    /// <summary>
+    /// The case's rows as the Formbase door hands them to Eyu, in the order they were filed. <paramref name="withKey"/> is false
+    /// for the door that files no record key at all — the one variable the measurement of the key's effect changes.
+    /// </summary>
+    public static async Task<RawRecord[]> ThroughAsync(DoorCase doorCase, BlankCell blank, CancellationToken cancellationToken, bool withKey = true)
     {
         var store = new InMemoryRawStore();
         var type = FormTypeRef.Create(doorCase.Subject);
@@ -53,7 +56,7 @@ internal static class FormbaseDoor
                 }
             }
 
-            RecordKey? key = doorCase.KeyColumn is { } keyColumn && !DoorCase.IsBlank(row[keyColumn])
+            RecordKey? key = withKey && doorCase.KeyColumn is { } keyColumn && !DoorCase.IsBlank(row[keyColumn])
                 ? RecordKey.Create(row[keyColumn])
                 : null;
             await store.AppendAsync(

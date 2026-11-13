@@ -228,7 +228,7 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             // measured through whichever door the round happened to default to — either way, say so.
             throw new InvalidOperationException(doorRound
                 ? $"{SourceDoor.Variable} names a real door but {DoorCase.FolderVariable} holds no case file."
-                : $"{DoorCase.FolderVariable} is set but {SourceDoor.Variable} is not table, formbase or formbase-null — the door cases are measured through a real door.");
+                : $"{DoorCase.FolderVariable} is set but {SourceDoor.Variable} is not table, formbase, formbase-null, table-keyed or formbase-nokey — the door cases are measured through a real door.");
         }
 
         var stats = new Dictionary<string, CaseStats>();

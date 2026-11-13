@@ -91,8 +91,12 @@ internal sealed record DoorCase(
         return new DoorCase(name, subject, keyColumn, columns, parsed);
     }
 
-    /// <summary>The table door: every column of every row as text, a blank cell the empty string, no record key.</summary>
-    public RawRecord[] ThroughTable()
+    /// <summary>
+    /// The table door: every column of every row as text, a blank cell the empty string, no record key — unless
+    /// <paramref name="withKey"/> gives the natural key column as the record key, as the measurement of the key's
+    /// effect does.
+    /// </summary>
+    public RawRecord[] ThroughTable(bool withKey = false)
     {
         var subject = SubjectRef.Create(Subject);
         return
@@ -100,7 +104,8 @@ internal sealed record DoorCase(
             .. Rows.Select((row, index) => new RawRecord(
                 RowId(index),
                 Columns.ToDictionary(column => column, column => (string?)row[column], StringComparer.Ordinal),
-                subject)),
+                subject,
+                withKey && KeyColumn is { } keyColumn && !IsBlank(row[keyColumn]) ? row[keyColumn] : null)),
         ];
     }
 

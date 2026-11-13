@@ -19,6 +19,8 @@ public class SourceDoorTests
     [InlineData("table", SourceDoorKind.Table)]
     [InlineData("formbase", SourceDoorKind.Formbase)]
     [InlineData("formbase-null", SourceDoorKind.FormbaseNull)]
+    [InlineData("table-keyed", SourceDoorKind.TableKeyed)]
+    [InlineData("formbase-nokey", SourceDoorKind.FormbaseNoKey)]
     public void Parse_reads_each_door_by_its_name(string? value, SourceDoorKind expected)
     {
         Assert.Equal(expected, SourceDoor.Parse(value));
@@ -40,6 +42,8 @@ public class SourceDoorTests
     [InlineData(SourceDoorKind.Table, true)]
     [InlineData(SourceDoorKind.Formbase, true)]
     [InlineData(SourceDoorKind.FormbaseNull, true)]
+    [InlineData(SourceDoorKind.TableKeyed, true)]
+    [InlineData(SourceDoorKind.FormbaseNoKey, true)]
     public void Only_the_real_doors_read_the_door_cases(SourceDoorKind kind, bool expected)
     {
         Assert.Equal(expected, SourceDoor.ReadsDoorCases(kind));
@@ -51,6 +55,8 @@ public class SourceDoorTests
         Assert.Equal("inspections@table", SourceDoor.CaseName("inspections", SourceDoorKind.Table));
         Assert.Equal("inspections@formbase", SourceDoor.CaseName("inspections", SourceDoorKind.Formbase));
         Assert.Equal("inspections@formbase-null", SourceDoor.CaseName("inspections", SourceDoorKind.FormbaseNull));
+        Assert.Equal("inspections@table-keyed", SourceDoor.CaseName("inspections", SourceDoorKind.TableKeyed));
+        Assert.Equal("inspections@formbase-nokey", SourceDoor.CaseName("inspections", SourceDoorKind.FormbaseNoKey));
     }
 
     [Fact]
@@ -65,6 +71,32 @@ public class SourceDoorTests
         Assert.True(formbaseNull[0].Fields.ContainsKey("violations"));
         Assert.Null(formbaseNull[0].Fields["violations"]);
     }
+
+    /// <summary>
+    /// The two doors that exist to separate the record key from the other differences between the table door and the
+    /// Formbase door each change that one thing and nothing else: the keyed table door is the table door plus the key,
+    /// the key-less Formbase door is the Formbase door minus it.
+    /// </summary>
+    [Fact]
+    public async Task The_two_key_doors_each_change_only_the_record_key()
+    {
+        var table = await SourceDoor.BuildAsync(Case, SourceDoorKind.Table, TestContext.Current.CancellationToken);
+        var tableKeyed = await SourceDoor.BuildAsync(Case, SourceDoorKind.TableKeyed, TestContext.Current.CancellationToken);
+        var formbase = await SourceDoor.BuildAsync(Case, SourceDoorKind.Formbase, TestContext.Current.CancellationToken);
+        var formbaseNoKey = await SourceDoor.BuildAsync(Case, SourceDoorKind.FormbaseNoKey, TestContext.Current.CancellationToken);
+
+        Assert.All(table, r => Assert.Null(r.Key));
+        Assert.All(formbaseNoKey, r => Assert.Null(r.Key));
+        Assert.Contains(tableKeyed, r => r.Key is not null);
+        Assert.Equal(formbase.Select(r => r.Key), tableKeyed.Select(r => r.Key));
+
+        // Everything but the key is what the keyless door of the same kind hands over.
+        Assert.Equal(Shape(table), Shape(tableKeyed));
+        Assert.Equal(Shape(formbase), Shape(formbaseNoKey));
+    }
+
+    private static List<string> Shape(RawRecord[] records) =>
+        [.. records.Select(r => $"{r.Id}|{r.Subject}|{string.Join(';', r.Fields.OrderBy(f => f.Key, StringComparer.Ordinal).Select(f => $"{f.Key}={f.Value ?? "<null>"}"))}")];
 
     [Theory]
     [InlineData(SourceDoorKind.Identity)]

@@ -24,11 +24,23 @@ public enum SourceDoorKind
 
     /// <summary>The rows of the door cases through the Formbase sampler, a blank cell filed as JSON <c>null</c>.</summary>
     FormbaseNull,
+
+    /// <summary>
+    /// The rows of the door cases as a table export carries them, with the case's natural key column given as the
+    /// record key — the table door with the one thing the Formbase door adds that is information about identity.
+    /// </summary>
+    TableKeyed,
+
+    /// <summary>
+    /// The rows of the door cases through the Formbase sampler, a blank cell left out, with no record key filed — the
+    /// Formbase door without the one thing the table door lacks that is information about identity.
+    /// </summary>
+    FormbaseNoKey,
 }
 
 /// <summary>
 /// Reads which door a measurement round hands its records through. The first three kinds rewrite the catalog's
-/// own records (a spelling of a date, nothing else); the last three are the real doors, which measure the door
+/// own records (a spelling of a date, nothing else); the rest are the real doors, which measure the door
 /// cases of <see cref="DoorCase.FolderVariable"/> instead and leave the catalog out — a round that measured both
 /// would spend its calls on cases with no door to compare.
 /// </summary>
@@ -44,11 +56,13 @@ internal static class SourceDoor
         "table" => SourceDoorKind.Table,
         "formbase" => SourceDoorKind.Formbase,
         "formbase-null" => SourceDoorKind.FormbaseNull,
-        _ => throw new ArgumentException($"{Variable} '{value}' is not identity, date-slash, date-compact, table, formbase or formbase-null."),
+        "table-keyed" => SourceDoorKind.TableKeyed,
+        "formbase-nokey" => SourceDoorKind.FormbaseNoKey,
+        _ => throw new ArgumentException($"{Variable} '{value}' is not identity, date-slash, date-compact, table, formbase, formbase-null, table-keyed or formbase-nokey."),
     };
 
     /// <summary>Whether the round measures the door cases through a real door rather than the catalog.</summary>
-    public static bool ReadsDoorCases(SourceDoorKind kind) => kind is SourceDoorKind.Table or SourceDoorKind.Formbase or SourceDoorKind.FormbaseNull;
+    public static bool ReadsDoorCases(SourceDoorKind kind) => kind is SourceDoorKind.Table or SourceDoorKind.Formbase or SourceDoorKind.FormbaseNull or SourceDoorKind.TableKeyed or SourceDoorKind.FormbaseNoKey;
 
     /// <summary>
     /// The case's name in the report: the case and the door it went through, so the two doors' proposals of one
@@ -62,7 +76,9 @@ internal static class SourceDoor
         SourceDoorKind.Table => Task.FromResult(doorCase.ThroughTable()),
         SourceDoorKind.Formbase => FormbaseDoor.ThroughAsync(doorCase, BlankCell.Omitted, cancellationToken),
         SourceDoorKind.FormbaseNull => FormbaseDoor.ThroughAsync(doorCase, BlankCell.Null, cancellationToken),
-        _ => throw new ArgumentException($"{Variable} '{Label(kind)}' is not a door the door cases are read through (table, formbase, formbase-null)."),
+        SourceDoorKind.TableKeyed => Task.FromResult(doorCase.ThroughTable(withKey: true)),
+        SourceDoorKind.FormbaseNoKey => FormbaseDoor.ThroughAsync(doorCase, BlankCell.Omitted, cancellationToken, withKey: false),
+        _ => throw new ArgumentException($"{Variable} '{Label(kind)}' is not a door the door cases are read through (table, formbase, formbase-null, table-keyed, formbase-nokey)."),
     };
 
     /// <summary>
@@ -90,6 +106,8 @@ internal static class SourceDoor
         SourceDoorKind.Table => "table",
         SourceDoorKind.Formbase => "formbase",
         SourceDoorKind.FormbaseNull => "formbase-null",
+        SourceDoorKind.TableKeyed => "table-keyed",
+        SourceDoorKind.FormbaseNoKey => "formbase-nokey",
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 }

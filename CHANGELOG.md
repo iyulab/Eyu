@@ -51,7 +51,8 @@ every published version has a section here.
 ### Changed
 
 - `RejectionReason` has a new last member, `MalformedElement`.
-- Built against Formbase.Core 0.35.0 (from 0.34.0); no change to what Eyu proposes.
+- Built against Formbase.Core 0.36.0 (from 0.34.0); no change to what Eyu proposes.
+- A repeated section's row is cited by the name Formbase gives it (`SectionRow.Citation`) rather than one `Eyu.Formbase` puts together; the name is the same, the parent document's id, a slash and the row's position.
 - Built against Gil.Review 0.2.1 (from 0.2.0), whose native library and .NET binding move together to C ABI 3. Eyu already
   refuses a stratum with no reviewed record before the native call, so the 0.2.0 abort on that input was never reachable
   through Eyu; a test now pins the refusal.

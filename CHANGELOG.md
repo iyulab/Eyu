@@ -47,6 +47,10 @@ every published version has a section here.
 - `ModelResponse.FinishReason` carries the provider's reason the model stopped (`stop`, `length`, …) when it reports one, for both the
   streamed and the non-streamed call. `SinglePassOntologyProposer` uses it where it matters: an answer cut off at the output limit
   (`length`) that is not valid JSON is refused with a message that names the limit, instead of «not valid JSON» alone.
+- `HttpModelClient` failures end with the `x-request-id` and `x-upstream-request-id` the response carried — for a failure status, an
+  error event inside a 200 stream, and a stream that ends or is cut before `[DONE]` alike — so a caller that logs the message can
+  hand a gateway's operator the identifier to find the call by. A response without the headers adds nothing; the values are
+  bounded to 128 visible ASCII characters.
 
 ### Changed
 

@@ -595,6 +595,84 @@ public class HttpModelClientTests
         Assert.Contains("upstream_timeout", failure.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A gateway's operator finds a failed call by the id the gateway put on the response, so every way a call can fail — a status,
+    /// an error event inside a 200 stream, a stream cut before <c>[DONE]</c> — names it in its message, ready to be quoted without a re-run.
+    /// </summary>
+    [Fact]
+    public async Task A_failure_status_names_the_request_ids_the_response_carried()
+    {
+        var handler = new FakeHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.BadGateway) { Content = new StringContent("upstream failed") };
+            response.Headers.Add("x-request-id", "req-123");
+            response.Headers.Add("x-upstream-request-id", "up-456");
+            return Task.FromResult(response);
+        });
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model");
+
+        var failure = await Assert.ThrowsAsync<ModelEndpointException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+
+        Assert.Contains("Request id: x-request-id=req-123, x-upstream-request-id=up-456.", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_error_event_inside_a_stream_names_the_request_id_of_its_response()
+    {
+        var handler = new FakeHandler(_ =>
+        {
+            var response = Streamed("""data: {"error":{"message":"The upstream failed while streaming.","code":"upstream_error"}}""");
+            response.Headers.Add("x-request-id", "req-789");
+            return Task.FromResult(response);
+        });
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", stream: true);
+
+        var failure = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+
+        Assert.Contains("upstream_error", failure.Message, StringComparison.Ordinal);
+        Assert.EndsWith("Request id: x-request-id=req-789.", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_stream_cut_before_done_names_the_request_id_of_its_response()
+    {
+        var handler = new FakeHandler(_ =>
+        {
+            var response = Streamed("""data: {"choices":[{"delta":{"content":"par"}}]}""");
+            response.Headers.Add("x-request-id", "req-cut");
+            return Task.FromResult(response);
+        });
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", stream: true);
+
+        var failure = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+
+        Assert.Contains("before [DONE]", failure.Message, StringComparison.Ordinal);
+        Assert.EndsWith("Request id: x-request-id=req-cut.", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>A response without the headers adds nothing, and a header's text is the server's: it is bounded and keeps visible ASCII only.</summary>
+    [Fact]
+    public async Task A_failure_without_request_id_headers_says_nothing_and_a_hostile_one_is_cleaned()
+    {
+        var bare = new FakeHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError) { Content = new StringContent("boom") }));
+        var bareFailure = await Assert.ThrowsAsync<ModelEndpointException>(() =>
+            new HttpModelClient(new HttpClient(bare) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model")
+                .CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+        Assert.DoesNotContain("Request id", bareFailure.Message, StringComparison.Ordinal);
+
+        var long_ = new string('a', 500);
+        var odd = new FakeHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.InternalServerError) { Content = new StringContent("boom") };
+            response.Headers.TryAddWithoutValidation("x-request-id", "ab cd\u00e9" + long_);
+            return Task.FromResult(response);
+        });
+        var oddFailure = await Assert.ThrowsAsync<ModelEndpointException>(() =>
+            new HttpModelClient(new HttpClient(odd) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model")
+                .CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+        Assert.Contains("Request id: x-request-id=abcd" + new string('a', 124) + ".", oddFailure.Message, StringComparison.Ordinal);
+    }
+
     private static HttpResponseMessage Streamed(params string[] lines) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(string.Join("\n", lines) + "\n", Encoding.UTF8, "text/event-stream"),

@@ -21,7 +21,9 @@ namespace Eyu.Core.Inference.Http;
 /// A response outside the success range throws <see cref="ModelEndpointException"/> (an
 /// <see cref="HttpRequestException"/>) carrying the status, the request URI (without its query), an
 /// excerpt of the body the server answered — OpenAI-compatible servers state the cause there (an
-/// unknown model, a rejected field) — and the wait its <c>Retry-After</c> asked for, if any.
+/// unknown model, a rejected field) — and the wait its <c>Retry-After</c> asked for, if any. Every failure's message ends with
+/// the <c>x-request-id</c> and <c>x-upstream-request-id</c> the response carried, when it carried them, so a gateway's operator
+/// can find the call from the logged message alone.
 ///
 /// <paramref name="extraBody"/> lets the caller layer provider-specific request fields the library
 /// does not model — a self-hosted server's thinking control (<c>chat_template_kwargs</c>,
@@ -159,6 +161,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
         TokenUsage? usage = null;
         string? finishReason = null;
         var done = false;
+        var requestIds = DescribeRequestIds(httpResponse);
         using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
         {
@@ -176,7 +179,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
                     break;
                 }
 
-                done = ReadChunk(line, text, seen, ref usage, ref finishReason);
+                done = ReadChunk(line, text, seen, requestIds, ref usage, ref finishReason);
             }
         }
         catch (Exception ex) when (ex is OperationCanceledException or IOException
@@ -184,7 +187,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
         {
             // Worded and typed as HttpClient words its own timeout, so a caller that already handles
             // that one handles this one.
-            var message = $"The request to {DescribeTarget(httpRequest)} was canceled: nothing arrived on the stream for the configured HttpClient.Timeout of {idleTimeout.TotalSeconds} seconds, after {text.Length} chars of content and before [DONE].";
+            var message = $"The request to {DescribeTarget(httpRequest)} was canceled: nothing arrived on the stream for the configured HttpClient.Timeout of {idleTimeout.TotalSeconds} seconds, after {text.Length} chars of content and before [DONE].{requestIds}";
             throw new TaskCanceledException(message, new TimeoutException(message, ex));
         }
         catch (IOException ex) when (!cancellationToken.IsCancellationRequested)
@@ -194,14 +197,14 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
             var error = ex is HttpIOException http ? http.HttpRequestError : HttpRequestError.Unknown;
             throw new HttpRequestException(
                 error,
-                $"The connection to {DescribeTarget(httpRequest)} closed while the answer was streaming, after {text.Length} chars of content and before [DONE]: {ex.Message}",
+                $"The connection to {DescribeTarget(httpRequest)} closed while the answer was streaming, after {text.Length} chars of content and before [DONE]: {ex.Message}{requestIds}",
                 ex);
         }
 
         if (text.Length == 0)
         {
             throw new InvalidOperationException(
-                $"The streamed completion carried no message content{(done ? "" : " and ended before [DONE]")}. Stream began: {Excerpt(seen.ToString())}");
+                $"The streamed completion carried no message content{(done ? "" : " and ended before [DONE]")}. Stream began: {Excerpt(seen.ToString())}{requestIds}");
         }
 
         if (!done)
@@ -209,7 +212,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
             // The stream closed cleanly while the answer was still coming: what arrived is a cut answer, not a short one.
             throw new HttpRequestException(
                 HttpRequestError.ResponseEnded,
-                $"The response from {DescribeTarget(httpRequest)} ended while the answer was streaming, after {text.Length} chars of content and before [DONE].");
+                $"The response from {DescribeTarget(httpRequest)} ended while the answer was streaming, after {text.Length} chars of content and before [DONE].{requestIds}");
         }
 
         return new ModelResponse(text.ToString(), Usage: usage, FinishReason: finishReason);
@@ -218,7 +221,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
     /// <summary>
     /// Takes one line of the stream into the answer; true when it is the closing <c>[DONE]</c>.
     /// </summary>
-    private static bool ReadChunk(string line, StringBuilder text, StringBuilder seen, ref TokenUsage? usage, ref string? finishReason)
+    private static bool ReadChunk(string line, StringBuilder text, StringBuilder seen, string requestIds, ref TokenUsage? usage, ref string? finishReason)
     {
         if (!line.StartsWith("data:", StringComparison.Ordinal))
         {
@@ -241,7 +244,7 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
         {
             // The endpoint failed the request after its 200 — the same failure a non-success status
             // reports, so a caller handles it the same way (a retry, a call counted as failed).
-            throw new HttpRequestException($"The model endpoint reported an error in the stream: {Excerpt(error.GetRawText())}");
+            throw new HttpRequestException($"The model endpoint reported an error in the stream: {Excerpt(error.GetRawText())}{requestIds}");
         }
 
         if (chunk?.Choices is [{ Delta.Content: { } piece }, ..])
@@ -281,11 +284,40 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
     private static string DescribeFailure(HttpRequestMessage request, HttpResponseMessage response, string body)
     {
         var status = (int)response.StatusCode;
-        var message = $"The model endpoint answered {status} {response.ReasonPhrase} to {DescribeTarget(request)}. Response body: {Excerpt(body)}";
+        var message = $"The model endpoint answered {status} {response.ReasonPhrase} to {DescribeTarget(request)}. Response body: {Excerpt(body)}{DescribeRequestIds(response)}";
         return response.StatusCode == System.Net.HttpStatusCode.NotFound
             ? message + " The path is resolved against HttpClient.BaseAddress, which for an OpenAI-compatible server usually ends with the API version segment and a slash (https://host/v1/)."
             : message;
     }
+
+    /// <summary>
+    /// The identifiers a gateway puts on a response so its operator can find the call in their own logs —
+    /// <c>x-request-id</c>, and the one it passes on from the provider behind it, <c>x-upstream-request-id</c> —
+    /// as a trailing sentence for a failure's message, or nothing when the response carries neither. A caller
+    /// that logs the message can quote them without having re-run the call. Only visible ASCII is kept and the
+    /// length is bounded, as a header is the server's text and ends up in a log line.
+    /// </summary>
+    private static string DescribeRequestIds(HttpResponseMessage response)
+    {
+        var found = new List<string>(2);
+        foreach (var name in RequestIdHeaders)
+        {
+            if (response.Headers.TryGetValues(name, out var values) && values.FirstOrDefault() is { Length: > 0 } value)
+            {
+                var visible = new string(value.Where(c => c is > ' ' and < '\u007f').Take(RequestIdMaxLength).ToArray());
+                if (visible.Length > 0)
+                {
+                    found.Add($"{name}={visible}");
+                }
+            }
+        }
+
+        return found.Count == 0 ? "" : $" Request id: {string.Join(", ", found)}.";
+    }
+
+    private static readonly string[] RequestIdHeaders = ["x-request-id", "x-upstream-request-id"];
+
+    private const int RequestIdMaxLength = 128;
 
     /// <summary>
     /// The method and the path a request went to, without the query — some providers carry a key there.

@@ -384,14 +384,14 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
             // One slow or dropped call is one failed attempt. Letting it escape ended the whole round
             // and threw away every attempt already measured.
             stats.ModelFailures++;
-            stats.FailureNotes.Add($"model call failed: {ex.GetType().Name}: {ex.Message}");
+            stats.FailureNotes.Add($"model call failed: {ex.GetType().Name}: {ex.Message} [failed at {DateTimeOffset.UtcNow:u}]");
             return;
         }
         catch (Exception ex) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
         {
             stats.ModelFailures++;
             stats.UnexpectedFailures++;
-            stats.FailureNotes.Add($"model call failed unexpectedly: {ex.GetType().Name}: {ex.Message}");
+            stats.FailureNotes.Add($"model call failed unexpectedly: {ex.GetType().Name}: {ex.Message} [failed at {DateTimeOffset.UtcNow:u}]");
             return;
         }
 
@@ -746,13 +746,13 @@ public class EyuOntologyProposerQualityMeasurement(ITestOutputHelper output)
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !TestContext.Current.CancellationToken.IsCancellationRequested)
         {
-            mode.FailureNotes.Add($"{label}: model call failed: {ex.GetType().Name}: {ex.Message}");
+            mode.FailureNotes.Add($"{label}: model call failed: {ex.GetType().Name}: {ex.Message} [failed at {DateTimeOffset.UtcNow:u}]");
             return null;
         }
         catch (Exception ex) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
         {
             mode.UnexpectedFailures++;
-            mode.FailureNotes.Add($"{label}: model call failed unexpectedly: {ex.GetType().Name}: {ex.Message}");
+            mode.FailureNotes.Add($"{label}: model call failed unexpectedly: {ex.GetType().Name}: {ex.Message} [failed at {DateTimeOffset.UtcNow:u}]");
             return null;
         }
     }

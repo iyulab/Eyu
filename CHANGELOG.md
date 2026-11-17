@@ -21,6 +21,9 @@ every published version has a section here.
   too few pairs does.
 - A streamed completion that ends cleanly before `[DONE]` after some content is a failed request (`HttpRequestException`, retried
   by `RetryingModelClient`), as the documentation says, instead of being returned as a complete answer.
+- A streamed completion cut inside a `data:` line is the same failed request (`HttpRequestException` with `ResponseEnded`, retried by
+  `RetryingModelClient`) instead of a `JsonException` from the parser; a line that is not JSON and is followed by more is an
+  `HttpRequestException` with `InvalidResponse`.
 - A failure's message no longer carries credentials held in the base address: the user information of `https://user:secret@host/`
   was part of the endpoint it named.
 - `RetryingModelClient` bounds every wait to one hour. An endpoint's `Retry-After` of weeks, or a long doubling sequence, no

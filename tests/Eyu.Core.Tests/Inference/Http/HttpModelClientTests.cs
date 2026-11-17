@@ -505,6 +505,44 @@ public class HttpModelClientTests
         Assert.Contains("after 3 chars", failure.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A connection that closes inside a <c>data:</c> line leaves JSON that stops short. It is the same cut as one between lines —
+    /// a failed request a caller handles — not a parser exception the caller has no reason to expect from a call.
+    /// </summary>
+    [Fact]
+    public async Task A_stream_cut_inside_a_data_line_is_a_failed_request_not_a_parser_exception()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(Streamed(
+            """data: {"choices":[{"delta":{"content":"par"}}]}""",
+            """data: {"choices":[{"delta":{"content":"ti""")));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", stream: true);
+
+        var failure = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpRequestError.ResponseEnded, failure.HttpRequestError);
+        Assert.IsAssignableFrom<JsonException>(failure.InnerException);
+        Assert.Contains("POST https://example.test/v1/chat/completions", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("after 3 chars", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("before [DONE]", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>A data line that is not JSON and is followed by more is not a cut: the endpoint sent something that is not a completion chunk.</summary>
+    [Fact]
+    public async Task A_data_line_that_is_not_a_chunk_and_is_followed_by_more_is_an_invalid_response()
+    {
+        var handler = new FakeHandler(_ => Task.FromResult(Streamed(
+            "data: this is not json",
+            """data: {"choices":[{"delta":{"content":"par"}}]}""",
+            "data: [DONE]")));
+        var client = new HttpModelClient(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/v1/") }, "test-model", stream: true);
+
+        var failure = await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync(new ModelRequest("q"), TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpRequestError.InvalidResponse, failure.HttpRequestError);
+        Assert.IsAssignableFrom<JsonException>(failure.InnerException);
+        Assert.Contains("POST https://example.test/v1/chat/completions", failure.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_stream_that_stops_sending_fails_within_the_client_timeout()
     {

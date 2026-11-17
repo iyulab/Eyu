@@ -179,7 +179,22 @@ public sealed partial class HttpModelClient(HttpClient httpClient, string model,
                     break;
                 }
 
-                done = ReadChunk(line, text, seen, requestIds, ref usage, ref finishReason);
+                try
+                {
+                    done = ReadChunk(line, text, seen, requestIds, ref usage, ref finishReason);
+                }
+                catch (JsonException ex)
+                {
+                    // A line that is not a chunk. When nothing follows it, the connection closed inside it — the same cut as one
+                    // between lines; when more follows, the endpoint sent something that is not a completion chunk.
+                    var cut = await reader.ReadLineAsync(idle.Token).ConfigureAwait(false) is null;
+                    throw new HttpRequestException(
+                        cut ? HttpRequestError.ResponseEnded : HttpRequestError.InvalidResponse,
+                        cut
+                            ? $"The response from {DescribeTarget(httpRequest)} ended inside a chunk while the answer was streaming, after {text.Length} chars of content and before [DONE].{requestIds}"
+                            : $"The response from {DescribeTarget(httpRequest)} carried a streamed line that is not a completion chunk, after {text.Length} chars of content: {Excerpt(line)}{requestIds}",
+                        ex);
+                }
             }
         }
         catch (Exception ex) when (ex is OperationCanceledException or IOException

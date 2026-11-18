@@ -10,6 +10,10 @@ every published version has a section here.
 
 ## Unreleased
 
+## 0.25.0
+
+A minor: a streamed completion that ends or is cut before `[DONE]` is a failed request instead of an answer (or a `JsonException`), the Turtle export no longer writes a key that cannot stand inside an IRI as one, and entity resolution no longer mis-scores a batch whose pairs all look alike or a pair compared on hundreds of fields. One additive change to a public enum: `RejectionReason` has a new last member, `MalformedElement`, so an exhaustive `switch` over it needs a case.
+
 ### Fixed
 
 - The Turtle export no longer writes a known-entity key that cannot stand inside an IRI as one. A key that parses as an absolute
@@ -58,7 +62,7 @@ every published version has a section here.
 ### Changed
 
 - `RejectionReason` has a new last member, `MalformedElement`.
-- Built against Formbase.Core 0.36.0 (from 0.34.0); no change to what Eyu proposes.
+- Built against Formbase.Core 0.37.0 (from 0.34.0); no change to what Eyu proposes.
 - A repeated section's row is cited by the name Formbase gives it (`SectionRow.Citation`) rather than one `Eyu.Formbase` puts together; the name is the same, the parent document's id, a slash and the row's position.
 - Built against Gil.Review 0.2.1 (from 0.2.0), whose native library and .NET binding move together to C ABI 3. Eyu already
   refuses a stratum with no reviewed record before the native call, so the 0.2.0 abort on that input was never reachable

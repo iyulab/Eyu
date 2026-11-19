@@ -10,6 +10,10 @@ every published version has a section here.
 
 ## Unreleased
 
+### Changed
+
+- Built against HoneAI.Abstractions 0.18.0 (from 0.17.0); no change to what Eyu proposes.
+
 ## 0.25.0
 
 A minor: a streamed completion that ends or is cut before `[DONE]` is a failed request instead of an answer (or a `JsonException`), the Turtle export no longer writes a key that cannot stand inside an IRI as one, and entity resolution no longer mis-scores a batch whose pairs all look alike or a pair compared on hundreds of fields. One additive change to a public enum: `RejectionReason` has a new last member, `MalformedElement`, so an exhaustive `switch` over it needs a case.

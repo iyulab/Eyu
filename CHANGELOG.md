@@ -12,7 +12,7 @@ every published version has a section here.
 
 ### Changed
 
-- Built against HoneAI.Abstractions 0.18.0 (from 0.17.0); no change to what Eyu proposes.
+- Built against HoneAI.Abstractions 0.19.0 (from 0.17.0); no change to what Eyu proposes.
 
 ## 0.25.0
 
